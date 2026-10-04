@@ -1,0 +1,94 @@
+# This file is included by the root CMakeLists.txt when VASIO_BUILD_DRIVERS=ON.
+
+# ASIO SDK path
+set(ASIO_SDK_PATH "${CMAKE_SOURCE_DIR}/asiosdk" CACHE PATH "Path to ASIO SDK")
+set(SRC_DIR "${CMAKE_SOURCE_DIR}/src")
+
+# Verify ASIO SDK
+if(NOT EXISTS "${ASIO_SDK_PATH}/common/asio.h")
+    message(WARNING "ASIO SDK not found at ${ASIO_SDK_PATH}")
+    message(FATAL_ERROR "Download ASIO SDK from https://www.steinberg.net/asiosdk")
+endif()
+
+# Include directories
+include_directories(${ASIO_SDK_PATH}/common)
+include_directories(${ASIO_SDK_PATH}/host)
+include_directories(${ASIO_SDK_PATH}/host/pc)
+
+# Windows only
+if(NOT WIN32)
+    message(FATAL_ERROR "This project requires Windows and Visual Studio")
+endif()
+
+# Common source files for all drivers
+set(COMMON_SOURCES
+    ${SRC_DIR}/vasio_driver.cpp
+    ${SRC_DIR}/vasio_driver_factory.cpp
+    ${SRC_DIR}/vasio_compatibility_profile.cpp
+    ${SRC_DIR}/application_profile_store.cpp
+    ${SRC_DIR}/audio_transport.cpp
+    ${SRC_DIR}/vasio_com_driver.h
+    ${SRC_DIR}/vasio_compatibility_profile.h
+    ${SRC_DIR}/vasio_driver.def
+    ${ASIO_SDK_PATH}/common/combase.cpp
+    ${ASIO_SDK_PATH}/common/dllentry.cpp
+    ${ASIO_SDK_PATH}/common/register.cpp
+)
+
+# One ASIO identity and one DLL. The shared mapping's driver slot is fixed at 1.
+add_library(TimoxVasio SHARED ${COMMON_SOURCES})
+target_include_directories(TimoxVasio PRIVATE ${SRC_DIR} ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(TimoxVasio PRIVATE ${CMAKE_SOURCE_DIR}/vendor)
+target_link_options(TimoxVasio PRIVATE "/DEF:${SRC_DIR}/vasio_driver.def")
+target_link_libraries(TimoxVasio PRIVATE ole32 oleaut32 winmm user32)
+set_target_properties(TimoxVasio PROPERTIES PREFIX "" SUFFIX ".dll" OUTPUT_NAME TimoxVasio)
+
+# SDK-backed COM probe used to verify direct activation and registry discovery.
+add_executable(DriverProbe
+    ${CMAKE_SOURCE_DIR}/tests/driver_probe.cpp
+    ${SRC_DIR}/audio_transport.cpp
+    ${SRC_DIR}/vasio_compatibility_profile.cpp
+    ${SRC_DIR}/application_profile_store.cpp
+    ${ASIO_SDK_PATH}/host/pc/asiolist.cpp
+)
+target_include_directories(DriverProbe PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/vendor
+    ${ASIO_SDK_PATH}/common
+    ${ASIO_SDK_PATH}/host/pc
+)
+target_link_libraries(DriverProbe PRIVATE ole32)
+
+add_executable(DriverAudioProbe
+    ${CMAKE_SOURCE_DIR}/tests/driver_audio_probe.cpp
+    ${SRC_DIR}/audio_transport.cpp
+    ${SRC_DIR}/vasio_compatibility_profile.cpp
+    ${SRC_DIR}/application_profile_store.cpp
+)
+target_include_directories(DriverAudioProbe PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/vendor
+    ${ASIO_SDK_PATH}/common
+)
+target_link_libraries(DriverAudioProbe PRIVATE ole32)
+
+add_executable(DriverCompatibilityProfileTests
+    ${CMAKE_SOURCE_DIR}/tests/driver_compatibility_profile_tests.cpp
+    ${SRC_DIR}/vasio_compatibility_profile.cpp
+    ${SRC_DIR}/application_profile_store.cpp
+)
+target_include_directories(DriverCompatibilityProfileTests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${SRC_DIR}
+    ${CMAKE_SOURCE_DIR}/vendor
+)
+
+add_executable(DriverChannelProfileProbe
+    ${CMAKE_SOURCE_DIR}/tests/driver_channel_profile_probe.cpp
+)
+target_include_directories(DriverChannelProfileProbe PRIVATE
+    ${ASIO_SDK_PATH}/common
+)
+target_link_libraries(DriverChannelProfileProbe PRIVATE ole32)

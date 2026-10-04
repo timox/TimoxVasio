@@ -1,0 +1,292 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://vasio.local/schemas/api-v1.json",
+  "title": "VASIO local control API v1 messages",
+  "oneOf": [
+    { "$ref": "#/definitions/state" },
+    { "$ref": "#/definitions/drivers" },
+    { "$ref": "#/definitions/applicationProfiles" },
+    { "$ref": "#/definitions/applicationProfilesUpdate" },
+    { "$ref": "#/definitions/applyCommand" },
+    { "$ref": "#/definitions/response" },
+    { "$ref": "#/definitions/event" }
+  ],
+  "definitions": {
+    "endpoint": {
+      "type": "object",
+      "required": ["id", "name", "direction", "channel"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "direction": { "enum": ["input", "output"] },
+        "channel": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "bufferCapabilities": {
+      "type": "object",
+      "required": ["minimumFrames", "maximumFrames", "preferredFrames", "granularity"],
+      "properties": {
+        "minimumFrames": { "type": "integer", "minimum": 1 },
+        "maximumFrames": { "type": "integer", "minimum": 1 },
+        "preferredFrames": { "type": "integer", "minimum": 1 },
+        "granularity": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "physicalDriver": {
+      "type": "object",
+      "required": ["id", "name", "inputEndpoints", "outputEndpoints", "sampleRates", "bufferSizes", "capabilitiesKnown"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "inputEndpoints": { "type": "array", "items": { "$ref": "#/definitions/endpoint" } },
+        "outputEndpoints": { "type": "array", "items": { "$ref": "#/definitions/endpoint" } },
+        "sampleRates": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "uniqueItems": true },
+        "bufferSizes": { "oneOf": [{ "$ref": "#/definitions/bufferCapabilities" }, { "type": "null" }] },
+        "capabilitiesKnown": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "virtualDriver": {
+      "type": "object",
+      "required": ["id", "channelsPerDirection", "sampleRate", "bufferFrames", "clients", "inputEndpoints", "outputEndpoints"],
+      "properties": {
+        "id": { "const": "TimoxVasio" },
+        "channelsPerDirection": { "const": 256 },
+        "sampleRate": { "type": ["integer", "null"], "minimum": 1 },
+        "bufferFrames": { "type": ["integer", "null"], "minimum": 1 },
+        "clients": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pid", "processName", "inputChannels", "outputChannels"],
+            "properties": {
+              "pid": { "type": "integer", "minimum": 1 },
+              "processName": { "type": "string" },
+              "inputChannels": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 256 } },
+              "outputChannels": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 256 } }
+            },
+            "additionalProperties": false
+          }
+        },
+        "inputEndpoints": { "type": "array", "items": { "$ref": "#/definitions/endpoint" } },
+        "outputEndpoints": { "type": "array", "items": { "$ref": "#/definitions/endpoint" } }
+      },
+      "additionalProperties": false
+    },
+    "route": {
+      "type": "object",
+      "required": ["id", "sourceEndpointId", "destinationEndpointId", "gainDb", "mute"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sourceEndpointId": { "type": "string", "minLength": 1 },
+        "destinationEndpointId": { "type": "string", "minLength": 1 },
+        "gainDb": { "type": "number", "minimum": -120, "maximum": 24 },
+        "mute": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "operation": { "type": "string" },
+        "driverId": { "type": "string" },
+        "asioError": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "engine": {
+      "type": "object",
+      "required": ["state", "physicalDriverId", "sampleRate", "bufferFrames", "lastError"],
+      "properties": {
+        "state": { "enum": ["stopped", "running", "reconfiguring", "error"] },
+        "physicalDriverId": { "type": ["string", "null"] },
+        "sampleRate": { "type": ["integer", "null"], "minimum": 1 },
+        "bufferFrames": { "type": ["integer", "null"], "minimum": 1 },
+        "lastError": { "oneOf": [{ "$ref": "#/definitions/error" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes"],
+      "properties": {
+        "apiVersion": { "const": "1.0" },
+        "engine": { "$ref": "#/definitions/engine" },
+        "physicalDrivers": { "type": "array", "items": { "$ref": "#/definitions/physicalDriver" } },
+        "virtualDrivers": { "type": "array", "items": { "$ref": "#/definitions/virtualDriver" } },
+        "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } }
+      },
+      "additionalProperties": false
+    },
+    "drivers": {
+      "type": "object",
+      "required": ["physicalDrivers", "virtualDrivers"],
+      "properties": {
+        "physicalDrivers": { "type": "array", "items": { "$ref": "#/definitions/physicalDriver" } },
+        "virtualDrivers": { "type": "array", "items": { "$ref": "#/definitions/virtualDriver" } }
+      },
+      "additionalProperties": false
+    },
+    "applicationProfile": {
+      "type": "object",
+      "required": ["processName", "inputChannels", "outputChannels"],
+      "properties": {
+        "processName": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 260,
+          "pattern": "^[^\\\\/:*?\"<>|]+\\.exe$"
+        },
+        "inputChannels": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "outputChannels": { "type": "integer", "minimum": 1, "maximum": 256 }
+      },
+      "additionalProperties": false
+    },
+    "applicationProfiles": {
+      "type": "object",
+      "required": ["profiles"],
+      "properties": {
+        "profiles": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/applicationProfile" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "replaceApplicationProfiles": { "$ref": "#/definitions/applicationProfiles" },
+    "profileRestartClient": {
+      "type": "object",
+      "required": ["pid", "processName"],
+      "properties": {
+        "pid": { "type": "integer", "minimum": 1 },
+        "processName": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "applicationProfilesUpdate": {
+      "type": "object",
+      "required": ["profiles", "restartRequiredClients"],
+      "properties": {
+        "profiles": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/applicationProfile" },
+          "uniqueItems": true
+        },
+        "restartRequiredClients": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/profileRestartClient" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "applyCommand": {
+      "type": "object",
+      "required": ["id", "command", "payload"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "command": { "const": "configuration.apply" },
+        "payload": {
+          "type": "object",
+          "required": ["physicalDriverId", "sampleRate", "bufferFrames", "routes"],
+          "properties": {
+            "physicalDriverId": { "type": ["string", "null"] },
+            "sampleRate": { "type": ["integer", "null"], "minimum": 1 },
+            "bufferFrames": { "type": ["integer", "null"], "minimum": 1 },
+            "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["id", "success", "result"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "success": { "const": true },
+            "result": { "type": "object", "required": ["accepted"], "properties": { "accepted": { "const": true } }, "additionalProperties": false }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["id", "success", "error"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "success": { "const": false },
+            "error": { "$ref": "#/definitions/error" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "event": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["event", "payload"],
+          "properties": {
+            "event": { "const": "engine.status" },
+            "payload": { "$ref": "#/definitions/engine" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["event", "payload"],
+          "properties": {
+            "event": { "const": "devices.changed" },
+            "payload": { "$ref": "#/definitions/drivers" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["event", "payload"],
+          "properties": {
+            "event": { "const": "routes.changed" },
+            "payload": { "type": "object", "required": ["routes"], "properties": { "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } } }, "additionalProperties": false }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["event", "payload"],
+          "properties": {
+            "event": { "const": "audio.meter" },
+            "payload": {
+              "type": "object",
+              "required": ["endpointId", "peakDbfs", "underruns", "overruns"],
+              "properties": {
+                "endpointId": { "type": "string", "minLength": 1 },
+                "peakDbfs": { "type": "number", "minimum": -120, "maximum": 0 },
+                "underruns": { "type": "integer", "minimum": 0 },
+                "overruns": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["event", "payload"],
+          "properties": {
+            "event": { "const": "engine.error" },
+            "payload": { "$ref": "#/definitions/error" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

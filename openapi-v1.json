@@ -1,0 +1,120 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TimoxVasio Local Control API",
+    "version": "1.0.0",
+    "description": "Control contract for the local TimoxVasio audio engine. The API binds only to 127.0.0.1. HTTP exposes confirmed engine state and driver inventory; the WebSocket accepts idempotent configuration.apply commands and publishes state, routing, error and audio.meter events. Audio sample transport itself remains on the ASIO/shared-memory path and is outside this control API."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "description": "Loopback only. The engine reports its selected port at startup.",
+      "variables": { "port": { "default": "52525", "description": "Local engine port" } }
+    }
+  ],
+  "paths": {
+    "/api/v1/state": {
+      "get": {
+        "operationId": "getEngineState",
+        "summary": "Read the confirmed engine state and complete routing configuration",
+        "responses": {
+          "200": {
+            "description": "Current engine state, inventory and routes",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/State" } } }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/v1/drivers": {
+      "get": {
+        "operationId": "getDriverInventory",
+        "summary": "Read physical ASIO and TimoxVasio driver capabilities",
+        "responses": {
+          "200": {
+            "description": "Discovered driver inventory",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Drivers" } } }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/v1/application-profiles": {
+      "get": {
+        "operationId": "getApplicationProfiles",
+        "summary": "Read per-application ASIO channel compatibility profiles",
+        "description": "Unlisted processes receive 256 input and output channels. The built-in Mixxx profile advertises 255 in both directions. Profiles match the executable basename case-insensitively. A running client must be restarted after its effective profile changes.",
+        "responses": {
+          "200": {
+            "description": "Current application profiles",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationProfiles" } } }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "put": {
+        "operationId": "replaceApplicationProfiles",
+        "summary": "Replace all per-application ASIO channel profiles",
+        "description": "Replaces the complete profile list. An empty list restores the 256-channel default for every application. Existing clients whose effective channel counts changed are returned in restartRequiredClients; their current ASIO instances retain their original getChannels result until restarted.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReplaceApplicationProfiles" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Profiles saved and clients requiring restart identified",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationProfilesUpdate" } } }
+          },
+          "400": {
+            "description": "Invalid profile list",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/v1/ws": {
+      "get": {
+        "operationId": "controlEngineWebSocket",
+        "summary": "Upgrade to the TimoxVasio control WebSocket",
+        "description": "Connect with the vasio.api.v1 subprotocol. Send configuration.apply requests and receive matching responses and asynchronous events. audio.meter events are sent for endpoints in active routes at approximately two updates per second; peakDbfs is the peak of the most recently processed audio block, not a held peak. Meter publication runs outside the real-time audio callback. See x-websocket for message schemas.",
+        "responses": { "101": { "description": "WebSocket protocol upgrade" } },
+        "x-websocket": {
+          "subprotocol": "vasio.api.v1",
+          "clientMessages": { "$ref": "#/components/schemas/ApplyCommand" },
+          "serverMessages": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/Response" },
+              { "$ref": "#/components/schemas/Event" }
+            ]
+          },
+          "commands": ["configuration.apply"],
+          "events": ["engine.status", "devices.changed", "routes.changed", "audio.meter", "engine.error"]
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "State": { "$ref": "./schemas/api-v1.json#/definitions/state" },
+      "Drivers": { "$ref": "./schemas/api-v1.json#/definitions/drivers" },
+      "ApplicationProfiles": { "$ref": "./schemas/api-v1.json#/definitions/applicationProfiles" },
+      "ReplaceApplicationProfiles": { "$ref": "./schemas/api-v1.json#/definitions/replaceApplicationProfiles" },
+      "ApplicationProfilesUpdate": { "$ref": "./schemas/api-v1.json#/definitions/applicationProfilesUpdate" },
+      "ApplyCommand": { "$ref": "./schemas/api-v1.json#/definitions/applyCommand" },
+      "Response": { "$ref": "./schemas/api-v1.json#/definitions/response" },
+      "Event": { "$ref": "./schemas/api-v1.json#/definitions/event" },
+      "Error": { "$ref": "./schemas/api-v1.json#/definitions/error" }
+    },
+    "responses": {
+      "ServerError": {
+        "description": "The local engine could not serve the request",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      }
+    }
+  }
+}

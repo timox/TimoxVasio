@@ -1,0 +1,20 @@
+# Build outputs
+/build*/
+/x64/
+/.vs/
+/ASIOHost/
+*.obj
+*.pdb
+
+# GUI dependencies and generated bundles
+/gui/node_modules/
+/gui/dist/
+/gui/.env*
+
+# Local runtime/session artifacts
+*.pid.json
+*.log
+
+# Local Mixxx source/build used for compatibility investigation
+/vendor/mixxx-2.7-256/
+/vendor/mixxx-2.7-256-source.zip

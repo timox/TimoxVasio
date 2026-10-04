@@ -1,0 +1,80 @@
+{
+  "name": "vasio-control",
+  "version": "1.0.0",
+  "description": "Interface graphique pour pilotes ASIO virtuels",
+  "main": "electron/main.js",
+  "homepage": "./",
+  "scripts": {
+    "react-start": "react-scripts start",
+    "react-build": "react-scripts build",
+    "react-test": "react-scripts test",
+    "contract-test": "node --test src/api-contract.test.cjs",
+    "react-eject": "react-scripts eject",
+    "electron-start": "electron .",
+    "start": "concurrently \"npm run react-start\" \"wait-on http://localhost:4000 && npm run electron-start\"",
+    "build": "npm run react-build && npm run electron-build",
+    "electron-build": "npm run react-build && electron-builder",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "electron-is-dev": "^3.0.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0",
+    "electron": "^28.3.3",
+    "electron-builder": "^24.6.4",
+    "react-scripts": "5.0.1",
+    "wait-on": "^7.0.1"
+  },
+  "eslintConfig": {
+    "extends": "react-app"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "build": {
+    "appId": "com.vasio.control",
+    "productName": "VASIO Control",
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "files": [
+      "build/**/*",
+      "electron/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../build_engine_vs2026_ninja/TimoxVirtualAsioEngine.exe",
+        "to": "backend/TimoxVirtualAsioEngine.exe"
+      },
+      {
+        "from": "../build_engine_vs2026_ninja/config",
+        "to": "backend/config"
+      }
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
+  }
+}

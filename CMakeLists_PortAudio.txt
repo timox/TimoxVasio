@@ -1,0 +1,45 @@
+cmake_minimum_required(VERSION 3.16)
+# Prototype historique, non utilisé par le build principal.
+# Il implémente encore quatre pilotes VASIO de six canaux et ne constitue
+# pas le moteur TimoxVirtualAsioEngine pris en charge.
+project(LegacyVASIO_PortAudioPrototype)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Option 1: Trouver PortAudio instalé sur le système
+find_package(PortAudio REQUIRED)
+
+# Option 2: Si PortAudio n'est pas trouvé, le compiler depuis la source
+# Ajouter en submodule: git submodule add https://github.com/PortAudio/portaudio.git vendor/portaudio
+
+set(SOURCES
+    src/vasio_host.cpp
+    src/config_loader.cpp
+    src/main_portaudio.cpp
+)
+
+add_executable(LegacyVASIO_PortAudioPrototype ${SOURCES})
+
+target_include_directories(LegacyVASIO_PortAudioPrototype PRIVATE include)
+
+target_link_libraries(LegacyVASIO_PortAudioPrototype PRIVATE PortAudio::PortAudio)
+
+# Windows-specific libs
+if(WIN32)
+    target_link_libraries(LegacyVASIO_PortAudioPrototype PRIVATE
+        ole32
+        oleaut32
+        user32
+        winmm
+    )
+endif()
+
+# Post-build: copier config
+add_custom_command(TARGET LegacyVASIO_PortAudioPrototype POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+    $<TARGET_FILE_DIR:LegacyVASIO_PortAudioPrototype>/config
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${CMAKE_SOURCE_DIR}/config/routing.ini
+    $<TARGET_FILE_DIR:LegacyVASIO_PortAudioPrototype>/config/
+)

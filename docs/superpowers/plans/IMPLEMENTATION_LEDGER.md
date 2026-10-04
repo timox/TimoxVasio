@@ -1,0 +1,159 @@
+# État d’implémentation TimoxVasio
+
+> Mis à jour le 4 octobre 2026. Ce ledger remplace le suivi du prototype à quatre pilotes. Les plans du 2 octobre restent des archives historiques et ne décrivent plus le contrat courant.
+
+## Contrat courant
+
+Le produit cible utilise une DLL ASIO unique, `TimoxVasio.dll`, annoncée sous le nom `TimoxVasio`, avec une capacité maximale de 256 entrées et 256 sorties. `TimoxVirtualAsioEngine.exe` est le processus moteur distinct. Le périphérique ASIO physique sélectionné fournit la fréquence et la taille de buffer effectives. L’API est le contrat d’inventaire et de configuration consommé par l’interface.
+
+La conception et les critères d’acceptation sont définis dans [la spécification 256 canaux](../specs/2026-10-03-vasio-single-driver-256-channel-design.md). Le suivi des tâches se trouve dans [le plan maître](2026-10-03-vasio-256-physical-master-plan.md).
+
+## Éléments réalisés et vérifications disponibles
+
+- Le transport partagé versionné et le pilote unique prennent en charge 256 canaux par direction et publient les canaux alloués par client.
+- La configuration fréquence/taille transmise aux clients utilise maintenant une seule paire de valeurs globale, cohérente avec l’unique pilote virtuel. Compilation x64 de `TimoxVirtualAsioEngine` et `VasioClientManagerProbe` réussie après initialisation de `VsDevCmd`.
+- Le moteur découvre les clients TimoxVasio, pilote l’hôte ASIO physique et relie les routes par le graphe audio.
+- La configuration passe par l’API HTTP/WebSocket documentée; l’interface Electron consomme ce contrat.
+- Les guides actifs, le nom de l’exécutable et les ressources de packaging utilisent les noms Timox.
+- Les vérifications logicielles rapportées incluent les probes transport, graph, runtime, API et GUI, la compilation x64, ainsi que l’énumération COM enregistrée de `TimoxVasio` à 256/256.
+- Le script d’installation migre les entrées de registre VASIO connues vers `TimoxVasio`. État confirmé le 3 octobre : HKLM ne contient que `TimoxVasio` parmi les noms du produit, les anciens CLSID sont absents et le dossier d’installation ne contient plus que `TimoxVasio.dll`.
+- État observé le 3 octobre : `DriverProbe --registered TimoxVasio` annonce 256 entrées et 256 sorties; `VasioClientManagerProbe` confirme l’attachement interprocessus et la propagation de 96 kHz/512 frames; `VasioExternalHostProbe` découvre le pilote via `AsioDriverList`, puis valide `init/createBuffers/start`, reset/restart et reopen à 44,1 kHz/256 frames avec le moteur courant. `--list-asio` énumère les pilotes physiques, dont les entrées SSL, sans ouvrir de périphérique. Ces probes ne valident pas un flux audio matériel réel; les paramètres 44,1 kHz/256 frames du probe sont les valeurs par défaut avant sélection d’un maître physique.
+- Session de reprise le 3 octobre : compilation x64 de `TimoxVirtualAsioEngine` réussie après le correctif d’initialisation des buffers physiques. Par l’API documentée, configuration de `SSL ASIO Driver 1` sans route confirmée à l’état `stopped`, 48 kHz/1024 frames; l’API publie ses capacités réelles (16 entrées, 8 sorties). La page de contrôle répond sur le port 4000. Aucun client TimoxVasio n’était connecté pendant cette vérification, donc elle ne prouve pas encore le transfert matériel d’un signal.
+
+## Acceptation encore requise
+
+- Vérifier avec un hôte ASIO réel la découverte, l’allocation clairsemée et le rejet des paramètres incompatibles.
+- Construire depuis l’interface un circuit avec le périphérique physique réel, puis mesurer les trois flux audio de la spécification, dont un canal matériel supérieur à 6.
+- Vérifier les scénarios de reconfiguration, déconnexion/reconnexion et erreur avec le matériel ciblé.
+
+Une compilation, une sonde COM ou une énumération des pilotes ne prouve pas le signal audio matériel de bout en bout. La livraison ne sera complète qu’après ces vérifications réelles.
+
+## Reprise du 4 octobre 2026
+
+- Le registre x64 et le probe PortAudio compilé dans ce dépôt trouvent
+  `TimoxVasio` à 256 entrées et 256 sorties. Le probe accepte 48 kHz lorsque
+  l’horloge physique est réglée à 48 kHz.
+- La capture Mixxx reste cohérente avec un filtre interne, pas avec une absence
+  d’enregistrement ASIO. Le journal de Mixxx identifie la build
+  `2.6-beta-402-ge1c1e5b72b`. À ce commit, `SoundDevicePortAudio` convertit les
+  comptes de canaux en `ChannelCount`, dont `value_t` est `uint8_t`; 256 devient
+  invalide, puis `SoundManager::getDeviceList()` écarte le périphérique quand
+  ses deux directions sont invalides. Le diagnostic détaillé se trouve dans
+  [la note de compatibilité Mixxx](../mixxx-256-channel-compatibility.md).
+- Un correctif minimal pour élargir `ChannelCount::value_t` est conservé dans
+  `patches/mixxx/0001-audio-channel-count-support-256.patch`. Il est appliqué
+  à une copie de source Mixxx 2.7 sous `vendor/mixxx-2.7-256`; la compilation
+  x64 a produit `build_mixxx_2.7_256/mixxx.exe`. Le 4 octobre, l’utilisateur
+  a lancé cette copie et confirmé qu’elle découvre TimoxVasio. Cela ne prouve
+  pas encore l’ouverture du flux ni l’allocation des 256 canaux. Ce n’est pas
+  la version installée : Mixxx 2.6 beta reste inchangé et non corrigé.
+- L’API moteur a été remise à `SSL ASIO Driver 1`, 48 kHz/512 frames, état
+  `stopped`, sans route et sans client virtuel. Ce réglage confirme l’état de
+  configuration, pas un transfert audio. Le test direct de la DLL PortAudio
+  fournie avec Mixxx reste bloqué dans `Pa_Initialize()` en sonde isolée; il
+  n’est pas utilisé comme preuve du diagnostic ChannelCount.
+
+## Reprise après interruption — noms physiques et état API
+
+- `PhysicalAsioHost` interroge chaque canal du pilote sélectionné avec
+  `IASIO::getChannelInfo`; le serveur API publie le nom fourni par le pilote
+  dans `endpoint.name`, avec un nom de remplacement seulement si le champ du
+  pilote est vide. Le chemin est commun à tous les pilotes physiques, sans
+  branche spécifique SSL.
+- Interrogation effective de `SSL ASIO Driver 1` à 48 kHz/1024 frames, sans
+  route et donc sans démarrage de flux. L’API a retourné 16 entrées nommées
+  (`Analogue 1–4`, `Talkback`, `Loopback L/R`, `ADAT 1–8`) et 8 sorties
+  (`Mon L/R`, puis `Out 3–8`). Après lecture, la configuration a été libérée.
+- L’API documentée répond ensuite encore avec `state: stopped`, aucun pilote
+  sélectionné et sans erreur. L’inventaire virtuel expose Renoise PID 19488,
+  avec 64 entrées et 64 sorties actives. Ce constat ne prouve pas le transfert
+  de signal vers la SSL.
+- Le journal Electron précédent enregistre la sortie du moteur enfant avec
+  `signal=SIGTERM`; le code Electron envoie ce signal dans `before-quit`. Ce
+  journal explique la disparition de l’API lorsque le processus Electron
+  quitte, mais ne permet pas d’attribuer cette fermeture à la commande Apply.
+- Le message de succès de la GUI précise maintenant que l’état `stopped` est
+  attendu lorsque la configuration appliquée ne comporte aucune route.
+- `npm run react-build` compile avec succès. La création du paquet Electron
+  échoue dans `electron-builder` lors de la création de son cache dans
+  `AppData\Local`; aucun paquet Electron actualisé n’a été produit.
+- Un essai de démarrage avec une route explicitement muette de Renoise vers
+  `SSL ASIO Driver 1 · Mon L` a d’abord été confirmé par l’API à `running`,
+  48 kHz/1024 frames. Peu après, une fenêtre Windows a signalé une écriture
+  mémoire invalide dans `TimoxVirtualAsioEngine.exe` et le processus/API ont
+  disparu. Le journal Windows ne fournit pas de rapport correspondant; la
+  cause précise reste inconnue.
+- Une option diagnostique CMake, désactivée par défaut,
+  `VASIO_ENABLE_CRASH_DUMP`, écrit un minidump près de l’exécutable en cas
+  d’exception non gérée. La build diagnostique x64 a été compilée puis
+  démarrée sous PID 23388. Renoise a republié ses 64 entrées/sorties. Une
+  route muette de Renoise Out 1 vers SSL `Mon L` a été acceptée par l’API,
+  puis le moteur s’est arrêté sur une violation d’accès (`0xc0000005`,
+  adresse `0x567250`). Un minidump a été produit.
+- Le crash a été reproduit avec la même route après reconstruction en
+  `RelWithDebInfo`; l’API a accepté la configuration avant le nouvel arrêt
+  (`0xc0000005`, adresse `0x560FA0`). Le minidump correspondant et
+  `TimoxVirtualAsioEngine.pdb` ont confirmé un saut indirect vers un pointeur
+  périmé. La source Steinberg incluse dans `asiosdk/driver/asiosample`
+  conserve le `ASIOCallbacks*` passé à `createBuffers`; l’exemple d’hôte garde
+  sa structure globale. Notre hôte créait cette structure comme variable
+  locale dans `PhysicalAsioHost::start`, dont la pile est réutilisée après le
+  retour de la méthode. Elle est maintenant un membre de `Session`, et le
+  pilote reçoit `&session.callbacks`.
+- Après recompilation et redémarrage, la route muette a tenu en état `running`
+  sans erreur; la même route activée (Renoise Out 1 vers SSL `Mon L`, 48 kHz,
+  1024 frames) est restée `running` pendant huit secondes, avec une route et
+  aucun nouveau dump. L’API a accepté et confirmé la configuration. Le flux
+  audio audible n’a pas été mesuré indépendamment.
+
+## Archive
+
+Le prototype historique `CMakeLists_PortAudio.txt` et `src/main_portaudio.cpp` créent encore VASIO1–VASIO4 à six canaux. Le fichier orphelin `src/vasio_driver_correct.cpp` contient aussi un ancien pilote six canaux. Aucun n’est référencé par le build principal. La cible du prototype PortAudio est nommée `LegacyVASIO_PortAudioPrototype` pour éviter de la confondre avec `TimoxVirtualAsioEngine`. `config/routing.ini` est conservé uniquement pour ce prototype et n’est pas la configuration active du moteur.
+
+## Reprise avant redémarrage utilisateur — 4 octobre 2026
+
+### Objectif
+
+Fournir sous Windows x64 un pilote ASIO virtuel unique, `TimoxVasio`, jusqu’à
+256 entrées et 256 sorties, avec une interface graphique reliant les canaux
+actifs des applications aux ports d’un pilote ASIO physique. Le pilote
+physique maître fixe la fréquence et la taille de buffer du moteur et du
+pilote virtuel. L’interface applique la configuration uniquement via l’API
+documentée.
+
+### État à reprendre
+
+- L’API du moteur actif a été relevée avec SSL ASIO Driver 1, 48 kHz,
+  1024 frames et quatre routes stéréo Renoise/Ableton vers Monitor L/R. Renoise
+  et Ableton sont publiés comme clients; Mixxx reste à 0 entrée/sortie.
+- Le build `build_engine_names_check` contient les libellés SSL 12 résolus,
+  mais le moteur actif `build_engine_vs2026_ninja` n’a pas été remplacé. Les
+  noms génériques `Out 3` à `Out 8` restent donc attendus jusqu’à la prochaine
+  installation/redémarrage contrôlé.
+- Le signal audio de bout en bout n’est pas confirmé : la dernière lecture de
+  mètres était à `-120 dBFS`, sans preuve qu’un signal était joué. Les
+  compteurs xrun sont cumulatifs et doivent être comparés pendant une lecture.
+- Mixxx installé reste 2.6 beta x64; sa limite `ChannelCount` 8 bits écarte
+  TimoxVasio à 256/256. Le patch est essayé sur la copie source 2.7 uniquement.
+- L’interface de matrice et la documentation ont été mises à jour. `gui/INTEGRATION.md`
+  décrit maintenant le pilote virtuel unique; le guide GUI et la note Mixxx
+  expliquent la limite observée. L’`ASIO_AUDIT.md` garde les faits de session
+  et distingue les validations logicielles du signal matériel.
+- L’utilisateur annonce qu’il va redémarrer. Ne pas redémarrer, tuer ou
+  piloter des hôtes audio et ne pas valider le runtime tant qu’il n’a pas
+  indiqué que le redémarrage est terminé.
+
+### À faire à la reprise
+
+1. Reprendre la build Mixxx en cours si elle a été interrompue; elle ne touche
+   pas l’installation. Même si elle réussit, traiter Mixxx installé comme
+   non corrigé jusqu’à installation explicite d’une version correspondante.
+2. Après le retour de l’utilisateur et fermeture/redémarrage contrôlé,
+   recompiler/installer le moteur courant, puis vérifier via l’API les noms de
+   ports physiques, le statut et la capacité du pilote sélectionné.
+3. Pendant la lecture d’un signal, vérifier les mètres, les compteurs et le
+   son physique, sans supposer qu’une route confirmée signifie un son audible.
+4. Vérifier la découverte et l’ouverture du pilote avec un hôte ASIO réel;
+   résoudre l’incompatibilité Mixxx séparément.
+5. Continuer jusqu’à validation audio réelle du circuit et des reconfigurations
+   avant de marquer l’objectif complet.

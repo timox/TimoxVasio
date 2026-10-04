@@ -1,0 +1,24 @@
+From: TimoxVasio integration work
+Subject: [PATCH] audio: allow channel counts above 255
+
+AI-generated local build assistance for human review only. This is not a
+submitted Mixxx contribution.
+
+Mixxx's PortAudio enumerator stores ASIO maxInputChannels/maxOutputChannels in
+audio::ChannelCount. With an 8-bit value_t, a valid ASIO count of 256 becomes
+the invalid sentinel and SoundManager filters the device out. Widen the count
+representation so a 256-channel ASIO device remains valid throughout the
+existing device-list path.
+
+This patch targets the Mixxx source tree. It is stored here because this task
+is constrained to the asio workspace; it has not been applied to or built into
+the installed Mixxx application.
+
+This patch text was generated autonomously by AI and requires human review.
+
+diff --git a/src/audio/types.h b/src/audio/types.h
+--- a/src/audio/types.h
++++ b/src/audio/types.h
+@@ -40 +40 @@
+-    typedef uint8_t value_t;
++    typedef uint16_t value_t;
