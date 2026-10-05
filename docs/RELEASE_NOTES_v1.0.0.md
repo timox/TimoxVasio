@@ -47,4 +47,4 @@ application audio concernée.
 
 Pour une installation normale, installer d’abord **Timox VASIO Control** avec le Setup, puis installer et enregistrer séparément `TimoxVasio.dll` en suivant [INSTALL.md](https://github.com/timox/TimoxVasio/blob/main/INSTALL.md). Les hôtes ASIO chargent la DLL; l’interface configure le moteur, qui est lancé avec elle.
 
-La publication est destinée au dépôt public [TimoxVasio](https://github.com/timox/TimoxVasio).
+Cette release est publiée dans le dépôt public [timox/TimoxVasio](https://github.com/timox/TimoxVasio).
