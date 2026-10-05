@@ -23,6 +23,19 @@ cd C:\Users\timo\Documents\GitHub\grrzzzz\asio
 
 Le script configure et compile la cible `TimoxVasio`, copie `TimoxVasio.dll` dans `C:\Program Files\Steinberg\VirtualASIO`, puis enregistre le pilote. Il retire les anciennes entrées VASIO1–VASIO4 connues et tente de supprimer leurs DLL. Si une ancienne DLL reste verrouillée, le script le signale; elle n’est plus enregistrée comme pilote.
 
+## Installer la DLL téléchargée depuis une release
+
+Le Setup Electron installe l’interface et son moteur; il n’installe pas le pilote ASIO. Télécharge `TimoxVasio.dll` séparément depuis la page de release, place-le dans le dossier du dépôt qui contient `register_drivers.ps1`, puis ouvre PowerShell en administrateur dans ce dossier :
+
+```powershell
+$driverDir = 'C:\Program Files\Steinberg\VirtualASIO'
+New-Item -ItemType Directory -Force -Path $driverDir | Out-Null
+Copy-Item -LiteralPath '.\TimoxVasio.dll' -Destination (Join-Path $driverDir 'TimoxVasio.dll') -Force
+pwsh -NoProfile -File '.\register_drivers.ps1' install -DllDirectory $driverDir
+```
+
+Cette opération inscrit le pilote sous le nom ASIO `TimoxVasio`. Elle retire uniquement les entrées connues de TimoxVasio et VASIO historiques. Les autres pilotes ASIO installés restent inchangés.
+
 ## Vérification
 
 ```powershell

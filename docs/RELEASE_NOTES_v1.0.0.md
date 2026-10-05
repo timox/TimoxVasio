@@ -29,9 +29,16 @@ Electron `Timox VASIO Control`.
 - Les profils de canaux ne prennent effet qu’au prochain démarrage de chaque
   application audio concernée.
 
-## Fichiers Windows
+## Fichiers de la release Windows x64
 
-- `Timox VASIO Control 1.0.0.exe` : application portable x64.
-- `Timox VASIO Control Setup 1.0.0.exe` : installateur x64.
+| Asset GitHub | Rôle |
+|---|---|
+| `Timox.VASIO.Control.Setup.1.0.0.exe` | Installateur par utilisateur de **Timox VASIO Control**. Installe l’interface Electron et son moteur empaqueté. Il n’installe ni n’enregistre le pilote ASIO `TimoxVasio.dll`. |
+| `Timox.VASIO.Control.1.0.0.exe` | Application portable : interface Electron et moteur empaqueté, sans installation de l’interface. Le pilote ASIO doit être installé séparément. |
+| `TimoxVasio.dll` | Pilote ASIO virtuel chargé par les hôtes audio. Ce fichier seul ne s’installe pas : télécharge aussi le code source de la release et suis la section « Installer la DLL téléchargée » dans [INSTALL.md](https://github.com/timox/TimoxVasio/blob/main/INSTALL.md). |
+| `TimoxVirtualAsioEngine.exe` | Exécutable du moteur audio utilisé par l’interface. La version empaquetée est incluse dans les deux applications ci-dessus; cet asset séparé sert au déploiement ou diagnostic manuel. |
+| `SHA256SUMS.txt` | Sommes SHA-256 des quatre binaires précédents, pour vérifier leur intégrité après téléchargement. |
+
+Pour une installation normale, installer d’abord **Timox VASIO Control** avec le Setup, puis installer et enregistrer séparément `TimoxVasio.dll` en suivant [INSTALL.md](https://github.com/timox/TimoxVasio/blob/v1.0.0/INSTALL.md). Les hôtes ASIO chargent la DLL; l’interface configure le moteur, qui est lancé avec elle.
 
 La publication est destinée au dépôt public [TimoxVasio](https://github.com/timox/TimoxVasio).
