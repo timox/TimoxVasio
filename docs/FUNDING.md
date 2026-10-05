@@ -4,9 +4,11 @@ TimoxVasio est un projet libre. Si le pilote, le moteur ou l’interface vous
 sont utiles, vous pouvez contribuer à financer leur développement et leur
 maintenance via [GitHub Sponsors](https://github.com/sponsors/timox).
 
-Le financement servira en priorité à maintenir la compatibilité avec les
-hôtes et matériels audio, corriger les problèmes signalés, préparer les
-versions Windows et améliorer la documentation.
+Le financement servira en priorité à acheter ou louer du matériel audio pour
+tester la compatibilité avec les hôtes et périphériques, et à louer des
+serveurs pour compiler, tester et poursuivre l’amélioration de TimoxVasio.
+Il contribuera aussi à corriger les problèmes signalés, préparer les versions
+Windows et maintenir la documentation.
 
 Le soutien est volontaire. Il ne conditionne pas l’accès au logiciel ni les
 termes de sa licence.
