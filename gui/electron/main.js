@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 const WebSocket = require('ws');
 const { ApiClient } = require('./api-client');
@@ -27,8 +28,15 @@ function startEngine() {
     apiReady = createApiReadiness();
     const readiness = apiReady;
     const enginePath = isDev
-        ? path.join(__dirname, '../../build_engine_profile_audit_bin/TimoxVirtualAsioEngine.exe')
+        ? path.resolve(__dirname, '../../build_codex_110/Release/TimoxVirtualAsioEngine.exe')
         : path.join(process.resourcesPath, 'backend/TimoxVirtualAsioEngine.exe');
+    if (!fs.existsSync(enginePath)) {
+        const error = new Error(`TimoxVirtualAsioEngine.exe est absent du chemin attendu : ${enginePath}`);
+        console.error(error.message);
+        readiness.reject(error);
+        notify('engine-connection', { connected: false, error: error.message });
+        return readiness.promise;
+    }
     engineProcess = spawn(enginePath, [], { stdio: ['ignore', 'pipe', 'pipe'], detached: false, cwd: path.dirname(enginePath) });
     engineProcess.on('spawn', () => console.log(`VASIO engine started: ${enginePath} (PID ${engineProcess.pid})`));
     let stdoutBuffer = '';
@@ -133,51 +141,20 @@ ipcMain.handle('api:replace-application-profiles', async (_event, profiles) =>
     (await getApiClient()).replaceApplicationProfiles(profiles));
 ipcMain.handle('api:get-diagnostics', async (_event, limit) => (await getApiClient()).getDiagnostics(limit));
 ipcMain.handle('api:set-diagnostic-level', async (_event, level) => (await getApiClient()).setDiagnosticLevel(level));
+ipcMain.handle('api:execute-command', async (_event, command) => (await getApiClient()).sendCommand(command));
+ipcMain.handle('api:http-request', async (_event, method, path, body) =>
+    (await getApiClient()).httpRequest(method, path, body));
 ipcMain.handle('api:configuration-apply', async (_event, configuration) =>
     (await getApiClient()).applyConfiguration(configuration));
 ipcMain.handle('engine:start', async () => {
-    if (apiPort !== undefined) return { running: true, port: apiPort };
-    const port = await startEngine();
+    const port = apiPort !== undefined ? apiPort : await startEngine();
+    await (await getApiClient()).sendCommand({ id: `engine-start-${Date.now()}`, command: 'engine.start' });
     return { running: true, port };
 });
 ipcMain.handle('engine:stop', async () => {
-    const stoppingProcess = engineProcess;
-    let onStoppingProcessExit;
-    const processExited = stoppingProcess
-        ? new Promise(resolve => {
-            onStoppingProcessExit = () => resolve(true);
-            stoppingProcess.once('exit', onStoppingProcessExit);
-        })
-        : Promise.resolve(true);
     const client = await getApiClient();
-    try { await client.stopEngine(); }
-    catch (error) {
-        if (stoppingProcess && onStoppingProcessExit)
-            stoppingProcess.removeListener('exit', onStoppingProcessExit);
-        throw error;
-    }
-    engineStopping = true;
-    client.close();
-    apiClient = null;
-    apiPort = undefined;
-    notify('engine-connection', { connected: false, stopped: true });
-    let stopped = false;
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-        try {
-            const response = await fetch('http://127.0.0.1:52525/api/v1/state', { signal: AbortSignal.timeout(250) });
-            if (!response.ok) { stopped = true; break; }
-        } catch (_) { stopped = true; break; }
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    if (!stopped) throw new Error('Le moteur a accepté l’arrêt, mais l’API répond toujours.');
-    const exited = await Promise.race([processExited, new Promise(resolve => setTimeout(() => resolve(false), 3000))]);
-    if (!exited) {
-        engineStopping = false;
-        throw new Error('L’API s’est arrêtée, mais le processus moteur n’a pas confirmé sa fermeture.');
-    }
-    engineStopping = false;
-    apiReady = createApiReadiness();
-    return { running: false };
+    await client.stopEngine();
+    return { running: true, audioRunning: false, port: apiPort };
 });
 app.whenReady().then(async () => {
     if (!await attachToExistingEngine()) startEngine();

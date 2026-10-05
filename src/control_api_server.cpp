@@ -15,7 +15,12 @@
 #include <chrono>
 #include <cmath>
 #include <future>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -180,6 +185,11 @@ struct ControlApiServer::Impl {
     bool configured = false;
     std::thread listenerThread;
     std::uint16_t port = 0;
+    std::string openApiDocument;
+    std::string schemaDocument;
+    struct CorrelationSelection { std::string id, leftEndpointId, rightEndpointId; };
+    std::mutex correlationMutex;
+    std::optional<CorrelationSelection> correlationSelection;
 
     Impl(VasioClientManager& manager, AudioController& audioController, EngineDiagnostics& engineDiagnostics,
          std::function<void()> requestStop)
@@ -275,7 +285,48 @@ struct ControlApiServer::Impl {
     }
 
     Json driversJson() const {
-        return Json{{"physicalDrivers", physicalDriversJson()}, {"virtualDrivers", virtualDriversJson()}};
+        return Json{{"physicalDrivers", physicalDriversJson()}, {"virtualDrivers", virtualDriversJson()},
+            {"stereoPairs", stereoPairsJson()}};
+    }
+
+    Json stereoPairsJson() const {
+        Json result = Json::array();
+        const auto virtualDrivers = virtualDriversJson();
+        if (virtualDrivers.empty()) return result;
+        std::set<std::string> routedSources;
+        for (const auto& route : controller.Snapshot().routes) routedSources.insert(route.sourceEndpointId);
+        for (const auto& client : virtualDrivers[0]["clients"]) {
+            const auto pid = client["pid"].get<std::uint32_t>();
+            const auto processName = client["processName"].get<std::string>();
+            std::set<std::uint32_t> activeOutputs;
+            for (const auto& channel : client["outputChannels"]) activeOutputs.insert(channel.get<std::uint32_t>());
+            const auto prefix = "virtual:TimoxVasio:" + std::to_string(pid) + ":output:";
+            for (std::uint32_t left = 1; left < AudioClientMapping::kChannelCount; left += 2) {
+                const auto right = left + 1;
+                if (!activeOutputs.count(left) || !activeOutputs.count(right)) continue;
+                const auto leftId = prefix + std::to_string(left);
+                const auto rightId = prefix + std::to_string(right);
+                if (!routedSources.count(leftId) || !routedSources.count(rightId)) continue;
+                result.push_back({{"id", "stereo:TimoxVasio:" + std::to_string(pid) + ":output:" +
+                        std::to_string(left) + "-" + std::to_string(right)},
+                    {"leftEndpointId", leftId}, {"rightEndpointId", rightId},
+                    {"label", processName + " · Sorties " + std::to_string(left) + "–" + std::to_string(right)}});
+            }
+        }
+        return result;
+    }
+
+    Json correlationEvent(const std::optional<CorrelationSelection>& selection) {
+        if (!selection) return Json{{"event", "audio.correlation"}, {"payload", {
+            {"stereoPairId", nullptr}, {"leftEndpointId", nullptr}, {"rightEndpointId", nullptr},
+            {"correlation", nullptr}, {"state", "stopped"}}}};
+        const auto sample = controller.ReadCorrelation();
+        const bool hasSignal = sample.active && sample.hasSignal;
+        return Json{{"event", "audio.correlation"}, {"payload", {
+            {"stereoPairId", selection->id}, {"leftEndpointId", selection->leftEndpointId},
+            {"rightEndpointId", selection->rightEndpointId},
+            {"correlation", hasSignal ? Json(sample.correlation) : Json(nullptr)},
+            {"state", hasSignal ? "measuring" : "no_signal"}}}};
     }
 
     Json stateJson() const {
@@ -292,7 +343,7 @@ struct ControlApiServer::Impl {
                          {"sampleRate", std::move(sampleRate)}, {"bufferFrames", std::move(bufferFrames)},
                          {"lastError", std::move(lastError)}}},
             {"physicalDrivers", physicalDriversJson()}, {"virtualDrivers", virtualDriversJson()},
-            {"routes", std::move(routes)}};
+            {"routes", std::move(routes)}, {"stereoPairs", stereoPairsJson()}};
     }
 
     Json applyCommand(const Json& request) {
@@ -303,15 +354,40 @@ struct ControlApiServer::Impl {
             !request.contains("command") || !request["command"].is_string())
             return errorEnvelope(id, "INVALID_CONFIGURATION", "Invalid request envelope", "validate");
         diagnostics.Write(EngineDiagnostics::Level::Debug, "api", "Received command " + request["command"].get<std::string>());
-        if (request["command"] == "engine.stop") {
+        if (request["command"] == "engine.start" || request["command"] == "engine.stop") {
             if (request.size() != 2)
-                return errorEnvelope(id, "INVALID_ENGINE_COMMAND", "engine.stop accepts only an id and command", "validate");
-            if (!clients.TryReserveShutdown())
-            {
-                diagnostics.Write(EngineDiagnostics::Level::Warning, "engine", "Stop refused because VASIO clients are still attached");
-                return errorEnvelope(id, "ENGINE_CLIENTS_CONNECTED", "Stop TimoxVasio clients before stopping the engine", "stop");
+                return errorEnvelope(id, "INVALID_ENGINE_COMMAND", "Engine lifecycle commands accept only id and command", "validate");
+            if (request["command"] == "engine.stop" && !clients.GetClientSnapshots().empty())
+                return errorEnvelope(id, "ENGINE_CLIENTS_CONNECTED", "Stop TimoxVasio clients before stopping audio", "stop");
+            if (request["command"] == "engine.stop") {
+                { std::lock_guard<std::mutex> lock(correlationMutex); correlationSelection.reset(); }
+                controller.StopCorrelation();
             }
-            diagnostics.Write(EngineDiagnostics::Level::Info, "engine", "Ordered stop requested through the local API");
+            const auto result = request["command"] == "engine.start" ? controller.StartAudio() : controller.StopAudio();
+            if (!result.success)
+                return errorEnvelope(id, request["command"] == "engine.start" ? "AUDIO_ENGINE_START_FAILED" : "AUDIO_ENGINE_STOP_FAILED", result.error,
+                    request["command"] == "engine.start" ? "start" : "stop");
+            diagnostics.Write(EngineDiagnostics::Level::Info, "engine", request["command"] == "engine.start" ? "Audio engine start requested through the API" : "Audio engine stop requested through the API");
+            return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}}}};
+        }
+        if (request["command"] == "audio.correlation.start") {
+            if (request.size() != 3 || !request.contains("payload") || !request["payload"].is_object() ||
+                request["payload"].size() != 1 || !request["payload"].contains("stereoPairId") || !request["payload"]["stereoPairId"].is_string())
+                return errorEnvelope(id, "INVALID_COMMAND", "Expected payload.stereoPairId", "validate");
+            const auto pairId = request["payload"]["stereoPairId"].get<std::string>();
+            const auto pairs = stereoPairsJson();
+            const auto pair = std::find_if(pairs.begin(), pairs.end(), [&pairId](const Json& item) { return item["id"] == pairId; });
+            if (pair == pairs.end()) return errorEnvelope(id, "UNKNOWN_STEREO_PAIR", "Stereo pair is not active and routed", "validate");
+            CorrelationSelection selection{pairId, (*pair)["leftEndpointId"], (*pair)["rightEndpointId"]};
+            const auto result = controller.StartCorrelation(selection.leftEndpointId, selection.rightEndpointId);
+            if (!result.success) return errorEnvelope(id, "AUDIO_CORRELATION_START_FAILED", result.error, "start");
+            { std::lock_guard<std::mutex> lock(correlationMutex); correlationSelection = std::move(selection); }
+            return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}}}};
+        }
+        if (request["command"] == "audio.correlation.stop") {
+            if (request.size() != 2) return errorEnvelope(id, "INVALID_COMMAND", "audio.correlation.stop accepts only id and command", "validate");
+            { std::lock_guard<std::mutex> lock(correlationMutex); correlationSelection.reset(); }
+            controller.StopCorrelation();
             return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}}}};
         }
         if (request["command"] != "configuration.apply")
@@ -386,6 +462,8 @@ struct ControlApiServer::Impl {
                     "The route direction is not one of the supported ASIO connections", "validate");
         }
 
+        { std::lock_guard<std::mutex> lock(correlationMutex); correlationSelection.reset(); }
+        controller.StopCorrelation();
         const auto applied = controller.ApplyConfiguration(configuration);
         if (!applied.success) {
             diagnostics.Write(EngineDiagnostics::Level::Error, "audio", applied.error);
@@ -498,6 +576,14 @@ struct ControlApiServer::Impl {
             setCors(request, response);
             response.set_content(driversJson().dump(), "application/json; charset=utf-8");
         });
+        server.Get("/api/v1/openapi.json", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            response.set_content(openApiDocument, "application/json; charset=utf-8");
+        });
+        server.Get("/api/v1/schemas/api-v1.json", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            response.set_content(schemaDocument, "application/json; charset=utf-8");
+        });
         server.Get("/api/v1/diagnostics", [this](const httplib::Request& request, httplib::Response& response) {
             setCors(request, response);
             std::size_t limit = 200;
@@ -559,6 +645,8 @@ struct ControlApiServer::Impl {
         };
         server.Options("/api/v1/state", optionsHandler);
         server.Options("/api/v1/drivers", optionsHandler);
+        server.Options("/api/v1/openapi.json", optionsHandler);
+        server.Options("/api/v1/schemas/api-v1.json", optionsHandler);
         server.Options("/api/v1/application-profiles", optionsHandler);
         server.Options("/api/v1/diagnostics", optionsHandler);
         server.set_pre_request_handler([](const httplib::Request& request, httplib::Response& response) {
@@ -576,10 +664,12 @@ struct ControlApiServer::Impl {
         });
         server.WebSocket("/api/v1/ws",
             [this](const httplib::Request&, httplib::ws::WebSocket& websocket) {
-                websocket.set_read_timeout(std::chrono::milliseconds(500));
+                websocket.set_read_timeout(std::chrono::milliseconds(100));
                 auto initialState = controller.Snapshot();
                 websocket.send(statusEvent(initialState).dump());
                 auto lastRevision = initialState.revision;
+                auto lastMeterTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(500);
+                auto lastCorrelationTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(100);
                 const auto sendAudioMeters = [&] {
                     for (const auto& meter : controller.ReadMeters())
                         if (!websocket.send(meterEvent(meter).dump())) return false;
@@ -595,18 +685,43 @@ struct ControlApiServer::Impl {
                 auto devices = driversJson();
                 auto lastDevices = devices.dump();
                 websocket.send(Json{{"event", "devices.changed"}, {"payload", devices}}.dump());
+                websocket.send(Json{{"event", "audio.stereoPairs.changed"},
+                    {"payload", {{"stereoPairs", stereoPairsJson()}}}}.dump());
                 while (websocket.is_open()) {
                     std::string message;
                     const auto result = websocket.read(message);
                     if (result == httplib::ws::Timeout) {
                         if (!sendStatusChanges()) break;
-                        if (!sendAudioMeters()) break;
+                        const auto now = std::chrono::steady_clock::now();
+                        if (now - lastMeterTime >= std::chrono::milliseconds(500)) {
+                            lastMeterTime = now;
+                            if (!sendAudioMeters()) break;
+                        }
                         devices = driversJson();
                         const auto currentDevices = devices.dump();
                         if (currentDevices != lastDevices) {
                             lastDevices = currentDevices;
                             if (!websocket.send(Json{{"event", "devices.changed"},
                                 {"payload", devices}}.dump())) break;
+                            if (!websocket.send(Json{{"event", "audio.stereoPairs.changed"},
+                                {"payload", {{"stereoPairs", devices["stereoPairs"]}}}}.dump())) break;
+                        }
+                        if (now - lastCorrelationTime >= std::chrono::milliseconds(100)) {
+                            lastCorrelationTime = now;
+                            std::optional<CorrelationSelection> selection;
+                            { std::lock_guard<std::mutex> lock(correlationMutex); selection = correlationSelection; }
+                            if (selection) {
+                                const auto pairs = stereoPairsJson();
+                                const bool stillAvailable = std::any_of(pairs.begin(), pairs.end(), [&selection](const Json& item) {
+                                    return item["id"] == selection->id;
+                                });
+                                if (!stillAvailable) {
+                                    controller.StopCorrelation();
+                                    { std::lock_guard<std::mutex> lock(correlationMutex); correlationSelection.reset(); }
+                                    selection.reset();
+                                }
+                                if (!websocket.send(correlationEvent(selection).dump())) break;
+                            }
                         }
                         continue;
                     }
@@ -626,16 +741,22 @@ struct ControlApiServer::Impl {
                         reply = errorEnvelope("", "INVALID_CONFIGURATION", "Malformed JSON command", "parse");
                     }
                     if (!websocket.send(reply.dump())) break;
-                    if (reply.is_object() && reply.value("success", false) && request.is_object() &&
-                        request.value("command", std::string{}) == "engine.stop") {
-                        if (stopRequest) stopRequest();
-                        break;
-                    }
                     if (!sendStatusChanges()) break;
                     if (reply.is_object() && reply.value("success", false)) {
-                        Json routes = stateJson()["routes"];
-                        if (!websocket.send(Json{{"event", "routes.changed"},
-                            {"payload", {{"routes", std::move(routes)}}}}.dump())) break;
+                        const auto command = request.is_object()
+                            ? request.value("command", std::string{}) : std::string{};
+                        if (command == "configuration.apply") {
+                            Json routes = stateJson()["routes"];
+                            if (!websocket.send(Json{{"event", "routes.changed"},
+                                {"payload", {{"routes", std::move(routes)}}}}.dump())) break;
+                            if (!websocket.send(Json{{"event", "audio.stereoPairs.changed"},
+                                {"payload", {{"stereoPairs", stereoPairsJson()}}}}.dump())) break;
+                            if (!websocket.send(correlationEvent(std::nullopt).dump())) break;
+                        } else if (command == "audio.correlation.start" || command == "audio.correlation.stop" || command == "engine.stop") {
+                            std::optional<CorrelationSelection> selection;
+                            { std::lock_guard<std::mutex> lock(correlationMutex); selection = correlationSelection; }
+                            if (!websocket.send(correlationEvent(selection).dump())) break;
+                        }
                     } else if (controller.Snapshot().state == "error") {
                         const auto state = controller.Snapshot();
                         if (!websocket.send(Json{{"event", "engine.error"},
@@ -652,6 +773,21 @@ struct ControlApiServer::Impl {
 
     bool Start(std::uint16_t requestedPort, std::uint16_t& actualPort, std::string& error) {
         if (running.load()) { actualPort = port; return true; }
+        wchar_t modulePath[MAX_PATH]{};
+        const DWORD moduleLength = GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+        if (moduleLength == 0 || moduleLength >= MAX_PATH) {
+            error = "Unable to locate local OpenAPI resources";
+            return false;
+        }
+        const auto moduleDirectory = std::filesystem::path(modulePath).parent_path();
+        const auto readResource = [&error](const std::filesystem::path& path, std::string& content) {
+            std::ifstream file(path, std::ios::binary);
+            if (!file) { error = "Required API document is missing: " + path.string(); return false; }
+            content.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+            return !content.empty();
+        };
+        if (!readResource(moduleDirectory / L"openapi-v1.json", openApiDocument) ||
+            !readResource(moduleDirectory / L"schemas" / L"api-v1.json", schemaDocument)) return false;
         configureRoutes();
         try { physicalInventory = controller.EnumeratePhysicalDrivers(); }
         catch (const std::exception& exception) { error = exception.what(); return false; }

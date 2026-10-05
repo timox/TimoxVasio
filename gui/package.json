@@ -1,6 +1,6 @@
 {
   "name": "vasio-control",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Interface graphique pour pilotes ASIO virtuels",
   "main": "electron/main.js",
   "homepage": "./",
@@ -12,10 +12,13 @@
     "react-eject": "react-scripts eject",
     "electron-start": "electron .",
     "start": "concurrently \"npm run react-start\" \"wait-on http://localhost:4000 && npm run electron-start\"",
-    "build": "npm run react-build && npm run electron-build",
-    "electron-build": "npm run react-build && electron-builder",
+    "build": "npm run electron-build",
+    "driver-archive": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-driver-archive.ps1",
+    "release-preflight": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-release-artifacts.ps1 -Stage PrePackage",
+    "release-postflight": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-release-artifacts.ps1 -Stage PostPackage",
+    "electron-build": "npm run react-build && npm run release-preflight && electron-builder && npm run release-postflight",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "npm run electron-build"
   },
   "dependencies": {
     "axios": "^1.4.0",
@@ -60,12 +63,20 @@
     ],
     "extraResources": [
       {
-        "from": "../build_engine_profile_audit_bin/TimoxVirtualAsioEngine.exe",
+        "from": "../build_codex_110/Release/TimoxVirtualAsioEngine.exe",
         "to": "backend/TimoxVirtualAsioEngine.exe"
       },
       {
-        "from": "../build_engine_profile_audit_bin/config",
+        "from": "../build_codex_110/Release/config",
         "to": "backend/config"
+      },
+      {
+        "from": "../openapi-v1.json",
+        "to": "backend/openapi-v1.json"
+      },
+      {
+        "from": "../schemas",
+        "to": "backend/schemas"
       },
       {
         "from": "../LICENSE",

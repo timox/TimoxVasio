@@ -126,6 +126,27 @@ test('engine.stop uses the documented WebSocket command and resolves its acknowl
     } finally { fixture.client.close(); await fixture.close(); }
 });
 
+test('engine.start is forwarded through the documented WebSocket API command', async () => {
+    const fixture = await createApiFixture();
+    const received = [];
+    try {
+        const original = fixture.client.sendCommand.bind(fixture.client);
+        fixture.client.sendCommand = request => { received.push(request); return original(request); };
+        await fixture.client.connect();
+        assert.deepEqual(await fixture.client.sendCommand({ id: 'start-1', command: 'engine.start' }), { accepted: true });
+        assert.deepEqual(received, [{ id: 'start-1', command: 'engine.start' }]);
+    } finally { fixture.client.close(); await fixture.close(); }
+});
+
+test('the API console HTTP bridge only forwards documented local routes', async () => {
+    const fixture = await createApiFixture();
+    try {
+        assert.deepEqual(await fixture.client.httpRequest('GET', '/api/v1/state'), { status: 200, body: fixture.state });
+        await assert.rejects(fixture.client.httpRequest('GET', '/../secret'), /documentées/);
+        await assert.rejects(fixture.client.httpRequest('POST', '/api/v1/state'), /documentées/);
+    } finally { await fixture.close(); }
+});
+
 test('structured API errors reject with their stable error code', async () => {
     const fixture = await createApiFixture();
     try {

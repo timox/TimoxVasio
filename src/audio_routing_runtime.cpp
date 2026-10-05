@@ -25,9 +25,10 @@ bool physicalChannel(const std::string& endpoint, const std::string& prefix, std
 }
 }
 
-AudioRoutingRuntime::AudioRoutingRuntime(std::uint32_t frames, std::size_t endpointCount,
+AudioRoutingRuntime::AudioRoutingRuntime(std::uint32_t frames, std::uint32_t sampleRate,
+    std::size_t endpointCount,
     long inputChannels, long outputChannels)
-    : bufferFrames_(frames), endpointCount_(endpointCount),
+    : bufferFrames_(frames), sampleRate_(sampleRate), endpointCount_(endpointCount),
       physicalInputChannels_(inputChannels), physicalOutputChannels_(outputChannels),
       physicalOutputBase_(static_cast<std::size_t>(inputChannels)),
       sourceSamples_(endpointCount * frames, 0.0f),
@@ -110,6 +111,7 @@ std::unique_ptr<AudioRoutingRuntime> AudioRoutingRuntime::Create(AudioRoutingLay
 
     const auto actualEndpointCount = endpoints.size();
     auto runtime = std::unique_ptr<AudioRoutingRuntime>(new AudioRoutingRuntime(layout.bufferFrames,
+        layout.sampleRate,
         actualEndpointCount, layout.physicalInputChannels, layout.physicalOutputChannels));
     std::string graphError;
     runtime->graph_ = RoutingGraph::Create(endpoints, layout.routes, layout.sampleRate, graphError);
@@ -192,6 +194,43 @@ std::vector<AudioMeterSnapshot> AudioRoutingRuntime::ReadMeters() {
     return result;
 }
 
+bool AudioRoutingRuntime::SetCorrelationPair(const std::string& leftEndpointId,
+                                             const std::string& rightEndpointId) noexcept {
+    std::size_t left = static_cast<std::size_t>(-1);
+    std::size_t right = static_cast<std::size_t>(-1);
+    for (const auto& binding : meterBindings_) {
+        if (!binding.clientOutput) continue;
+        if (binding.endpointId == leftEndpointId) left = binding.endpointIndex;
+        if (binding.endpointId == rightEndpointId) right = binding.endpointIndex;
+    }
+    if (left == static_cast<std::size_t>(-1) || right == static_cast<std::size_t>(-1) || left == right)
+        return false;
+
+    correlationGeneration_.fetch_add(1, std::memory_order_acq_rel);
+    correlationLeftIndex_.store(left, std::memory_order_relaxed);
+    correlationRightIndex_.store(right, std::memory_order_relaxed);
+    correlationGeneration_.fetch_add(1, std::memory_order_release);
+    return true;
+}
+
+void AudioRoutingRuntime::StopCorrelation() noexcept {
+    correlationGeneration_.fetch_add(1, std::memory_order_acq_rel);
+    correlationLeftIndex_.store(static_cast<std::size_t>(-1), std::memory_order_relaxed);
+    correlationRightIndex_.store(static_cast<std::size_t>(-1), std::memory_order_relaxed);
+    correlationGeneration_.fetch_add(1, std::memory_order_release);
+}
+
+AudioCorrelationSnapshot AudioRoutingRuntime::ReadCorrelation() const noexcept {
+    const auto generation = correlationGeneration_.load(std::memory_order_acquire);
+    if ((generation & 1u) || generation == 0 ||
+        correlationLeftIndex_.load(std::memory_order_relaxed) == static_cast<std::size_t>(-1) ||
+        correlationRightIndex_.load(std::memory_order_relaxed) == static_cast<std::size_t>(-1) ||
+        correlationPublishedGeneration_.load(std::memory_order_acquire) != generation)
+        return {};
+    return {true, correlationHasSignal_.load(std::memory_order_relaxed),
+        correlationValue_.load(std::memory_order_relaxed)};
+}
+
 void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* const* physicalOutputs,
                                   std::uint32_t frames) noexcept {
     if (frames != bufferFrames_ || !graph_) {
@@ -233,6 +272,77 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
     }
 
     graph_->Process(sourceBlocks_.data(), destinationBlocks_.data(), frames);
+
+    const auto correlationGeneration = correlationGeneration_.load(std::memory_order_acquire);
+    if ((correlationGeneration & 1u) != 0) {
+        correlationSamples_ = 0;
+        correlationSumLeft_ = correlationSumRight_ = 0.0;
+        correlationSumLeftSquared_ = correlationSumRightSquared_ = correlationSumProduct_ = 0.0;
+    } else if (correlationGeneration != callbackCorrelationGeneration_) {
+        callbackCorrelationGeneration_ = correlationGeneration;
+        correlationSamples_ = 0;
+        correlationSumLeft_ = correlationSumRight_ = 0.0;
+        correlationSumLeftSquared_ = correlationSumRightSquared_ = correlationSumProduct_ = 0.0;
+    }
+    const auto leftIndex = correlationLeftIndex_.load(std::memory_order_relaxed);
+    const auto rightIndex = correlationRightIndex_.load(std::memory_order_relaxed);
+    const auto confirmedCorrelationGeneration = correlationGeneration_.load(std::memory_order_acquire);
+    if (confirmedCorrelationGeneration != correlationGeneration) {
+        correlationSamples_ = 0;
+        correlationSumLeft_ = correlationSumRight_ = 0.0;
+        correlationSumLeftSquared_ = correlationSumRightSquared_ = correlationSumProduct_ = 0.0;
+    }
+    if (confirmedCorrelationGeneration == correlationGeneration &&
+        correlationGeneration != 0 && (correlationGeneration & 1u) == 0 &&
+        leftIndex != static_cast<std::size_t>(-1) && rightIndex != static_cast<std::size_t>(-1) &&
+        leftIndex < endpointCount_ && rightIndex < endpointCount_) {
+        const float* leftSamples = sourceBlocks_[leftIndex]
+            ? sourceBlocks_[leftIndex] : destinationBlocks_[leftIndex];
+        const float* rightSamples = sourceBlocks_[rightIndex]
+            ? sourceBlocks_[rightIndex] : destinationBlocks_[rightIndex];
+        if (leftSamples && rightSamples) {
+            for (std::uint32_t frame = 0; frame < frames; ++frame) {
+                const double left = std::isfinite(leftSamples[frame]) ? leftSamples[frame] : 0.0;
+                const double right = std::isfinite(rightSamples[frame]) ? rightSamples[frame] : 0.0;
+                correlationSumLeft_ += left;
+                correlationSumRight_ += right;
+                correlationSumLeftSquared_ += left * left;
+                correlationSumRightSquared_ += right * right;
+                correlationSumProduct_ += left * right;
+            }
+            correlationSamples_ += frames;
+            const auto windowSamples = (std::max)(std::uint64_t{1},
+                static_cast<std::uint64_t>(sampleRate_) / 10);
+            if (correlationSamples_ >= windowSamples) {
+                const double count = static_cast<double>(correlationSamples_);
+                const double covariance = correlationSumProduct_ -
+                    correlationSumLeft_ * correlationSumRight_ / count;
+                const double leftEnergy = correlationSumLeftSquared_ -
+                    correlationSumLeft_ * correlationSumLeft_ / count;
+                const double rightEnergy = correlationSumRightSquared_ -
+                    correlationSumRight_ * correlationSumRight_ / count;
+                constexpr double minimumRms = 0.00003162277660168379; // -90 dBFS
+                const bool hasSignal = leftEnergy > 0.0 && rightEnergy > 0.0 &&
+                    std::sqrt(leftEnergy / count) >= minimumRms &&
+                    std::sqrt(rightEnergy / count) >= minimumRms;
+                const double denominator = hasSignal ? std::sqrt(leftEnergy * rightEnergy) : 1.0;
+                const double coefficient = hasSignal ? covariance / denominator : 0.0;
+                correlationValue_.store(static_cast<float>(std::clamp(coefficient, -1.0, 1.0)),
+                    std::memory_order_relaxed);
+                correlationHasSignal_.store(hasSignal, std::memory_order_relaxed);
+                correlationPublishedGeneration_.store(correlationGeneration, std::memory_order_release);
+                correlationSamples_ = 0;
+                correlationSumLeft_ = correlationSumRight_ = 0.0;
+                correlationSumLeftSquared_ = correlationSumRightSquared_ = correlationSumProduct_ = 0.0;
+            }
+        } else {
+            correlationSamples_ = 0;
+            correlationSumLeft_ = correlationSumRight_ = 0.0;
+            correlationSumLeftSquared_ = correlationSumRightSquared_ = correlationSumProduct_ = 0.0;
+            correlationHasSignal_.store(false, std::memory_order_relaxed);
+            correlationPublishedGeneration_.store(correlationGeneration, std::memory_order_release);
+        }
+    }
 
     for (const auto& binding : meterBindings_) {
         const auto index = binding.endpointIndex;

@@ -3,7 +3,7 @@
   "info": {
     "title": "TimoxVasio Local Control API",
     "version": "1.0.0",
-    "description": "Control contract for the local TimoxVasio audio engine. The API binds only to 127.0.0.1. HTTP exposes confirmed engine state and driver inventory; the WebSocket accepts idempotent configuration.apply commands and publishes state, routing, error and audio.meter events. Audio sample transport itself remains on the ASIO/shared-memory path and is outside this control API."
+    "description": "Control contract for the local TimoxVasio audio engine. The API binds only to 127.0.0.1. HTTP exposes confirmed engine state and driver inventory; the WebSocket starts and stops audio, applies configuration, measures active-channel levels and stereo correlation, and publishes diagnostics. Audio samples stay on the ASIO/shared-memory path and are never sent through this control API."
   },
   "servers": [
     {
@@ -95,23 +95,29 @@
         }
       }
     },
+    "/api/v1/openapi.json": {
+      "get": { "operationId": "getOpenApiDocument", "summary": "Read the OpenAPI document served by the engine", "responses": { "200": { "description": "OpenAPI 3.1 document", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
+    "/api/v1/schemas/api-v1.json": {
+      "get": { "operationId": "getApiJsonSchema", "summary": "Read the normative JSON schema", "responses": { "200": { "description": "JSON Schema document", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
     "/api/v1/ws": {
       "get": {
         "operationId": "controlEngineWebSocket",
         "summary": "Upgrade to the TimoxVasio control WebSocket",
-        "description": "Connect with the vasio.api.v1 subprotocol. Send configuration.apply and engine.stop requests and receive matching responses and asynchronous events. engine.stop is refused while a TimoxVasio client is attached and signals an orderly process shutdown only after its response is sent. audio.meter events are sent for endpoints in active routes at approximately two updates per second; peakDbfs is the peak of the most recently processed audio block, not a held peak. Meter publication runs outside the real-time audio callback. See x-websocket for message schemas.",
+        "description": "Connect with the vasio.api.v1 subprotocol. engine.start and engine.stop control audio while leaving the local API available; stopping is refused while a TimoxVasio ASIO client is attached. audio.meter events are sent only for routed endpoints at approximately two updates per second. audio.correlation reports a rolling wide-band L/R correlation for one active routed stereo pair. Audio sample transport remains on the ASIO/shared-memory path. See x-websocket for message schemas.",
         "responses": { "101": { "description": "WebSocket protocol upgrade" } },
         "x-websocket": {
           "subprotocol": "vasio.api.v1",
-          "clientMessages": { "oneOf": [{ "$ref": "#/components/schemas/ApplyCommand" }, { "$ref": "#/components/schemas/EngineStopCommand" }] },
+          "clientMessages": { "$ref": "#/components/schemas/ClientCommand" },
           "serverMessages": {
             "oneOf": [
               { "$ref": "#/components/schemas/Response" },
               { "$ref": "#/components/schemas/Event" }
             ]
           },
-          "commands": ["configuration.apply", "engine.stop"],
-          "events": ["engine.status", "devices.changed", "routes.changed", "audio.meter", "engine.error"]
+          "commands": ["engine.start", "engine.stop", "configuration.apply", "audio.correlation.start", "audio.correlation.stop"],
+          "events": ["engine.status", "devices.changed", "routes.changed", "audio.meter", "audio.stereoPairs.changed", "audio.correlation", "engine.error"]
         }
       }
     }
@@ -120,13 +126,18 @@
     "schemas": {
       "State": { "$ref": "./schemas/api-v1.json#/definitions/state" },
       "Drivers": { "$ref": "./schemas/api-v1.json#/definitions/drivers" },
+      "StereoPair": { "$ref": "./schemas/api-v1.json#/definitions/stereoPair" },
       "ApplicationProfiles": { "$ref": "./schemas/api-v1.json#/definitions/applicationProfiles" },
       "ReplaceApplicationProfiles": { "$ref": "./schemas/api-v1.json#/definitions/replaceApplicationProfiles" },
       "ApplicationProfilesUpdate": { "$ref": "./schemas/api-v1.json#/definitions/applicationProfilesUpdate" },
       "Diagnostics": { "$ref": "./schemas/api-v1.json#/definitions/diagnostics" },
       "DiagnosticLevel": { "$ref": "./schemas/api-v1.json#/definitions/diagnosticLevel" },
       "ApplyCommand": { "$ref": "./schemas/api-v1.json#/definitions/applyCommand" },
+      "ClientCommand": { "$ref": "./schemas/api-v1.json#/definitions/clientCommand" },
+      "EngineStartCommand": { "$ref": "./schemas/api-v1.json#/definitions/engineStartCommand" },
       "EngineStopCommand": { "$ref": "./schemas/api-v1.json#/definitions/engineStopCommand" },
+      "CorrelationStartCommand": { "$ref": "./schemas/api-v1.json#/definitions/correlationStartCommand" },
+      "CorrelationStopCommand": { "$ref": "./schemas/api-v1.json#/definitions/correlationStopCommand" },
       "Response": { "$ref": "./schemas/api-v1.json#/definitions/response" },
       "Event": { "$ref": "./schemas/api-v1.json#/definitions/event" },
       "Error": { "$ref": "./schemas/api-v1.json#/definitions/error" }

@@ -8,7 +8,10 @@
     { "$ref": "#/definitions/applicationProfiles" },
     { "$ref": "#/definitions/applicationProfilesUpdate" },
     { "$ref": "#/definitions/applyCommand" },
+    { "$ref": "#/definitions/engineStartCommand" },
     { "$ref": "#/definitions/engineStopCommand" },
+    { "$ref": "#/definitions/correlationStartCommand" },
+    { "$ref": "#/definitions/correlationStopCommand" },
     { "$ref": "#/definitions/response" },
     { "$ref": "#/definitions/event" }
   ],
@@ -114,22 +117,35 @@
     },
     "state": {
       "type": "object",
-      "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes"],
+      "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes", "stereoPairs"],
       "properties": {
         "apiVersion": { "const": "1.0" },
         "engine": { "$ref": "#/definitions/engine" },
         "physicalDrivers": { "type": "array", "items": { "$ref": "#/definitions/physicalDriver" } },
         "virtualDrivers": { "type": "array", "items": { "$ref": "#/definitions/virtualDriver" } },
-        "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } }
+        "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } },
+        "stereoPairs": { "type": "array", "items": { "$ref": "#/definitions/stereoPair" } }
       },
       "additionalProperties": false
     },
     "drivers": {
       "type": "object",
-      "required": ["physicalDrivers", "virtualDrivers"],
+      "required": ["physicalDrivers", "virtualDrivers", "stereoPairs"],
       "properties": {
         "physicalDrivers": { "type": "array", "items": { "$ref": "#/definitions/physicalDriver" } },
-        "virtualDrivers": { "type": "array", "items": { "$ref": "#/definitions/virtualDriver" } }
+        "virtualDrivers": { "type": "array", "items": { "$ref": "#/definitions/virtualDriver" } },
+        "stereoPairs": { "type": "array", "items": { "$ref": "#/definitions/stereoPair" } }
+      },
+      "additionalProperties": false
+    },
+    "stereoPair": {
+      "type": "object",
+      "required": ["id", "leftEndpointId", "rightEndpointId", "label"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "leftEndpointId": { "type": "string", "minLength": 1 },
+        "rightEndpointId": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": false
     },
@@ -241,6 +257,37 @@
       },
       "additionalProperties": false
     },
+    "engineStartCommand": {
+      "type": "object",
+      "required": ["id", "command"],
+      "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 128 }, "command": { "const": "engine.start" } },
+      "additionalProperties": false
+    },
+    "correlationStartCommand": {
+      "type": "object",
+      "required": ["id", "command", "payload"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "command": { "const": "audio.correlation.start" },
+        "payload": { "type": "object", "required": ["stereoPairId"], "properties": { "stereoPairId": { "type": "string", "minLength": 1 } }, "additionalProperties": false }
+      },
+      "additionalProperties": false
+    },
+    "correlationStopCommand": {
+      "type": "object",
+      "required": ["id", "command"],
+      "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 128 }, "command": { "const": "audio.correlation.stop" } },
+      "additionalProperties": false
+    },
+    "clientCommand": {
+      "oneOf": [
+        { "$ref": "#/definitions/applyCommand" },
+        { "$ref": "#/definitions/engineStartCommand" },
+        { "$ref": "#/definitions/engineStopCommand" },
+        { "$ref": "#/definitions/correlationStartCommand" },
+        { "$ref": "#/definitions/correlationStopCommand" }
+      ]
+    },
     "response": {
       "oneOf": [
         {
@@ -291,6 +338,35 @@
           "properties": {
             "event": { "const": "routes.changed" },
             "payload": { "type": "object", "required": ["routes"], "properties": { "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } } }, "additionalProperties": false }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["event", "payload"],
+          "properties": {
+            "event": { "const": "audio.stereoPairs.changed" },
+            "payload": { "type": "object", "required": ["stereoPairs"], "properties": { "stereoPairs": { "type": "array", "items": { "$ref": "#/definitions/stereoPair" } } }, "additionalProperties": false }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["event", "payload"],
+          "properties": {
+            "event": { "const": "audio.correlation" },
+            "payload": {
+              "type": "object",
+              "required": ["stereoPairId", "leftEndpointId", "rightEndpointId", "correlation", "state"],
+              "properties": {
+                "stereoPairId": { "type": ["string", "null"] },
+                "leftEndpointId": { "type": ["string", "null"] },
+                "rightEndpointId": { "type": ["string", "null"] },
+                "correlation": { "type": ["number", "null"], "minimum": -1, "maximum": 1 },
+                "state": { "enum": ["measuring", "no_signal", "stopped"] }
+              },
+              "additionalProperties": false
+            }
           },
           "additionalProperties": false
         },

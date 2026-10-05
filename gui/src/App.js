@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 const { configurationFromState } = require('./api-contract');
 const openApiDocument = require('./openapi-spec.generated');
@@ -28,6 +28,29 @@ function App() {
     const [diagnosticsError, setDiagnosticsError] = useState('');
     const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
     const [engineAction, setEngineAction] = useState('');
+    const [meters, setMeters] = useState({});
+    const [selectedStereoPairId, setSelectedStereoPairId] = useState('');
+    const [correlation, setCorrelation] = useState({ state: 'stopped', correlation: null });
+    const [correlationHistory, setCorrelationHistory] = useState([]);
+    const [apiEvents, setApiEvents] = useState([]);
+    const [consoleMode, setConsoleMode] = useState('websocket');
+    const [consoleCommand, setConsoleCommand] = useState('engine.start');
+    const [consoleRequest, setConsoleRequest] = useState(() => JSON.stringify({
+        id: `engine-start-${Date.now()}`, command: 'engine.start'
+    }, null, 2));
+    const [consoleResult, setConsoleResult] = useState('');
+    const [consoleBusy, setConsoleBusy] = useState(false);
+    const [consoleConfirmation, setConsoleConfirmation] = useState('');
+    const confirmationDialog = useRef(null);
+
+    useEffect(() => {
+        const dialog = confirmationDialog.current;
+        if (!dialog) return;
+        if (consoleConfirmation && !dialog.open) {
+            dialog.showModal();
+            dialog.querySelector('button')?.focus();
+        } else if (!consoleConfirmation && dialog.open) dialog.close();
+    }, [consoleConfirmation]);
 
     const refreshDiagnostics = useCallback(async () => {
         setDiagnosticsLoading(true);
@@ -49,7 +72,7 @@ function App() {
             if (action === 'start') await window.electronAPI.startEngine();
             else await window.electronAPI.stopEngine();
             await new Promise(resolve => setTimeout(resolve, 150));
-            if (action === 'start') await refreshState();
+            await refreshState();
         } catch (error) { setDiagnosticsError(error.message); }
         finally { setEngineAction(''); }
     };
@@ -59,6 +82,7 @@ function App() {
         setApiState(state);
         setEngine(state.engine);
         setConfiguration(configurationFromState(state));
+        setSelectedStereoPairId(current => state.stereoPairs?.some(pair => pair.id === current) ? current : '');
     }, []);
 
     const refreshApplicationProfiles = useCallback(async () => {
@@ -85,13 +109,27 @@ function App() {
             return undefined;
         }
         const unsubscribeEvents = window.vasio.subscribeEvents(message => {
-            if (message.event === 'engine.status') setEngine(message.payload);
+            if (['engine.status', 'devices.changed', 'routes.changed', 'engine.error', 'audio.meter', 'audio.correlation', 'audio.stereoPairs.changed'].includes(message.event))
+                setApiEvents(current => [...current, { time: new Date().toISOString(), event: message.event, payload: message.payload }].slice(-500));
+            if (message.event === 'engine.status') {
+                setEngine(message.payload);
+                if (message.payload.state !== 'running') setMeters({});
+            }
             if (message.event === 'devices.changed') setApiState(current => current && ({ ...current, ...message.payload }));
             if (message.event === 'routes.changed') {
                 setApiState(current => current && ({ ...current, routes: message.payload.routes }));
                 setConfiguration(current => current && ({ ...current, routes: message.payload.routes }));
+                setMeters({});
             }
             if (message.event === 'engine.error') setNotice(message.payload.message);
+            if (message.event === 'audio.meter') setMeters(current => ({ ...current, [message.payload.endpointId]: message.payload }));
+            if (message.event === 'audio.stereoPairs.changed')
+                setApiState(current => current && ({ ...current, stereoPairs: message.payload.stereoPairs }));
+            if (message.event === 'audio.correlation') {
+                setCorrelation(message.payload);
+                setCorrelationHistory(current => message.payload.state === 'stopped' ? [] :
+                    message.payload.correlation == null ? current : [...current, message.payload.correlation].slice(-40));
+            }
         });
         const connect = async () => {
             try {
@@ -102,7 +140,10 @@ function App() {
                     if (!status.connected) setConnectionError(status.error || 'Le moteur VASIO est arrêté');
                     else { setConnectionError(''); refreshState().catch(error => setConnectionError(error.message)); }
                 });
-                diagnosticListener = window.electronAPI.onEngineDiagnostic(message => setNotice(message));
+                diagnosticListener = window.electronAPI.onEngineDiagnostic(message => {
+                    setNotice(message);
+                    setApiEvents(current => [...current, { time: new Date().toISOString(), event: 'engine.diagnostic', payload: { message } }].slice(-500));
+                });
                 const unsubscribeDisconnect = window.vasio.onDisconnect(() => {
                     if (!disposed) setConnectionError('Connexion à l’API interrompue');
                 });
@@ -283,6 +324,8 @@ function App() {
         return limits.preferredFrames > 0 ? [limits.preferredFrames] : [];
     })();
     const virtualDriver = apiState?.virtualDrivers.find(driver => driver.id === 'TimoxVasio');
+    const stereoPairs = apiState?.stereoPairs || [];
+    const selectedStereoPair = stereoPairs.find(pair => pair.id === selectedStereoPairId);
     const applicationChannelSummaries = (virtualDriver?.clients || []).map(client => {
         const prefix = `virtual:TimoxVasio:${client.pid}:`;
         const routes = configuration?.routes || [];
@@ -295,9 +338,43 @@ function App() {
         return {
             ...client,
             routedInputCount: routedInputs.size,
-            routedOutputCount: routedOutputs.size
+            routedOutputCount: routedOutputs.size,
+            inputMeterEndpoints: virtualDriver.inputEndpoints.filter(endpoint => routedInputs.has(endpoint.id)),
+            outputMeterEndpoints: virtualDriver.outputEndpoints.filter(endpoint => routedOutputs.has(endpoint.id))
         };
     });
+
+    const startCorrelation = async () => {
+        if (!selectedStereoPairId) return;
+        try { await window.vasio.startCorrelation(selectedStereoPairId); setCorrelationHistory([]); }
+        catch (error) { setNotice(error.message); }
+    };
+    const stopCorrelation = async () => {
+        try { await window.vasio.stopCorrelation(); }
+        catch (error) { setNotice(error.message); }
+    };
+    const runConsoleRequest = async () => {
+        setConsoleBusy(true);
+        try {
+            const request = JSON.parse(consoleRequest);
+            const result = consoleMode === 'http'
+                ? await window.vasio.httpRequest(request.method, request.path, request.body)
+                : await window.vasio.executeCommand(request);
+            setConsoleResult(JSON.stringify(result, null, 2));
+        } catch (error) {
+            setConsoleResult(JSON.stringify({ code: error.code || 'CLIENT_ERROR', message: error.message }, null, 2));
+        } finally { setConsoleBusy(false); setConsoleConfirmation(''); }
+    };
+    const executeConsoleRequest = () => {
+        let request;
+        try { request = JSON.parse(consoleRequest); }
+        catch (error) { setConsoleResult(JSON.stringify({ code: 'INVALID_JSON', message: error.message }, null, 2)); return; }
+        if (consoleMode === 'websocket' && ['engine.stop', 'configuration.apply'].includes(request.command)) {
+            setConsoleConfirmation(request.command);
+            return;
+        }
+        runConsoleRequest();
+    };
 
     return (
         <div className="App">
@@ -307,11 +384,30 @@ function App() {
                     {connectionError || `Moteur : ${engine?.state || 'en attente'}`}</div>
             </header>
             <nav className="view-tabs" aria-label="Sections de l’application">
-                {[['configuration', 'Configuration'], ['api', 'API et Swagger'], ['diagnostics', 'Journaux']].map(([id, label]) =>
+                {[['configuration', 'Configuration'], ['channels', 'Canaux'], ['analysis', 'Analyse'], ['api', 'API et Swagger'], ['diagnostics', 'Journaux']].map(([id, label]) =>
                     <button key={id} type="button" className={activeView === id ? 'selected' : ''} aria-current={activeView === id ? 'page' : undefined}
                         onClick={() => { setActiveView(id); if (id === 'diagnostics') refreshDiagnostics(); }}>{label}</button>)}
             </nav>
-            {activeView === 'api' ? <main className="main-content api-console">
+            {activeView === 'analysis' ? <main className="main-content api-console">
+                <section className="section analysis-view"><h2>Corrélation stéréo L/R</h2>
+                    <p className="hint">Mesure la corrélation entre les deux canaux d’une paire de sorties active. La valeur varie de −1 (opposition) à +1 (en phase).</p>
+                    <label className="field">Paire de sorties L/R
+                        <select value={selectedStereoPairId} onChange={event => setSelectedStereoPairId(event.target.value)}>
+                            <option value="">Choisir une paire routée</option>
+                            {stereoPairs.map(pair => <option key={pair.id} value={pair.id}>{pair.label}</option>)}
+                        </select>
+                    </label>
+                    <div className="correlation-readout" aria-live="polite"><strong>{correlation.correlation == null ? '—' : correlation.correlation.toFixed(2)}</strong>
+                        <span>{correlation.state === 'measuring' ? 'Mesure en cours' : correlation.state === 'no_signal' ? 'Aucun signal mesurable' : 'Analyse arrêtée'}</span></div>
+                    <svg className="correlation-graph" viewBox="0 0 600 160" role="img" aria-label="Historique de corrélation de moins un à plus un">
+                        <line x1="0" x2="600" y1="80" y2="80" className="correlation-zero" />
+                        <text x="5" y="16">+1 en phase</text><text x="5" y="85">0</text><text x="5" y="155">−1 opposition</text>
+                        <polyline points={correlationHistory.map((value, index) => `${75 + index * (520 / 39)},${80 - value * 58}`).join(' ')} />
+                    </svg>
+                    <div className="analysis-actions"><button type="button" onClick={startCorrelation} disabled={!selectedStereoPair || engine?.state !== 'running'}>Démarrer l’analyse</button>
+                        <button type="button" onClick={stopCorrelation} disabled={correlation.state === 'stopped'}>Arrêter l’analyse</button></div>
+                </section>
+            </main> : activeView === 'api' ? <main className="main-content api-console">
                 <section className="section"><h2>Référence HTTP</h2>
                     <p className="hint">Spécification OpenAPI intégrée à l’application. Les schémas sont embarqués; aucun service externe n’est chargé.</p>
                     <div className="swagger-frame"><iframe title="Documentation Swagger de TimoxVasio" src="swagger.html" /></div>
@@ -324,12 +420,44 @@ function App() {
                         <dt>Événements</dt><dd>{openApiDocument.paths['/api/v1/ws'].get['x-websocket'].events.map(name => <code key={name}>{name}</code>)}</dd></dl>
                     <pre className="json-example">{JSON.stringify({ id: 'request-id', command: 'configuration.apply', payload: { physicalDriverId: null, sampleRate: null, bufferFrames: null, routes: [] } }, null, 2)}</pre>
                 </section>
+                <section className="section api-console-panel"><h2>Console API</h2>
+                    <p className="hint">Envoyez une commande WebSocket documentée ou une requête HTTP à l’API locale.</p>
+                    <label className="field">Type de requête<select value={consoleMode} onChange={event => setConsoleMode(event.target.value)}><option value="websocket">Commande WebSocket</option><option value="http">Requête HTTP</option></select></label>
+                    {consoleMode === 'websocket' && <label className="field">Commande prédéfinie<select value={consoleCommand} onChange={event => {
+                        const command = event.target.value; setConsoleCommand(command);
+                        const payload = command === 'configuration.apply' ? { physicalDriverId: null, sampleRate: null, bufferFrames: null, routes: [] } :
+                            command === 'audio.correlation.start' ? { stereoPairId: selectedStereoPairId } : undefined;
+                        const id = window.crypto?.randomUUID?.() || `api-${Date.now()}`;
+                        setConsoleRequest(JSON.stringify({ id, command, ...(payload ? { payload } : {}) }, null, 2));
+                    }}>
+                        {['engine.start', 'engine.stop', 'configuration.apply', 'audio.correlation.start', 'audio.correlation.stop'].map(command => <option key={command}>{command}</option>)}
+                    </select></label>}
+                    {consoleMode === 'http' && <label className="field">Requête HTTP prédéfinie<select onChange={event => setConsoleRequest(event.target.value)} defaultValue="">
+                        <option value="" disabled>Choisir une requête</option>
+                        {[
+                            ['GET', '/api/v1/state'], ['GET', '/api/v1/drivers'], ['GET', '/api/v1/openapi.json'],
+                            ['GET', '/api/v1/schemas/api-v1.json'], ['GET', '/api/v1/diagnostics?limit=100'],
+                            ['PUT', '/api/v1/diagnostics', { level: 'debug' }], ['GET', '/api/v1/application-profiles'],
+                            ['PUT', '/api/v1/application-profiles', { profiles: [] }]
+                        ].map(([method, path, body]) => <option key={`${method}-${path}`} value={JSON.stringify({ method, path, ...(body ? { body } : {}) })}>{method} {path}</option>)}
+                    </select></label>}
+                    <label className="field">Message JSON<textarea value={consoleRequest} onChange={event => setConsoleRequest(event.target.value)} rows={8} spellCheck="false" placeholder={'{"id":"...","command":"engine.start"}'} /></label>
+                    <div className="analysis-actions"><button type="button" onClick={executeConsoleRequest} disabled={consoleBusy}>{consoleBusy ? 'Envoi…' : 'Exécuter'}</button></div>
+                    <label className="field">Réponse ou erreur<textarea readOnly value={consoleResult} rows={7} /></label>
+                    {apiEvents.length > 0 && <details><summary>Événements récents ({apiEvents.length})</summary><div className="api-event-stream">{apiEvents.slice(-12).reverse().map((event, index) => <pre key={`${event.time}-${index}`}>{event.event} · {JSON.stringify(event.payload)}</pre>)}</div></details>}
+                    <dialog ref={confirmationDialog} className="confirmation-panel" role="alertdialog" aria-labelledby="api-confirmation-title"
+                        onCancel={event => { event.preventDefault(); setConsoleConfirmation(''); }}>
+                        <h3 id="api-confirmation-title">Confirmer la commande</h3>
+                        <p>{consoleConfirmation === 'engine.stop' ? 'Arrêter le moteur audio ?' : 'Appliquer cette configuration audio et de routage ?'}</p>
+                        <div className="analysis-actions"><button type="button" onClick={runConsoleRequest}>Confirmer</button><button type="button" onClick={() => setConsoleConfirmation('')}>Annuler</button></div>
+                    </dialog>
+                </section>
             </main> : activeView === 'diagnostics' ? <main className="main-content api-console">
                 <section className="section diagnostics-view"><div className="section-heading"><div><h2>Journaux du moteur</h2><p className="hint">Fichier persistant : %LOCALAPPDATA%\TimoxVasio\logs\engine.log</p></div>
                     <div className="diagnostics-actions"><label className="field">Niveau de journalisation<select value={diagnostics.level} onChange={event => setDiagnosticLevel(event.target.value)}><option value="info">Standard</option><option value="debug">Détaillé</option></select></label>
                         <button type="button" onClick={refreshDiagnostics} disabled={diagnosticsLoading}>{diagnosticsLoading ? 'Actualisation…' : 'Actualiser'}</button>
-                        {connectionError ? <button type="button" className="engine-start" onClick={() => manageEngine('start')} disabled={!!engineAction}>{engineAction === 'start' ? 'Démarrage…' : 'Démarrer le moteur'}</button> :
-                            <button type="button" className="engine-stop" onClick={() => manageEngine('stop')} disabled={!!engineAction || (virtualDriver?.clients.length || 0) > 0} title={(virtualDriver?.clients.length || 0) > 0 ? 'Fermez les applications ASIO connectées avant l’arrêt.' : undefined}>{engineAction === 'stop' ? 'Arrêt…' : 'Arrêter le moteur'}</button>}</div></div>
+                        {connectionError || engine?.state !== 'running' ? <button type="button" className="engine-start" onClick={() => manageEngine('start')} disabled={!!engineAction}>{engineAction === 'start' ? 'Démarrage…' : 'Démarrer le moteur audio'}</button> :
+                            <button type="button" className="engine-stop" onClick={() => manageEngine('stop')} disabled={!!engineAction || (virtualDriver?.clients.length || 0) > 0} title={(virtualDriver?.clients.length || 0) > 0 ? 'Fermez les applications ASIO connectées avant l’arrêt.' : undefined}>{engineAction === 'stop' ? 'Arrêt…' : 'Arrêter le moteur audio'}</button>}</div></div>
                     {diagnosticsError && <div className="error-panel">{diagnosticsError}</div>}
                     <div className="log-table-wrap"><table className="log-table"><thead><tr><th>Heure UTC</th><th>Niveau</th><th>Composant</th><th>Message</th></tr></thead>
                         <tbody>{diagnostics.entries.map((entry, index) => <tr key={`${entry.timestamp}-${index}`}><td>{entry.timestamp}</td><td><span className={`log-level ${entry.level}`}>{entry.level}</span></td><td>{entry.component}</td><td>{entry.message}</td></tr>)}
@@ -339,7 +467,7 @@ function App() {
                 {engine?.lastError && <div className="error-panel">{engine.lastError.message}</div>}
                 {notice && <div className="notice" role="status">{notice}</div>}
 
-                <section className="section">
+                {activeView === 'configuration' && <section className="section">
                     <h2>Pilotes ASIO virtuels</h2>
                     {!virtualDriver ? <p className="hint">Aucun pilote virtuel publié par le moteur.</p> : <div className="driver-settings">
                         <article className="driver-setting">
@@ -351,9 +479,9 @@ function App() {
                         </article>
                     </div>}
                     <p className="hint">Le menu « Pilote ASIO physique » ci-dessous sert uniquement à choisir l’horloge maîtresse.</p>
-                </section>
+                </section>}
 
-                <section className="section">
+                {activeView === 'configuration' && <section className="section">
                     <h2>Profils de canaux par application</h2>
                     <p className="hint">Ces valeurs limitent les canaux annoncés à chaque exécutable. Elles ne réduisent pas les 256 canaux du transport; un changement prend effet quand l’application ASIO est relancée.</p>
                     {profilesError && <div className="error-panel" role="alert">{profilesError}</div>}
@@ -395,9 +523,9 @@ function App() {
                             {profilesSaving ? 'Enregistrement…' : 'Enregistrer les profils'}
                         </button>
                     </>}
-                </section>
+                </section>}
 
-                <section className="section">
+                {activeView === 'channels' && <section className="section">
                     <h2>Canaux des applications</h2>
                     <p className="hint">« Ouverts » indique les canaux annoncés par l’application. « Avec une route » indique ceux reliés dans la configuration affichée. Les canaux ouverts ne sont pas automatiquement routés.</p>
                     {applicationChannelSummaries.length === 0 ? <p className="hint">Aucune application connectée à TimoxVasio.</p> :
@@ -408,11 +536,14 @@ function App() {
                                     <div><strong>Entrées</strong><span>{client.inputChannels.length} ouvertes</span><span>{client.routedInputCount} avec une route</span></div>
                                     <div><strong>Sorties</strong><span>{client.outputChannels.length} ouvertes</span><span>{client.routedOutputCount} avec une route</span></div>
                                 </div>
+                                {(client.inputMeterEndpoints.length + client.outputMeterEndpoints.length) > 0 && <div className="active-channel-meters" role="region" tabIndex="0" aria-label={`Niveaux actifs de ${client.processName}`}>
+                                    {[...client.inputMeterEndpoints, ...client.outputMeterEndpoints].map(endpoint => <ChannelMeter key={endpoint.id} endpoint={endpoint} meter={meters[endpoint.id]} />)}
+                                </div>}
                             </article>)}
                         </div>}
-                </section>
+                </section>}
 
-                <section className="section">
+                {activeView === 'configuration' && <section className="section">
                     <h2>Pilote ASIO physique</h2>
                     <label className="field">Pilote sélectionné
                         <select disabled={configurationLocked} value={configuration?.physicalDriverId || ''} onChange={event => updateDraft(current => ({
@@ -440,9 +571,9 @@ function App() {
                         </label>
                         <p className="hint">Les ports physiques sont découverts après l’application de ces paramètres.</p>
                     </>}
-                </section>
+                </section>}
 
-                <section className="section">
+                {activeView === 'channels' && <section className="section">
                     <h2>Clients connectés à TimoxVasio</h2>
                     {!virtualDriver?.clients.length ? <p className="hint">Aucun client ASIO connecté.</p> : <ul className="configured-routes">
                         {virtualDriver.clients.map(client => <li key={client.pid}>
@@ -451,10 +582,11 @@ function App() {
                             <span>Sorties : {client.outputChannels.join(', ') || 'aucune'}</span>
                         </li>)}
                     </ul>}
-                </section>
+                </section>}
 
-                <section className="section">
+                {activeView === 'channels' && <section className="section">
                     <h2>Routage</h2>
+                    <details className="routing-details"><summary>Modifier les routes · {(configuration?.routes || []).length} configurées</summary>
                     <p className="hint">Choisissez une zone source et une zone de destination autorisée. Une case relie le canal de sa ligne au canal de sa colonne; cliquez pour ajouter ou retirer la route.</p>
                     <div className="routing-matrix">
                         <div className="matrix-controls">
@@ -549,7 +681,8 @@ function App() {
                             <button disabled={configurationLocked} onClick={() => removeRoute(route.id)} aria-label="Supprimer la route">Supprimer</button>
                         </li>)}
                     </ul>}
-                </section>
+                    </details>
+                </section>}
 
                 <button className="apply-configuration" onClick={applyConfiguration} disabled={!apiState || !configuration || configurationLocked}>
                     Appliquer la configuration
@@ -557,6 +690,21 @@ function App() {
             </main>}
         </div>
     );
+}
+
+function ChannelMeter({ endpoint, meter }) {
+    const peak = typeof meter?.peakDbfs === 'number' ? meter.peakDbfs : null;
+    const visiblePeak = peak === null ? -60 : Math.max(-60, Math.min(0, peak));
+    const width = peak === null ? 0 : ((visiblePeak + 60) / 60) * 100;
+    return <div className="channel-meter" aria-label={`${endpoint.name}: ${peak === null ? 'mesure en attente' : `${peak.toFixed(1)} dBFS`}`}>
+        <span title={endpoint.name}>{endpoint.name}</span>
+        <div className="meter-track" role="meter" aria-valuemin="-60" aria-valuemax="0"
+            aria-valuenow={peak === null ? -60 : visiblePeak}
+            aria-valuetext={peak === null ? 'Mesure en attente' : `${peak.toFixed(1)} dBFS`}>
+            <i style={{ width: `${width}%` }} />
+        </div>
+        <output>{peak === null ? 'En attente' : `${peak.toFixed(1)} dBFS`}</output>
+    </div>;
 }
 
 export default App;

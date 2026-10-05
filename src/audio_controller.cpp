@@ -182,6 +182,73 @@ AudioControllerResult AudioController::ApplyConfiguration(
     }
 }
 
+AudioControllerResult AudioController::StartAudio() {
+    try {
+        return Invoke([this] {
+            if (!audioStoppedByCommand_ && Snapshot().state == "running")
+                return AudioControllerResult{true, {}};
+            const auto result = ApplyConfigurationCore(desiredConfiguration_);
+            if (result.success) audioStoppedByCommand_ = false;
+            return result;
+        });
+    } catch (const std::exception& exception) {
+        return {false, exception.what()};
+    }
+}
+
+AudioControllerResult AudioController::StopAudio() {
+    try {
+        return Invoke([this] {
+            if (audioStoppedByCommand_) return AudioControllerResult{true, {}};
+            auto status = Snapshot();
+            status.state = "reconfiguring";
+            SetStatus(status);
+            if (runtime_) runtime_->StopCorrelation();
+            if (physicalHost_) physicalHost_->stop();
+            runtime_.reset();
+            if (physicalHost_) physicalHost_->close();
+            status.state = "stopped";
+            status.lastError.clear();
+            SetStatus(status);
+            audioStoppedByCommand_ = true;
+            return AudioControllerResult{true, {}};
+        });
+    } catch (const std::exception& exception) {
+        return {false, exception.what()};
+    }
+}
+
+AudioControllerResult AudioController::StartCorrelation(const std::string& leftEndpointId,
+                                                          const std::string& rightEndpointId) {
+    try {
+        return Invoke([this, leftEndpointId, rightEndpointId] {
+            if (Snapshot().state != "running" || !runtime_)
+                return AudioControllerResult{false, "Audio engine is not running"};
+            if (!runtime_->SetCorrelationPair(leftEndpointId, rightEndpointId))
+                return AudioControllerResult{false, "Stereo pair is not an active routed client output"};
+            return AudioControllerResult{true, {}};
+        });
+    } catch (const std::exception& exception) {
+        return {false, exception.what()};
+    }
+}
+
+void AudioController::StopCorrelation() {
+    try {
+        Invoke([this] { if (runtime_) runtime_->StopCorrelation(); });
+    } catch (...) {}
+}
+
+AudioCorrelationSnapshot AudioController::ReadCorrelation() {
+    try {
+        return Invoke([this] {
+            return runtime_ ? runtime_->ReadCorrelation() : AudioCorrelationSnapshot{};
+        });
+    } catch (...) {
+        return {};
+    }
+}
+
 void AudioController::SetStatus(const AudioControllerSnapshot& snapshot) {
     std::lock_guard<std::mutex> lock(stateMutex_);
     const auto revision = state_.revision + 1;
@@ -296,6 +363,8 @@ AudioControllerResult AudioController::ApplyOnWorker(
             SetStatus(failed);
             return {false, failed.lastError};
         }
+        desiredConfiguration_ = configuration;
+        audioStoppedByCommand_ = false;
         return applied;
     } catch (const std::exception& exception) {
         if (physicalHost_) physicalHost_->stop();
@@ -330,6 +399,7 @@ void AudioController::RestoreConfigurationOnWorker() {
         SetStatus(failed);
         return;
     }
+    desiredConfiguration_ = configuration;
     const auto restored = ApplyConfigurationCore(configuration);
     if (!restored.success) {
         physicalHost_->stop();

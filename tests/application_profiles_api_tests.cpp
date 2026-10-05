@@ -114,13 +114,30 @@ int wmain() {
     if (passed) {
         websocket.read(websocketMessage); // Initial engine.status
         websocket.read(websocketMessage); // Initial devices.changed
+        websocket.read(websocketMessage); // Initial audio.stereoPairs.changed
         passed = require(websocket.send(R"({"id":"stop-test","command":"engine.stop"})"),
             "WebSocket accepts an engine.stop request") && passed;
         const auto responseType = websocket.read(websocketMessage);
         passed = require(responseType == httplib::ws::Text &&
             nlohmann::json::parse(websocketMessage).value("success", false),
-            "engine.stop is acknowledged while no client is attached") && passed;
-        passed = require(stopRequested.load(), "accepted engine.stop signals the main shutdown callback") && passed;
+            "engine.stop stops audio while no client is attached") && passed;
+        const auto stillServing = client.Get("/api/v1/state");
+        passed = require(stillServing && stillServing->status == 200,
+            "engine.stop keeps the control API available") && passed;
+        passed = require(websocket.send(R"({"id":"start-test","command":"engine.start"})"),
+            "WebSocket accepts an engine.start request") && passed;
+        bool startAcknowledged = false;
+        for (int attempt = 0; attempt < 8; ++attempt) {
+            if (websocket.read(websocketMessage) != httplib::ws::Text) break;
+            const auto response = nlohmann::json::parse(websocketMessage);
+            if (response.value("id", std::string{}) == "start-test") {
+                startAcknowledged = response.value("success", false);
+                break;
+            }
+        }
+        passed = require(startAcknowledged,
+            "engine.start is acknowledged after audio stop") && passed;
+        passed = require(!stopRequested.load(), "engine.stop does not shut down the API process") && passed;
         websocket.close();
     }
 

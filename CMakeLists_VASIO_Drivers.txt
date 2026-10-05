@@ -30,6 +30,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/vasio_com_driver.h
     ${SRC_DIR}/vasio_compatibility_profile.h
     ${SRC_DIR}/vasio_driver.def
+    ${SRC_DIR}/driver_version.rc
     ${ASIO_SDK_PATH}/common/combase.cpp
     ${ASIO_SDK_PATH}/common/dllentry.cpp
     ${ASIO_SDK_PATH}/common/register.cpp

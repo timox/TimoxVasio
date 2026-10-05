@@ -9,3 +9,9 @@ struct AudioMeterSnapshot {
     std::uint64_t underruns = 0;
     std::uint64_t overruns = 0;
 };
+
+struct AudioCorrelationSnapshot {
+    bool active = false;
+    bool hasSignal = false;
+    float correlation = 0.0f;
+};

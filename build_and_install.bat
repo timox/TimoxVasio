@@ -60,9 +60,8 @@ echo.
 
 :: Configuration CMake
 echo [INFO] Configuration CMake...
-cmake -G Ninja ^
-    -S . -B build_drivers_vs2026_ninja ^
-    -DCMAKE_BUILD_TYPE=Release ^
+cmake -G "Visual Studio 18 2026" -A x64 ^
+    -S . -B build_drivers_vs2026 ^
     -DASIO_SDK_PATH="%CD%\asiosdk" ^
     -DVASIO_BUILD_DRIVERS=ON
 
@@ -75,7 +74,7 @@ if %errorlevel% neq 0 (
 :: Compilation
 echo.
 echo [INFO] Compilation du pilote TimoxVasio...
-cmake --build build_drivers_vs2026_ninja --target TimoxVasio
+cmake --build build_drivers_vs2026 --config Release --target TimoxVasio
 
 if %errorlevel% neq 0 (
     echo [ERREUR] Compilation échouée
@@ -87,15 +86,13 @@ echo [OK] Compilation réussie
 echo.
 
 :: Vérifier les DLLs
-for %%D in (TimoxVasio.dll) do (
-    if not exist "build_drivers_vs2026_ninja\%%D" (
-        echo [ERREUR] DLL manquante : build_drivers_vs2026_ninja\%%D
-        exit /b 1
-    )
+if not exist "build_drivers_vs2026\Release\TimoxVasio.dll" (
+    echo [ERREUR] DLL manquante : build_drivers_vs2026\Release\TimoxVasio.dll
+    exit /b 1
 )
 
 echo [OK] DLL générée:
-echo   - build_drivers_vs2026_ninja\TimoxVasio.dll
+echo   - build_drivers_vs2026\Release\TimoxVasio.dll
 echo.
 
 :: Créer le dossier d'installation
@@ -106,7 +103,7 @@ if not exist "C:\Program Files\Steinberg\VirtualASIO" (
 
 :: Copier les DLLs
 echo [INFO] Copie de TimoxVasio.dll...
-copy build_drivers_vs2026_ninja\TimoxVasio.dll "C:\Program Files\Steinberg\VirtualASIO\" /Y
+copy build_drivers_vs2026\Release\TimoxVasio.dll "C:\Program Files\Steinberg\VirtualASIO\" /Y
 
 if %errorlevel% neq 0 (
     echo [ERREUR] Copie des DLLs échouée

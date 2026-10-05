@@ -63,6 +63,12 @@ public:
     void Stop() noexcept;
     std::vector<PhysicalAsioDriverInfo> EnumeratePhysicalDrivers();
     AudioControllerResult ApplyConfiguration(const AudioControllerConfiguration& configuration);
+    AudioControllerResult StartAudio();
+    AudioControllerResult StopAudio();
+    AudioControllerResult StartCorrelation(const std::string& leftEndpointId,
+                                           const std::string& rightEndpointId);
+    void StopCorrelation();
+    AudioCorrelationSnapshot ReadCorrelation();
     ApplicationProfilesSnapshot GetApplicationProfiles();
     ApplicationProfilesUpdateResult ReplaceApplicationProfiles(
         std::vector<ApplicationProfile> profiles);
@@ -95,6 +101,8 @@ private:
     VasioClientManager& clients_;
     AudioConfigurationStore configurationStore_;
     ApplicationProfileStore applicationProfileStore_;
+    AudioControllerConfiguration desiredConfiguration_;
+    bool audioStoppedByCommand_ = false;
     std::vector<ApplicationProfile> applicationProfiles_ = ApplicationProfileStore::DefaultProfiles();
     std::string applicationProfilesError_;
     std::atomic<bool> started_{false};

@@ -97,6 +97,21 @@ class ApiClient extends EventEmitter {
         return this.sendCommand({ id, command: 'engine.stop' });
     }
 
+    async httpRequest(method, path, body) {
+        const routes = ['/api/v1/state', '/api/v1/drivers', '/api/v1/openapi.json',
+            '/api/v1/schemas/api-v1.json', '/api/v1/diagnostics', '/api/v1/application-profiles'];
+        const documented = routes.includes(path) ||
+            (typeof path === 'string' && /^\/api\/v1\/diagnostics\?limit=\d+$/.test(path));
+        if (!['GET', 'PUT'].includes(method) || !documented)
+            throw new TypeError('Requête hors des routes HTTP documentées de TimoxVasio');
+        const response = await fetch(`${this.baseUrl}${path}`, {
+            method,
+            headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+            body: body === undefined ? undefined : JSON.stringify(body)
+        });
+        return { status: response.status, body: await response.json() };
+    }
+
     sendCommand(command) {
         if (!this.socket || this.socket.readyState !== this.WebSocket.OPEN)
             return Promise.reject(new Error('WebSocket disconnected'));

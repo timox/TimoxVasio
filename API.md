@@ -20,8 +20,10 @@ Le moteur écoute uniquement sur l’interface loopback `127.0.0.1`. Le port peu
 
 | Requête | Réponse |
 |---|---|
-| `GET /api/v1/state` | État courant confirmé du moteur, sélection matérielle, configuration TimoxVasio, routes et inventaires |
-| `GET /api/v1/drivers` | Inventaire des pilotes matériels ASIO découverts et de l’unique pilote virtuel TimoxVasio |
+| `GET /api/v1/state` | État courant confirmé du moteur, sélection matérielle, configuration TimoxVasio, routes, inventaires et paires stéréo actives |
+| `GET /api/v1/drivers` | Inventaire des pilotes matériels ASIO découverts, du pilote virtuel TimoxVasio et des paires stéréo mesurables |
+| `GET /api/v1/openapi.json` | Document OpenAPI servi localement pour Swagger UI |
+| `GET /api/v1/schemas/api-v1.json` | Schéma JSON partagé référencé par le document OpenAPI |
 | `GET /api/v1/application-profiles` | Profils de capacité de canaux ASIO appliqués selon le nom de l’exécutable |
 | `PUT /api/v1/application-profiles` | Remplacement complet et persistant des profils de capacité |
 | `ws://127.0.0.1:<port>/api/v1/ws` | Commandes de configuration et événements d’état/audio |
@@ -106,6 +108,24 @@ Chaque commande est un message JSON :
 
 `sampleRate` et `bufferFrames` sont les valeurs du pilote physique choisi. `null` demande respectivement le taux courant et la taille préférée annoncés par ce pilote. Le moteur fixe le taux physique, relit ses capacités dépendantes du taux et refuse toute taille qu’il n’annonce pas. TimoxVasio reçoit exactement ces valeurs ; il n’a pas de réglage de fréquence ou de taille indépendant.
 
+`GET /api/v1/state` et `GET /api/v1/drivers` incluent `stereoPairs`. Ce sont
+les paires de sorties L/R adjacentes d’un même client, dont les deux canaux sont
+ouverts et reliés par une route. `audio.correlation.start` sélectionne une paire
+par son `stereoPairId`; `audio.correlation.stop` arrête la mesure. La sélection
+est globale au moteur et une seule paire est mesurée à la fois.
+
+Les commandes `{ "id": "start-1", "command": "engine.start" }` et
+`{ "id": "stop-1", "command": "engine.stop" }` n’ont pas de payload.
+`engine.start` réapplique la dernière configuration confirmée; la commande est
+idempotente et laisse le moteur arrêté si aucune route n’est configurée.
+`engine.stop` arrête le flux audio, ferme le pilote matériel et conserve la
+configuration afin qu’un prochain `engine.start` puisse la restaurer. Cette
+commande est refusée avec `ENGINE_CLIENTS_CONNECTED` tant qu’un client ASIO
+TimoxVasio est connecté. Les deux commandes ne ferment pas le processus hôte ni
+le serveur HTTP/WebSocket. Un programme externe peut donc contrôler le moteur
+tant que cet hôte API a déjà été lancé par Timox VASIO Control ou un
+superviseur; l’API ne peut pas démarrer un processus hôte qui n’existe pas.
+
 Un succès est acquitté avec le même identifiant :
 
 ```json
@@ -153,7 +173,7 @@ Un changement effectif arrête le flux avant de détruire ou reconstruire les bu
 
 Une configuration identique à celle qui est déjà active répond `accepted` sans arrêter à nouveau le flux. Une commande invalide est rejetée avant toute interruption. L’interface désactive les mutations pendant `reconfiguring` et affiche l’état confirmé par le moteur.
 
-L’état `stopped` sans route signifie que le pilote a été configuré mais que le callback audio n’a pas démarré. Le serveur HTTP/WebSocket continue de répondre dans cet état. Il reste actif pendant la durée de vie du processus moteur; le client Electron arrête ce processus lorsqu’il se ferme.
+L’état `stopped` sans route signifie que le pilote a été configuré mais que le callback audio n’a pas démarré. Après `engine.stop`, l’état `stopped` peut aussi contenir des routes mémorisées, prêtes à être restaurées par `engine.start`. Le serveur HTTP/WebSocket reste disponible dans les deux cas pendant la durée de vie du processus moteur; à la fermeture de la fenêtre Electron, le processus moteur reste disponible pour les clients API qui en dépendent.
 
 ## Événements
 
@@ -166,8 +186,19 @@ Chaque événement a la forme `{ "event": "<nom>", "payload": { ... } }` et n’
 | `routes.changed` | Liste complète et confirmée `routes` |
 | `audio.meter` | `endpointId`, `peakDbfs`, compteurs cumulatifs `underruns` et `overruns` |
 | `engine.error` | Erreur structurée avec `code`, `message` et, si disponible, opération, pilote et code ASIO |
+| `audio.stereoPairs.changed` | `{ "stereoPairs": [...] }`, liste complète des paires L/R ouvertes et routées |
+| `audio.correlation` | `stereoPairId`, identifiants L/R, coefficient borné à `[-1, 1]` ou `null`, et `state` (`measuring`, `no_signal` ou `stopped`) |
 
 Les événements de mesure sont émis pour les extrémités présentes dans une route, à la cadence de lecture de l'API (environ deux fois par seconde). `peakDbfs` décrit le bloc audio le plus récent observé à cette extrémité. Les compteurs des endpoints virtuels sont les compteurs cumulatifs du sens correspondant dans l'anneau du client; ceux des endpoints physiques valent zéro. Ces événements ne servent pas de transport audio. La mesure est publiée par le serveur hors du callback temps réel.
+
+La corrélation compare les échantillons synchrones des deux sorties du client
+sur des fenêtres de 100 ms. Le calcul est un coefficient de corrélation
+normalisé à décalage nul, centré sur la moyenne. Il est publié à 10 Hz. Si le
+signal RMS de l’un ou l’autre canal est inférieur à −90 dBFS, `correlation` est
+`null` et `state` vaut `no_signal`; zéro signifie alors une faible corrélation,
+pas un silence. Le coefficient décrit une cohérence large bande et n’est pas
+un angle de phase en degrés. Les échantillons restent dans le callback natif :
+aucun PCM n’est transmis à l’API.
 
 ## Règles de routage
 
@@ -189,4 +220,4 @@ Le moteur ne se lie pas aux interfaces réseau externes. Il accepte les connexio
 
 `PUT /api/v1/diagnostics` accepte exactement `{ "level": "info" }` ou `{ "level": "debug" }` et persiste ce choix. Les journaux sont écrits sous `%LOCALAPPDATA%\TimoxVasio\logs\engine.log`; quatre archives sont conservées. Les callbacks audio n’écrivent jamais dans le journal.
 
-La commande WebSocket `{ "id": "stop-1", "command": "engine.stop" }` demande l’arrêt ordonné du moteur. Le moteur refuse avec `ENGINE_CLIENTS_CONNECTED` tant qu’un client TimoxVasio est attaché. Lorsqu’elle est acceptée, la réponse est envoyée avant le signal d’arrêt. L’interface Electron ne termine pas le processus moteur en fermant sa fenêtre.
+`engine.start` et `engine.stop` arrêtent ou redémarrent le flux audio sans fermer le processus hôte ni son API. `engine.stop` est refusée avec `ENGINE_CLIENTS_CONNECTED` tant qu’un client TimoxVasio est attaché. À la fermeture de la fenêtre Electron, le processus moteur reste disponible pour les clients API qui en dépendent.

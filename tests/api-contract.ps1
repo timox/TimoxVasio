@@ -20,10 +20,16 @@ $required = @(
     '255',
     'ws://127.0.0.1:<port>/api/v1/ws',
     'configuration.apply',
+    'engine.start',
+    'engine.stop',
     'engine.status',
     'devices.changed',
     'routes.changed',
     'audio.meter',
+    'audio.stereoPairs.changed',
+    'audio.correlation.start',
+    'audio.correlation.stop',
+    'audio.correlation',
     'engine.error',
     '127.0.0.1'
 )
@@ -40,7 +46,7 @@ $openApi = Get-Content -LiteralPath $openApiPath -Raw | ConvertFrom-Json -AsHash
 if ($openApi.openapi -ne '3.1.0') { throw 'OpenAPI document must use OpenAPI 3.1.0' }
 if ($openApi.info.title -ne 'TimoxVasio Local Control API' -or $openApi.info.version -ne '1.0.0') { throw 'OpenAPI info metadata is missing or inconsistent' }
 if (-not $api.Contains('openapi-v1.json')) { throw 'API.md does not link to the Swagger/OpenAPI document' }
-foreach ($path in '/api/v1/state', '/api/v1/drivers', '/api/v1/application-profiles', '/api/v1/ws') {
+foreach ($path in '/api/v1/state', '/api/v1/drivers', '/api/v1/openapi.json', '/api/v1/schemas/api-v1.json', '/api/v1/application-profiles', '/api/v1/ws') {
     if (-not $openApi.paths.ContainsKey($path)) { throw "OpenAPI document lacks path $path" }
 }
 foreach ($method in 'get', 'put') {
@@ -49,29 +55,40 @@ foreach ($method in 'get', 'put') {
     }
 }
 if (-not $openApi.paths['/api/v1/ws']['get'].ContainsKey('x-websocket')) { throw 'WebSocket operation is not declared in OpenAPI' }
-foreach ($schema in 'State', 'Drivers', 'ApplicationProfiles', 'ReplaceApplicationProfiles', 'ApplicationProfilesUpdate', 'ApplyCommand', 'Response', 'Event') {
+foreach ($schema in 'State', 'Drivers', 'StereoPair', 'ApplicationProfiles', 'ReplaceApplicationProfiles', 'ApplicationProfilesUpdate', 'ApplyCommand', 'ClientCommand', 'CorrelationStartCommand', 'CorrelationStopCommand', 'Response', 'Event') {
     if (-not $openApi.components.schemas.ContainsKey($schema)) { throw "OpenAPI document lacks schema $schema" }
     if (-not $openApi.components.schemas[$schema]['$ref'].StartsWith('./schemas/api-v1.json#')) { throw "OpenAPI schema $schema does not reuse the normative JSON schema" }
 }
 
 $fixtures = @(
-    @{ name = 'state'; value = @{ apiVersion = '1.0'; engine = @{ state = 'stopped'; physicalDriverId = $null; sampleRate = $null; bufferFrames = $null; lastError = $null }; physicalDrivers = @(); virtualDrivers = @(); routes = @() } },
-    @{ name = 'drivers'; value = @{ physicalDrivers = @(); virtualDrivers = @() } },
+    @{ name = 'state'; value = @{ apiVersion = '1.0'; engine = @{ state = 'stopped'; physicalDriverId = $null; sampleRate = $null; bufferFrames = $null; lastError = $null }; physicalDrivers = @(); virtualDrivers = @(); routes = @(); stereoPairs = @() } },
+    @{ name = 'drivers'; value = @{ physicalDrivers = @(); virtualDrivers = @(); stereoPairs = @(@{ id = 'stereo:TimoxVasio:42:output:1-2'; leftEndpointId = 'virtual:TimoxVasio:42:output:1'; rightEndpointId = 'virtual:TimoxVasio:42:output:2'; label = 'AudioApp.exe · Sorties 1–2' }) } },
     @{ name = 'application profiles'; value = @{ profiles = @(@{ processName = 'mixxx.exe'; inputChannels = 255; outputChannels = 255 }) } },
     @{ name = 'replace application profiles'; value = @{ profiles = @(@{ processName = 'mixxx.exe'; inputChannels = 255; outputChannels = 255 }) } },
     @{ name = 'application profile update'; value = @{ profiles = @(@{ processName = 'mixxx.exe'; inputChannels = 255; outputChannels = 255 }); restartRequiredClients = @(@{ pid = 42; processName = 'mixxx.exe' }) } },
     @{ name = 'apply command'; value = @{ id = 'request-1'; command = 'configuration.apply'; payload = @{ physicalDriverId = 'driver-physical-1'; sampleRate = 48000; bufferFrames = 256; routes = @() } } },
+    @{ name = 'start engine command'; value = @{ id = 'request-start'; command = 'engine.start' } },
+    @{ name = 'stop engine command'; value = @{ id = 'request-stop'; command = 'engine.stop' } },
+    @{ name = 'start correlation command'; value = @{ id = 'request-correlation-start'; command = 'audio.correlation.start'; payload = @{ stereoPairId = 'stereo:TimoxVasio:42:output:1-2' } } },
+    @{ name = 'stop correlation command'; value = @{ id = 'request-correlation-stop'; command = 'audio.correlation.stop' } },
     @{ name = 'success response'; value = @{ id = 'request-1'; success = $true; result = @{ accepted = $true } } },
     @{ name = 'error response'; value = @{ id = 'request-1'; success = $false; error = @{ code = 'INVALID_CONFIGURATION'; message = 'Invalid route' } } },
     @{ name = 'engine status event'; value = @{ event = 'engine.status'; payload = @{ state = 'reconfiguring'; physicalDriverId = $null; sampleRate = $null; bufferFrames = $null; lastError = $null } } },
-    @{ name = 'devices event'; value = @{ event = 'devices.changed'; payload = @{ physicalDrivers = @(); virtualDrivers = @() } } },
+    @{ name = 'devices event'; value = @{ event = 'devices.changed'; payload = @{ physicalDrivers = @(); virtualDrivers = @(); stereoPairs = @() } } },
     @{ name = 'routes event'; value = @{ event = 'routes.changed'; payload = @{ routes = @() } } },
     @{ name = 'meter event'; value = @{ event = 'audio.meter'; payload = @{ endpointId = 'virtual:TimoxVasio:1234:output:1'; peakDbfs = -12.0; underruns = 0; overruns = 0 } } },
+    @{ name = 'stereo pairs changed event'; value = @{ event = 'audio.stereoPairs.changed'; payload = @{ stereoPairs = @() } } },
+    @{ name = 'correlation event'; value = @{ event = 'audio.correlation'; payload = @{ stereoPairId = 'stereo:TimoxVasio:42:output:1-2'; leftEndpointId = 'virtual:TimoxVasio:42:output:1'; rightEndpointId = 'virtual:TimoxVasio:42:output:2'; correlation = -0.25; state = 'measuring' } } },
+    @{ name = 'correlation stopped event'; value = @{ event = 'audio.correlation'; payload = @{ stereoPairId = $null; leftEndpointId = $null; rightEndpointId = $null; correlation = $null; state = 'stopped' } } },
     @{ name = 'error event'; value = @{ event = 'engine.error'; payload = @{ code = 'PHYSICAL_DRIVER_OPEN_FAILED'; message = 'Device unavailable' } } }
 )
 foreach ($fixture in $fixtures) {
     $json = ConvertTo-Json -InputObject $fixture.value -Depth 20 -Compress
-    if (-not ($json | Test-Json -SchemaFile $schemaPath)) { throw "Schema validation failed for $($fixture.name): $json" }
+    $valid = $false
+    $validationError = $null
+    try { $valid = $json | Test-Json -SchemaFile $schemaPath }
+    catch { $validationError = $_.Exception.Message }
+    if (-not $valid) { throw "Schema validation failed for $($fixture.name): $json $validationError" }
 }
 
 $invalid = @{ id = 'request-2'; command = 'routes.add'; payload = @{} } | ConvertTo-Json -Compress

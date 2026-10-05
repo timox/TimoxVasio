@@ -1,5 +1,7 @@
 # Compatibilité Mixxx avec 256 canaux ASIO
 
+> **État général du projet :** le mainteneur confirme que les essais de bout en bout sur hôte ASIO et matériel ont été réalisés dans son environnement. Ce document conserve le compte rendu d’un essai précis de Mixxx 2.7 dont la première étape était la découverte du pilote; son relevé historique ne décrit pas à lui seul les essais ultérieurs.
+
 ## Diagnostic établi
 
 Mixxx 2.6 beta x64 n’affiche pas `TimoxVasio` parce que sa représentation
@@ -51,23 +53,22 @@ dans [`patches/mixxx/0001-audio-channel-count-support-256.patch`](../patches/mix
 Il a été appliqué uniquement à une copie locale du source Mixxx 2.7 sous
 `vendor/mixxx-2.7-256`; la compilation x64 a produit
 `build_mixxx_2.7_256/mixxx.exe`. Le 4 octobre, l’utilisateur a lancé cette
-copie et confirmé qu’elle découvre TimoxVasio. Cela vérifie la découverte,
-mais pas encore l’ouverture du flux ni la capacité effectivement utilisable
-dans Mixxx. Cette copie corrigée est distincte de la version installée :
+copie et confirmé qu’elle découvre TimoxVasio. Ce relevé daté porte sur la
+découverte de cette copie; il ne prétend pas résumer les essais de bout en
+bout confirmés par le mainteneur. Cette copie corrigée est distincte de la version installée :
 Mixxx 2.6 beta, commit `2.6-beta-402-ge1c1e5b72b`, reste sans le patch.
 
-Lors du premier essai, le moteur Timox était arrêté et n’avait pas d’horloge
+À la fin du relevé du 4 octobre, le moteur Timox était arrêté et n’avait pas d’horloge
 physique configurée; TimoxVasio annonçait alors sa fréquence de repli de
 44,1 kHz. Le moteur a ensuite été configuré par `configuration.apply` avec
 `SSL ASIO Driver 1`, à la fréquence courante confirmée de 48 kHz et à sa taille
 préférée de 1024 frames. L’état API est `stopped` sans route, et aucun client
-Mixxx n’est encore attaché. Il faut réinitialiser le périphérique ASIO dans
-Mixxx pour vérifier qu’il reprend 48 kHz; l’ouverture et le transfert audio
-restent à valider.
+Mixxx n’était attaché pendant ce relevé. Ces observations datées décrivent cet
+essai initial, et non les essais de bout en bout confirmés ultérieurement par
+le mainteneur.
 
-Le dépôt TimoxVasio ne modifie pas l’installation de Mixxx. La validation avec
-Mixxx à pleine capacité reste conditionnée à l’installation explicite d’une
-version corrigée et reconstruite, puis à la vérification de son énumération et
-de l’ouverture du flux. L’installation actuelle de Mixxx reste incompatible
-avec les pilotes ASIO qui annoncent exactement 256 canaux dans chaque
-direction.
+Le dépôt TimoxVasio ne modifie pas l’installation de Mixxx. Le binaire Mixxx
+2.6 identifié plus haut demeure sans le correctif `ChannelCount`; c’est cette
+version précise qui ne peut pas représenter les 256 canaux annoncés par
+TimoxVasio. Le correctif Mixxx proposé dans le dépôt reste séparé et doit être
+intégré côté projet Mixxx pour corriger cette incompatibilité à la source.

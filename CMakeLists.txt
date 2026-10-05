@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 project(VirtualASIODrivers)
 
+if(WIN32)
+    enable_language(RC)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -43,6 +47,7 @@ set(SOURCES
     ${SRC_DIR}/audio_configuration_store.cpp
     ${SRC_DIR}/application_profile_store.cpp
     ${SRC_DIR}/engine_diagnostics.cpp
+    ${SRC_DIR}/engine_version.rc
 )
 
 # Windows-specific
@@ -242,4 +247,22 @@ add_custom_command(TARGET TimoxVirtualAsioEngine POST_BUILD
     ${CONFIG_DIR}
     $<TARGET_FILE_DIR:TimoxVirtualAsioEngine>/config
     COMMENT "Copie de la configuration..."
+)
+add_custom_command(TARGET TimoxVirtualAsioEngine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${CMAKE_SOURCE_DIR}/openapi-v1.json
+    $<TARGET_FILE_DIR:TimoxVirtualAsioEngine>/openapi-v1.json
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/schemas
+    $<TARGET_FILE_DIR:TimoxVirtualAsioEngine>/schemas
+    COMMENT "Copie du contrat OpenAPI et des schémas..."
+)
+add_custom_command(TARGET ApplicationProfilesApiTests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${CMAKE_SOURCE_DIR}/openapi-v1.json
+    $<TARGET_FILE_DIR:ApplicationProfilesApiTests>/openapi-v1.json
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/schemas
+    $<TARGET_FILE_DIR:ApplicationProfilesApiTests>/schemas
+    COMMENT "Copie du contrat OpenAPI pour le test API..."
 )

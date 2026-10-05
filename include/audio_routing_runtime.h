@@ -35,6 +35,10 @@ public:
     void Process(const float* const* physicalInputs, float* const* physicalOutputs,
                  std::uint32_t frames) noexcept;
     std::vector<AudioMeterSnapshot> ReadMeters();
+    bool SetCorrelationPair(const std::string& leftEndpointId,
+                            const std::string& rightEndpointId) noexcept;
+    void StopCorrelation() noexcept;
+    AudioCorrelationSnapshot ReadCorrelation() const noexcept;
     const std::vector<std::uint32_t>& RoutedPhysicalInputChannels() const noexcept {
         return routedPhysicalInputChannels_;
     }
@@ -59,10 +63,12 @@ private:
         bool clientOutput = false;
     };
 
-    AudioRoutingRuntime(std::uint32_t frames, std::size_t endpointCount,
+    AudioRoutingRuntime(std::uint32_t frames, std::uint32_t sampleRate,
+        std::size_t endpointCount,
         long inputChannels, long outputChannels);
 
     std::uint32_t bufferFrames_;
+    std::uint32_t sampleRate_;
     std::size_t endpointCount_;
     long physicalInputChannels_;
     long physicalOutputChannels_;
@@ -77,4 +83,17 @@ private:
     std::vector<ClientBuffers> clients_;
     std::unique_ptr<std::atomic<float>[]> peakLinear_;
     std::vector<MeterBinding> meterBindings_;
+    std::atomic<std::size_t> correlationLeftIndex_{static_cast<std::size_t>(-1)};
+    std::atomic<std::size_t> correlationRightIndex_{static_cast<std::size_t>(-1)};
+    std::atomic<std::uint64_t> correlationGeneration_{0};
+    std::atomic<std::uint64_t> correlationPublishedGeneration_{0};
+    std::atomic<float> correlationValue_{0.0f};
+    std::atomic<bool> correlationHasSignal_{false};
+    std::uint64_t callbackCorrelationGeneration_ = 0;
+    std::uint64_t correlationSamples_ = 0;
+    double correlationSumLeft_ = 0.0;
+    double correlationSumRight_ = 0.0;
+    double correlationSumLeftSquared_ = 0.0;
+    double correlationSumRightSquared_ = 0.0;
+    double correlationSumProduct_ = 0.0;
 };

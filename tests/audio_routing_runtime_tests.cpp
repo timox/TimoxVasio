@@ -24,7 +24,7 @@ int main() {
     AudioClientMapping::ChannelMask activeOutputs{};
     activeInputs[0] = (std::uint64_t{1} << 0) | (std::uint64_t{1} << 1);
     activeInputs[3] = std::uint64_t{1} << 63;
-    activeOutputs[0] = std::uint64_t{1};
+    activeOutputs[0] = std::uint64_t{3};
     activeOutputs[3] = std::uint64_t{1} << 63;
     if (!mapping->SetActiveChannels(activeInputs, activeOutputs)) return 6;
     auto pinned = std::shared_ptr<AudioClientMapping>(std::move(mapping));
@@ -39,6 +39,8 @@ int main() {
     layout.routes = {
         {"virtual-to-physical", "virtual:TimoxVasio:" + std::to_string(pid) + ":output:1",
             "physical:{driver-1}:output:1", 0.0, false},
+        {"virtual-stereo-right", "virtual:TimoxVasio:" + std::to_string(pid) + ":output:2",
+            "physical:{driver-1}:output:2", 0.0, false},
         {"physical-to-virtual", "physical:{driver-1}:input:1",
             "virtual:TimoxVasio:" + std::to_string(pid) + ":input:2", 0.0, false},
         {"virtual-loop", "virtual:TimoxVasio:" + std::to_string(pid) + ":output:1",
@@ -59,7 +61,7 @@ int main() {
         return 2;
     }
     if (runtime->RoutedPhysicalInputChannels() != std::vector<std::uint32_t>{0, 9} ||
-        runtime->RoutedPhysicalOutputChannels() != std::vector<std::uint32_t>{0, 9}) {
+        runtime->RoutedPhysicalOutputChannels() != std::vector<std::uint32_t>{0, 1, 9}) {
         std::fprintf(stderr, "Physical buffers inputs:");
         for (const auto channel : runtime->RoutedPhysicalInputChannels()) std::fprintf(stderr, " %u", channel);
         std::fprintf(stderr, "; outputs:");
@@ -70,6 +72,7 @@ int main() {
 
     float clientOutput[frames * AudioClientMapping::kChannelCount]{};
     clientOutput[0] = 0.25f; clientOutput[AudioClientMapping::kChannelCount] = -0.5f;
+    clientOutput[1] = -0.5f; clientOutput[AudioClientMapping::kChannelCount + 1] = 1.0f;
     clientOutput[255] = 0.375f;
     clientOutput[2 * AudioClientMapping::kChannelCount - 1] = -0.625f;
     if (!pinned->WriteClientOutput(clientOutput, frames)) return 3;
@@ -99,6 +102,34 @@ int main() {
             clientInput[2 * AudioClientMapping::kChannelCount - 1]);
         return 5;
     }
+
+    const auto leftEndpoint = "virtual:TimoxVasio:" + std::to_string(pid) + ":output:1";
+    const auto rightEndpoint = "virtual:TimoxVasio:" + std::to_string(pid) + ":output:2";
+    if (!runtime->SetCorrelationPair(leftEndpoint, rightEndpoint)) return 8;
+    for (std::uint32_t block = 0; block < 2400; ++block) {
+        if (!pinned->WriteClientOutput(clientOutput, frames)) return 9;
+        runtime->Process(physicalInputs, physicalOutputs, frames);
+    }
+    auto correlation = runtime->ReadCorrelation();
+    if (!correlation.active || !correlation.hasSignal || !closeTo(correlation.correlation, -1.0f)) {
+        std::fprintf(stderr, "Expected L/R anti-correlation -1, got active=%d signal=%d value=%f\n",
+            correlation.active, correlation.hasSignal, correlation.correlation);
+        return 10;
+    }
+
+    clientOutput[0] = clientOutput[AudioClientMapping::kChannelCount] = 0.0f;
+    clientOutput[1] = clientOutput[AudioClientMapping::kChannelCount + 1] = 0.0f;
+    for (std::uint32_t block = 0; block < 2400; ++block) {
+        if (!pinned->WriteClientOutput(clientOutput, frames)) return 11;
+        runtime->Process(physicalInputs, physicalOutputs, frames);
+    }
+    correlation = runtime->ReadCorrelation();
+    if (!correlation.active || correlation.hasSignal) {
+        std::fprintf(stderr, "Expected explicit no-signal correlation state.\n");
+        return 12;
+    }
+    runtime->StopCorrelation();
+    if (runtime->ReadCorrelation().active) return 13;
     std::puts("PASS: physical/virtual routes transfer samples through the preallocated runtime.");
     return 0;
 }

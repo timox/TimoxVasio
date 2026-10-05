@@ -11,9 +11,9 @@ npm install
 npm start
 ```
 
-Le processus Electron s’attache à un moteur déjà actif sur le port local ou démarre `TimoxVirtualAsioEngine.exe`, puis consomme ses routes HTTP et sa WebSocket. La navigation propose Configuration, API et Journaux. Swagger UI et les schémas sont produits depuis `../openapi-v1.json` et `../schemas/api-v1.json`, puis embarqués avec leurs ressources locales par `scripts/embed-openapi.js`.
+Le processus Electron s’attache à un moteur déjà actif sur le port local ou démarre `TimoxVirtualAsioEngine.exe`, puis consomme ses routes HTTP et sa WebSocket. La navigation propose Configuration, Canaux, Analyse, API et Journaux. La matrice de routage se déplie dans Canaux lorsqu’elle doit être modifiée. Swagger UI et les schémas sont produits depuis `../openapi-v1.json` et `../schemas/api-v1.json`, puis embarqués avec leurs ressources locales par `scripts/embed-openapi.js`.
 
-Le binaire attendu en développement et par Electron Builder est `../build_engine_profile_audit_bin/TimoxVirtualAsioEngine.exe`; il est généré par la configuration CMake `build_engine_vs2026_ninja`. Son dossier `config/` est également embarqué.
+En développement et lors de l’empaquetage, Electron utilise `../build_codex_110/Release/TimoxVirtualAsioEngine.exe` et son dossier `config/`. `npm run dist` vérifie avant le packaging la présence des binaires et les SHA-256 du moteur, du pilote et du ZIP pilote. Après packaging, il compare le moteur embarqué avec le build source et écrit un manifeste dans `dist/release-validation-1.1.0/`. La DLL ASIO est distribuée séparément; elle n’est pas incluse dans l’application Electron.
 
 ## Utilisation
 

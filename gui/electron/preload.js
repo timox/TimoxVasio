@@ -20,6 +20,20 @@ contextBridge.exposeInMainWorld('vasio', {
     replaceApplicationProfiles: profiles => ipcRenderer.invoke('api:replace-application-profiles', profiles),
     getDiagnostics: limit => ipcRenderer.invoke('api:get-diagnostics', limit),
     setDiagnosticLevel: level => ipcRenderer.invoke('api:set-diagnostic-level', level),
+    httpRequest: (method, path, body) => ipcRenderer.invoke('api:http-request', method, path, body),
+    executeCommand: command => ipcRenderer.invoke('api:execute-command', command),
+    startCorrelation: stereoPairId => ipcRenderer.invoke('api:execute-command', {
+        id: `correlation-start-${Date.now()}`, command: 'audio.correlation.start', payload: { stereoPairId }
+    }),
+    stopCorrelation: () => ipcRenderer.invoke('api:execute-command', {
+        id: `correlation-stop-${Date.now()}`, command: 'audio.correlation.stop'
+    }),
+    startAudio: () => ipcRenderer.invoke('api:execute-command', {
+        id: `engine-start-${Date.now()}`, command: 'engine.start'
+    }),
+    stopAudio: () => ipcRenderer.invoke('api:execute-command', {
+        id: `engine-stop-${Date.now()}`, command: 'engine.stop'
+    }),
     applyConfiguration: configuration => ipcRenderer.invoke('api:configuration-apply', configuration),
     subscribeEvents: callback => {
         const listener = (_event, payload) => callback(payload);
