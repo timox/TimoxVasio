@@ -7,8 +7,8 @@ Le mainteneur a confirmé que les essais de bout en bout sur hôte ASIO et maté
 Dans un Developer Command Prompt Visual Studio 2026 x64 :
 
 ```powershell
-cmake --build build_drivers_vs2026 --config Release --target TimoxVasio DriverProbe DriverAudioProbe DriverCompatibilityProfileTests
-cmake --build build --config Release --target TimoxVirtualAsioEngine AudioTransportProbe AudioRoutingRuntimeTests RoutingGraphTests ApplicationProfilesApiTests
+cmake --build build_driver_110 --config Release --target TimoxVasio DriverProbe DriverAudioProbe DriverCompatibilityProfileTests
+cmake --build build_codex_110 --config Release --target TimoxVirtualAsioEngine AudioTransportProbe AudioRoutingRuntimeTests RoutingGraphTests ApplicationProfilesApiTests
 ```
 
 ## Pilote COM et transport
@@ -16,17 +16,17 @@ cmake --build build --config Release --target TimoxVirtualAsioEngine AudioTransp
 Vérifier l’identité COM directe et la capacité 256/256 :
 
 ```powershell
-.\build_drivers_vs2026\Release\DriverProbe.exe `
-  --dll .\build_drivers_vs2026\Release\TimoxVasio.dll `
+.\build_driver_110\Release\DriverProbe.exe `
+  --dll .\build_driver_110\Release\TimoxVasio.dll `
   --clsid "{A4D39126-78CB-4D89-9E0A-54494D4F5856}"
 ```
 
 Les sondes du moteur couvrent le transport interprocessus et le graphe, y compris les canaux virtuels élevés et les index physiques clairsemés :
 
 ```powershell
-.\build\Release\AudioTransportProbe.exe
-.\build\Release\AudioRoutingRuntimeTests.exe
-.\build\Release\RoutingGraphTests.exe
+.\build_codex_110\Release\AudioTransportProbe.exe
+.\build_codex_110\Release\AudioRoutingRuntimeTests.exe
+.\build_codex_110\Release\RoutingGraphTests.exe
 ```
 
 ## Registre ASIO
@@ -34,10 +34,10 @@ Les sondes du moteur couvrent le transport interprocessus et le graphe, y compri
 La sonde enregistrée appelle l’énumérateur Steinberg et vérifie l’identité et les canaux du pilote. Elle ne démarre pas de flux audio :
 
 ```powershell
-.\build_drivers_vs2026\Release\DriverProbe.exe --registered TimoxVasio
+.\build_driver_110\Release\DriverProbe.exe --registered TimoxVasio
 ```
 
-`tests/driver-registration.Tests.ps1` vérifie la migration idempotente dans une racine HKCU temporaire. `tests/registered-driver-smoke.ps1` cible HKLM, installe provisoirement TimoxVasio et retire son enregistrement à la fin.
+`tests/driver-registration.Tests.ps1` vérifie la migration idempotente dans une racine HKCU temporaire. `tests/registered-driver-smoke.ps1` lit l’installation HKLM existante et l’active sans modifier son enregistrement.
 
 ## Contrat API et interface
 

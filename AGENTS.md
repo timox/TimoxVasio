@@ -14,6 +14,8 @@
 
 Electron utilise le moteur de `build_codex_110\Release` en développement et pendant l’empaquetage; empaqueté, il le lance sous `process.resourcesPath\backend`. Le Setup Electron installe l’interface et le moteur, mais n’installe ni n’enregistre la DLL ASIO, distribuée séparément dans le ZIP.
 
+Le pilote 1.1.0 s’installe sous `C:\Program Files\Steinberg\VirtualASIO\1.1.0\TimoxVasio.dll`. Ce chemin versionné permet de l’enregistrer même si une application conserve une ancienne DLL ouverte. Cette application doit être relancée pour charger la nouvelle version.
+
 ## Provenance
 - Ne jamais choisir un binaire d’après son nom seul. Vérifier son chemin, sa date et son SHA-256.
 - Comparer le moteur empaqueté au moteur compilé et le pilote du ZIP au pilote compilé.

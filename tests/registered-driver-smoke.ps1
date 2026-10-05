@@ -1,24 +1,20 @@
 $ErrorActionPreference = 'Stop'
-$asioRoot = Split-Path -Parent $PSScriptRoot
-$dllDirectory = Join-Path $asioRoot 'build_drivers_vs2026_ninja'
-$installer = Join-Path $asioRoot 'register_drivers.ps1'
-$probe = Join-Path $dllDirectory 'DriverProbe.exe'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$probe = Join-Path $repoRoot 'build_driver_110\Release\DriverProbe.exe'
+$asioKey = 'HKLM:\SOFTWARE\ASIO\TimoxVasio'
+$expectedDll = 'C:\Program Files\Steinberg\VirtualASIO\1.1.0\TimoxVasio.dll'
 
-try {
-    & $installer install -RegistryRoot 'HKLM:\SOFTWARE' -DllDirectory $dllDirectory
-    $asioKey = 'HKLM:\SOFTWARE\ASIO\TimoxVasio'
-    $clsid = (Get-ItemProperty -LiteralPath $asioKey).CLSID
-    $inprocKey = "HKLM:\SOFTWARE\Classes\CLSID\$clsid\InprocServer32"
-    $dll = (Get-Item -LiteralPath $inprocKey).GetValue('')
-    if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { throw "TimoxVasio DLL is missing: $dll" }
-    foreach ($name in 'VASIO1', 'VASIO2', 'VASIO3', 'VASIO4') {
-        if (Test-Path -LiteralPath "HKLM:\SOFTWARE\ASIO\$name") { throw "Legacy ASIO entry remains: $name" }
-    }
-    Write-Output "TimoxVasio registry: $clsid -> $dll"
-
-    & $probe --registered TimoxVasio
-    if ($LASTEXITCODE -ne 0) { throw "Steinberg AsioDriverList probe failed with exit code $LASTEXITCODE" }
-    Write-Output 'PASS: Steinberg AsioDriverList discovered and instantiated the unique TimoxVasio driver.'
-} finally {
-    & $installer uninstall -RegistryRoot 'HKLM:\SOFTWARE' -DllDirectory $dllDirectory
+if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) { throw "Sonde absente : $probe" }
+if (-not (Test-Path -LiteralPath $asioKey)) { throw 'TimoxVasio absent du registre ASIO' }
+$clsid = (Get-ItemProperty -LiteralPath $asioKey).CLSID
+$inprocKey = "HKLM:\SOFTWARE\Classes\CLSID\$clsid\InprocServer32"
+$registeredDll = (Get-Item -LiteralPath $inprocKey).GetValue('')
+if ($registeredDll -ne $expectedDll) { throw "DLL enregistrée inattendue : $registeredDll" }
+if (-not (Test-Path -LiteralPath $registeredDll -PathType Leaf)) { throw "DLL enregistrée absente : $registeredDll" }
+if ((Get-Item -LiteralPath $registeredDll).VersionInfo.ProductVersion -ne '1.1.0') {
+    throw "Version du pilote enregistré inattendue : $registeredDll"
 }
+
+& $probe --registered TimoxVasio
+if ($LASTEXITCODE -ne 0) { throw "Sonde ASIO enregistrée en échec : $LASTEXITCODE" }
+Write-Output "PASS: TimoxVasio 1.1.0 enregistré et activé depuis $registeredDll"

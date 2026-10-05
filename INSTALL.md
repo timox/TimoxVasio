@@ -17,18 +17,20 @@ Les instructions de compilation sont dans `BUILD_DRIVERS.md`.
 Dans un terminal administrateur :
 
 ```powershell
-cd C:\Users\timo\Documents\GitHub\grrzzzz\asio
+cd C:\Users\timo\Documents\GitHub\TimoxVasio
 .\build_and_install.bat
 ```
 
-Le script configure et compile la cible `TimoxVasio`, copie `TimoxVasio.dll` dans `C:\Program Files\Steinberg\VirtualASIO`, puis enregistre le pilote. Il retire les anciennes entrées VASIO1–VASIO4 connues et tente de supprimer leurs DLL. Si une ancienne DLL reste verrouillée, le script le signale; elle n’est plus enregistrée comme pilote.
+Le script configure et compile la cible `TimoxVasio` dans `build_driver_110`, copie `TimoxVasio.dll` dans `C:\Program Files\Steinberg\VirtualASIO\1.1.0`, puis enregistre le pilote. Il retire les anciennes entrées VASIO1–VASIO4 connues et tente de supprimer leurs DLL. Si une ancienne DLL reste verrouillée, le script le signale; elle n’est plus enregistrée comme pilote.
 
 ## Installer la DLL téléchargée depuis une release
 
-Le Setup Electron installe l’interface et son moteur; il n’installe pas le pilote ASIO. Télécharge `TimoxVasio.dll` séparément depuis la page de release, place-le dans le dossier du dépôt qui contient `register_drivers.ps1`, puis ouvre PowerShell en administrateur dans ce dossier :
+Le Setup Electron installe l’interface et son moteur; il n’installe pas le pilote ASIO. Extraire `TimoxVasio Driver 1.1.0.zip`, puis lancer `Installer TimoxVasio.bat` en administrateur depuis le dossier extrait. Le script installe la DLL dans un dossier versionné afin de ne pas écraser un ancien pilote encore chargé par une application.
+
+Pour effectuer la même opération manuellement depuis le dossier extrait, ouvrir PowerShell en administrateur :
 
 ```powershell
-$driverDir = 'C:\Program Files\Steinberg\VirtualASIO'
+$driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.1.0'
 New-Item -ItemType Directory -Force -Path $driverDir | Out-Null
 Copy-Item -LiteralPath '.\TimoxVasio.dll' -Destination (Join-Path $driverDir 'TimoxVasio.dll') -Force
 pwsh -NoProfile -File '.\register_drivers.ps1' install -DllDirectory $driverDir
@@ -40,7 +42,7 @@ Cette opération inscrit le pilote sous le nom ASIO `TimoxVasio`. Elle retire un
 
 ```powershell
 pwsh -NoProfile -File .\register_drivers.ps1 list
-Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\TimoxVasio.dll"
+Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\1.1.0\TimoxVasio.dll"
 ```
 
 Fermer puis relancer les applications audio après l’enregistrement. Le pilote ASIO attendu est `TimoxVasio` et il annonce 256 entrées et 256 sorties. Chaque application n’expose toutefois que les canaux qu’elle a réellement alloués avec `createBuffers`.

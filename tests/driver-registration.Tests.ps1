@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $root = 'HKCU:\Software\VASIO-Registration-Test'
 $scriptPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'register_drivers.ps1'
-$dllDirectory = Join-Path (Split-Path -Parent $PSScriptRoot) 'build_drivers_vs2026_ninja'
+$dllDirectory = Join-Path (Split-Path -Parent $PSScriptRoot) 'build_driver_110\Release'
 $expectedClsid = '{A4D39126-78CB-4D89-9E0A-54494D4F5856}'
 $legacy = @{
     VASIO1 = '{7A9F4D01-4D7D-4D54-9A61-564153494F31}'

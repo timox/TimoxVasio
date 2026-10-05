@@ -8,6 +8,6 @@
 
 Le Setup et le portable contiennent le moteur, mais pas la DLL ASIO. Le ZIP pilote contient la DLL et ses fichiers d’installation, mais pas le moteur ni l’interface. Les chemins canoniques sont listés dans [AGENTS.md](../AGENTS.md); les contrôles attendus sont détaillés dans [RELEASE_VALIDATION_1.1.0.md](RELEASE_VALIDATION_1.1.0.md).
 
-Le pilote ASIO doit être installé avant de le sélectionner dans une application. Extraire l’archive du pilote et lancer `Installer TimoxVasio.bat` avec les droits administrateur. Ensuite installer ou lancer Timox VASIO Control. L’interface démarre le moteur et ouvre son API locale; Swagger est accessible depuis la vue API.
+Le pilote ASIO doit être installé avant de le sélectionner dans une application. Extraire l’archive du pilote et lancer `Installer TimoxVasio.bat` avec les droits administrateur. Il est copié dans un dossier `1.1.0` et enregistré depuis ce chemin; une application déjà ouverte doit être relancée pour charger cette version. Ensuite installer ou lancer Timox VASIO Control. L’interface démarre le moteur et ouvre son API locale; Swagger est accessible depuis la vue API.
 
 Le retrait du pilote s’effectue depuis une console administrateur avec `register_drivers.ps1 uninstall`. Fermer les applications audio avant de retirer le pilote.

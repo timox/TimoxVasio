@@ -61,7 +61,7 @@ echo.
 :: Configuration CMake
 echo [INFO] Configuration CMake...
 cmake -G "Visual Studio 18 2026" -A x64 ^
-    -S . -B build_drivers_vs2026 ^
+    -S . -B build_driver_110 ^
     -DASIO_SDK_PATH="%CD%\asiosdk" ^
     -DVASIO_BUILD_DRIVERS=ON
 
@@ -74,7 +74,7 @@ if %errorlevel% neq 0 (
 :: Compilation
 echo.
 echo [INFO] Compilation du pilote TimoxVasio...
-cmake --build build_drivers_vs2026 --config Release --target TimoxVasio
+cmake --build build_driver_110 --config Release --target TimoxVasio
 
 if %errorlevel% neq 0 (
     echo [ERREUR] Compilation échouée
@@ -86,24 +86,24 @@ echo [OK] Compilation réussie
 echo.
 
 :: Vérifier les DLLs
-if not exist "build_drivers_vs2026\Release\TimoxVasio.dll" (
-    echo [ERREUR] DLL manquante : build_drivers_vs2026\Release\TimoxVasio.dll
+if not exist "build_driver_110\Release\TimoxVasio.dll" (
+    echo [ERREUR] DLL manquante : build_driver_110\Release\TimoxVasio.dll
     exit /b 1
 )
 
 echo [OK] DLL générée:
-echo   - build_drivers_vs2026\Release\TimoxVasio.dll
+echo   - build_driver_110\Release\TimoxVasio.dll
 echo.
 
 :: Créer le dossier d'installation
 echo [INFO] Création du dossier d'installation...
-if not exist "C:\Program Files\Steinberg\VirtualASIO" (
-    mkdir "C:\Program Files\Steinberg\VirtualASIO"
+if not exist "C:\Program Files\Steinberg\VirtualASIO\1.1.0" (
+    mkdir "C:\Program Files\Steinberg\VirtualASIO\1.1.0"
 )
 
 :: Copier les DLLs
 echo [INFO] Copie de TimoxVasio.dll...
-copy build_drivers_vs2026\Release\TimoxVasio.dll "C:\Program Files\Steinberg\VirtualASIO\" /Y
+copy build_driver_110\Release\TimoxVasio.dll "C:\Program Files\Steinberg\VirtualASIO\1.1.0\" /Y
 
 if %errorlevel% neq 0 (
     echo [ERREUR] Copie des DLLs échouée
@@ -111,7 +111,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [OK] DLLs installées dans C:\Program Files\Steinberg\VirtualASIO\
+echo [OK] DLLs installées dans C:\Program Files\Steinberg\VirtualASIO\1.1.0\
 for %%D in (VASIO1.dll VASIO2.dll VASIO3.dll VASIO4.dll) do (
     if exist "C:\Program Files\Steinberg\VirtualASIO\%%D" del /f /q "C:\Program Files\Steinberg\VirtualASIO\%%D" 2>nul
     if exist "C:\Program Files\Steinberg\VirtualASIO\%%D" echo [AVERTISSEMENT] Ancienne DLL encore presente: %%D
