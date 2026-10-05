@@ -14,9 +14,18 @@
 Le pilote actif est `TimoxVasio.dll`; il implémente `IASIO`, annonce 256 canaux
 dans chaque direction et traite les canaux effectivement alloués par l’hôte.
 Les probes locales vérifient la capacité, des allocations sparse et le transport
-de callbacks. Le test de bout en bout a été réalisé et confirmé par l’utilisateur
-le 5 octobre 2026. Les détails de l’essai ne sont pas consignés dans cet audit.
+de callbacks. Après réinstallation de la version 1.0.0, le test de bout en bout
+a été confirmé par l’utilisateur le 5 octobre 2026. Renoise avait 64 entrées et
+64 sorties, huit routes étaient actives et le moteur utilisait SSL ASIO Driver 1
+à 48 kHz/1024 frames. Un relevé de 3,5 secondes a reçu 60 événements `audio.meter`
+sur les sorties physiques routées et les sorties virtuelles sources, avec des
+crêtes entre `-101,65` et `-26,43 dBFS`; l’utilisateur a confirmé le son.
 La conformité observée est documentée dans [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md).
+
+L’API `/api/v1/diagnostics` et le fichier `%LOCALAPPDATA%/TimoxVasio/logs/engine.log`
+ont confirmé le démarrage du moteur, la configuration physique à 48 kHz/1024
+frames et l’application des huit routes. Swagger a été vérifié par l’utilisateur
+dans l’application Electron installée.
 
 ---
 
@@ -39,7 +48,7 @@ Le pilote et le moteur ont progressé depuis l’audit historique conservé plus
 - Le callback ASIO du pilote physique signale maintenant les changements de fréquence au worker du moteur. Celui-ci vérifie le signal au plus tard après son attente de 20 ms, arrête le moteur et invalide les capacités physiques jusqu’à une nouvelle application de configuration. Le build `TimoxVirtualAsioEngine` passe dans `build_engine_names_check`; le processus actif n’a pas été redémarré.
 - La GUI React compile en production (`npm run react-build`). Les modifications verrouillent les réglages et les routes pendant `reconfiguring`; cette compilation ne valide pas le comportement en runtime.
 - Le relevé de l’API du moteur actif confirme le SSL 12 avec 16 entrées et 8 sorties : les entrées ont des noms explicites, mais les sorties 3 à 8 sont encore `Out 3` à `Out 8`. La résolution de ces six libellés génériques est maintenant ajoutée pour la signature SSL 12 et le nom exact `SSL ASIO Driver 1`; elle conserve les noms non génériques transmis par le pilote. Les noms publiés seront `Line 3`, `Line 4`, `Headphone A L/R` et `Headphone B L/R`, rôles documentés par le [guide SSL 12](https://support.solidstatelogic.com/hc/en-gb/articles/5568765809309-SSL-12-User-Guide). Le build mis à jour passe dans `build_engine_names_check`; le moteur actif `build_engine_vs2026_ninja` n’a pas été redémarré, donc l’API continue de publier les anciens libellés.
-- Un relevé WebSocket `audio.meter` de deux secondes, antérieur au test de bout en bout, avait rapporté `-120 dBFS` sur les endpoints routés; l’état de lecture n’était alors pas établi. Cette ancienne mesure est non concluante et ne contredit pas le test ultérieur confirmé par l’utilisateur. Elle ne constitue pas un critère restant.
+- L’ancien relevé WebSocket à `-120 dBFS` précède le test concluant du 5 octobre. Il est conservé uniquement dans l’historique et ne constitue pas un résultat actuel ni un critère restant.
 
 ### Compatibilité Mixxx (4 octobre 2026)
 
@@ -47,9 +56,11 @@ Le pilote et le moteur ont progressé depuis l’audit historique conservé plus
 - Le code PortAudio inclus dans ce dépôt charge les pilotes ASIO durant son initialisation puis recueille leurs capacités; le probe générique voit TimoxVasio en 256/256. Le probe de la DLL exacte de Mixxx s’est bloqué dans `Pa_Initialize()` et ne permet pas une vérification indépendante de cette installation.
 - Le précédent essai avec une DLL installée obsolète ne permettait pas de valider le profil. Depuis, la DLL du build a été installée et l’API confirme l’ouverture de 20 sorties par Mixxx; aucun correctif n’a été appliqué au code source de Mixxx.
 
-### Portée et pistes de couverture supplémentaire
+### Couverture complémentaire
 
-Le parcours de bout en bout a été testé et confirmé par l’utilisateur le 5 octobre 2026. Les points suivants sont des pistes de couverture supplémentaire, et non des validations encore dues pour cet essai : consigner les noms de ports et les mesures de signal dans un rapport reproductible, puis étendre les essais à d’autres configurations et transitions.
+Le test de bout en bout demandé est réussi. Une couverture de mesures
+supplémentaires, d’autres hôtes et d’autres transitions peut étendre ces
+résultats; elle ne constitue pas une réserve sur le test réalisé.
 
 ## Archive d’audit antérieure au pilote courant
 

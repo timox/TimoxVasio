@@ -78,14 +78,21 @@ l’identifiant technique en détail.
   avec libellés accessibles. La capture seule ne permet pas de valider la
   navigation clavier, les lecteurs d’écran, le contraste calculé ni le zoom.
 
-## Vérifications encore nécessaires
+## Portée et validations restantes
 
-- Capturer les mêmes étapes dans la build candidate, puis vérifier visuellement
-  l’effet des corrections de cascade.
-- Capturer la vue Journaux et la vue API/Swagger; elles ne figurent pas dans
-  les images fournies.
-- Vérifier la navigation clavier, le focus visible, le redimensionnement et la
-  lecture de la matrice avec un lecteur d’écran.
+- Les cinq captures décrivent l’interface fournie le 4 octobre, pas la version
+  1.0.0 réinstallée le 5 octobre. Les corrections CSS sont intégrées à la
+  version publiée, mais leur rendu n’a pas été recapturé dans cette revue.
+- Les vues Journaux et API/Swagger ne figurent pas dans les captures d’audit.
+  Swagger a depuis été vérifié par l’utilisateur dans l’application installée;
+  cette confirmation valide son accès et son fonctionnement, pas son rendu
+  visuel détaillé.
+- La navigation clavier complète, le focus de tous les contrôles, le
+  redimensionnement et la lecture de la matrice avec un lecteur d’écran n’ont
+  pas fait l’objet d’un contrôle dédié.
 
 Cette revue est fondée sur les cinq captures et l’inspection des sources
-React/CSS. Elle ne constitue pas une déclaration de conformité WCAG.
+React/CSS, complétées par la confirmation d’usage de Swagger du 5 octobre. Elle
+ne constitue pas une déclaration de conformité WCAG. Ces limites décrivent la
+portée de l’audit d’accessibilité; elles ne remettent pas en cause la
+validation audio, des journaux ou de Swagger de la version 1.0.0.

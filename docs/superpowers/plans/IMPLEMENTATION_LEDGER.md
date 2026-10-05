@@ -1,12 +1,20 @@
 # État d’implémentation TimoxVasio
 
-> Mis à jour le 4 octobre 2026. Ce ledger remplace le suivi du prototype à quatre pilotes. Les plans du 2 octobre restent des archives historiques et ne décrivent plus le contrat courant.
+> Mis à jour le 5 octobre 2026. Ce ledger remplace le suivi du prototype à quatre pilotes. Les relevés datés du 4 octobre et antérieurs sont historiques; le statut final est consigné ci-dessous.
 
 ## Contrat courant
 
 Le produit cible utilise une DLL ASIO unique, `TimoxVasio.dll`, annoncée sous le nom `TimoxVasio`, avec une capacité maximale de 256 entrées et 256 sorties. `TimoxVirtualAsioEngine.exe` est le processus moteur distinct. Le périphérique ASIO physique sélectionné fournit la fréquence et la taille de buffer effectives. L’API est le contrat d’inventaire et de configuration consommé par l’interface.
 
 La conception et les critères d’acceptation sont définis dans [la spécification 256 canaux](../specs/2026-10-03-vasio-single-driver-256-channel-design.md). Le suivi des tâches se trouve dans [le plan maître](2026-10-03-vasio-256-physical-master-plan.md).
+
+## Validation finale — 5 octobre 2026
+
+- Build/release : `v1.0.0` publiée sur [timox/TimoxVasio](https://github.com/timox/TimoxVasio/releases/tag/v1.0.0). Le Setup Electron, la DLL ASIO et le moteur ont été vérifiés contre leurs SHA-256 de release.
+- Réinstallation locale : Timox VASIO Control 1.0.0 installé par le Setup; `TimoxVasio.dll` réinstallée et enregistrée sous `HKLM\SOFTWARE\ASIO\TimoxVasio`; le moteur lancé depuis `resources/backend/TimoxVirtualAsioEngine.exe` dans l’installation Electron.
+- Son : l’utilisateur confirme le test audible de bout en bout avec Renoise et SSL ASIO Driver 1. L’API indique `running`, 48 kHz/1024 frames, un client Renoise avec 64 entrées/sorties et huit routes. Le flux `audio.meter` a livré 60 événements en 3,5 secondes, crêtes de `-101,65` à `-26,43 dBFS`.
+- Journaux : `/api/v1/diagnostics` et `%LOCALAPPDATA%/TimoxVasio/logs/engine.log` contiennent le démarrage, la configuration physique et l’application des huit routes.
+- Swagger : vérifié par l’utilisateur dans l’application Electron installée.
 
 ## Éléments réalisés et vérifications disponibles
 
@@ -20,13 +28,13 @@ La conception et les critères d’acceptation sont définis dans [la spécifica
 - État observé le 3 octobre : `DriverProbe --registered TimoxVasio` annonce 256 entrées et 256 sorties; `VasioClientManagerProbe` confirme l’attachement interprocessus et la propagation de 96 kHz/512 frames; `VasioExternalHostProbe` découvre le pilote via `AsioDriverList`, puis valide `init/createBuffers/start`, reset/restart et reopen à 44,1 kHz/256 frames avec le moteur courant. `--list-asio` énumère les pilotes physiques, dont les entrées SSL, sans ouvrir de périphérique. Ces probes ne valident pas un flux audio matériel réel; les paramètres 44,1 kHz/256 frames du probe sont les valeurs par défaut avant sélection d’un maître physique.
 - Session de reprise le 3 octobre : compilation x64 de `TimoxVirtualAsioEngine` réussie après le correctif d’initialisation des buffers physiques. Par l’API documentée, configuration de `SSL ASIO Driver 1` sans route confirmée à l’état `stopped`, 48 kHz/1024 frames; l’API publie ses capacités réelles (16 entrées, 8 sorties). La page de contrôle répond sur le port 4000. Aucun client TimoxVasio n’était connecté pendant cette vérification, donc elle ne prouve pas encore le transfert matériel d’un signal.
 
-## Acceptation encore requise
+## Couverture complémentaire
 
 - Vérifier avec un hôte ASIO réel la découverte, l’allocation clairsemée et le rejet des paramètres incompatibles.
 - Construire depuis l’interface un circuit avec le périphérique physique réel, puis mesurer les trois flux audio de la spécification, dont un canal matériel supérieur à 6.
 - Vérifier les scénarios de reconfiguration, déconnexion/reconnexion et erreur avec le matériel ciblé.
 
-Une compilation, une sonde COM ou une énumération des pilotes ne prouve pas le signal audio matériel de bout en bout. La livraison ne sera complète qu’après ces vérifications réelles.
+Le test de bout en bout sur ce poste est réalisé. Une compilation, une sonde COM ou une énumération ne remplace pas les vérifications complémentaires d’autres hôtes et transitions listées ci-dessus.
 
 ## Reprise du 4 octobre 2026
 
@@ -131,9 +139,9 @@ documentée.
   noms génériques `Out 3` à `Out 8` restent donc attendus jusqu’à la prochaine
   installation/redémarrage contrôlé.
 - À la date de cette ancienne note, le signal audio de bout en bout n’était pas
-  confirmé; le relevé `-120 dBFS` était sans contexte de lecture. Cette note a
-  été supersédée par le test de bout en bout réalisé et confirmé par l’utilisateur
-  le 5 octobre 2026. Les détails de ce test ne sont pas consignés ici.
+  confirmé; le relevé `-120 dBFS` était sans contexte de lecture. Le test
+  ultérieur et ses mesures sont consignés dans « Validation finale — 5 octobre
+  2026 » en tête de ce document.
 - Mixxx installé reste 2.6 beta x64; sa limite `ChannelCount` 8 bits écarte
   TimoxVasio à 256/256. Le patch est essayé sur la copie source 2.7 uniquement.
 - L’interface de matrice et la documentation ont été mises à jour. `gui/INTEGRATION.md`
@@ -209,7 +217,7 @@ le 5 octobre 2026; elles ne constituent plus un blocage de validation audio.
   fin de son redémarrage/test; toute validation runtime ultérieure attend son
   action de lancement/essai et son retour.
 
-### Publication
+### Publication — état du 4 octobre, remplacé le 5 octobre
 
 - La notice de licence explique pourquoi le code reste en GPL-3.0-only avec
   la voie libre du SDK ASIO et précise que le nom officiel reste
@@ -218,16 +226,16 @@ le 5 octobre 2026; elles ne constituent plus un blocage de validation audio.
 - Le README pointe maintenant vers le dépôt public nommé `TimoxVasio`, selon
   l’indication de l’utilisateur. L’accès au clone/remote de cette cible n’est
   pas vérifiable depuis le dépôt `asio` ouvert ici.
-- Aucun commit, tag ou push de publication n’a été créé. Le dépôt ouvert ici
+- À cette date, aucun commit, tag ou push de publication n’avait été créé. Le dépôt ouvert ici
   est `grrzzzz` et son remote pointe vers `timox/grrzzzz`, tandis que la cible
   publique demandée est le dépôt séparé `TimoxVasio`. Ne pas publier dans le
   dépôt `grrzzzz` par substitution. La migration/publication attend le clone
   correct de `TimoxVasio` dans le périmètre de travail autorisé.
 
-Le livrable logiciel est compilé et empaqueté. Le test de bout en bout est
-confirmé par l’utilisateur; la publication versionnée reste à effectuer.
+Cet état du 4 octobre a été remplacé : la release `v1.0.0` a depuis été publiée
+sur `timox/TimoxVasio` et le test audio de bout en bout confirmé le 5 octobre.
 
-### Matrice de preuves de la spécification courante
+### Matrice de preuves du relevé du 4 octobre 2026 (historique)
 
 | Critère | État établi | Preuve et limite |
 |---|---|---|
@@ -236,15 +244,17 @@ confirmé par l’utilisateur; la publication versionnée reste à effectuer.
 | Transport partagé multi-client et identité des endpoints | Vérifié par probes interprocessus et inventaires consignés | Ne remplace pas le test simultané de plusieurs hôtes réels dans le circuit final |
 | Trois familles de routes dans le graphe, avec canaux physiques au-delà de 6 | Vérifié dans les tests simulés du runtime/graphe | Le test du canal 10 utilise des buffers simulés; aucun signal SSL mesuré |
 | Négociation du taux, relecture des capacités physiques et valeurs ASIO effectives | Vérifié par probes et interrogation de SSL ASIO Driver 1 consignées | Ces sondes documentent le protocole; le transfert de bout en bout a été testé séparément et confirmé par l’utilisateur |
-| API documentée, interface, profils, Swagger embarqué, journaux et contrôle du moteur | Vérifié par tests API/UI, builds et inspection du paquet candidat | Interface candidate non lancée dans cet audit; moteur/API récemment observés appartenaient à l’ancien binaire |
-| Parcours audio de bout en bout avec routage | **Testé; confirmé par l’utilisateur le 5 octobre 2026** | Le test a été réalisé; ce ledger ne contient pas les relevés instrumentés ni le détail des routes et niveaux mesurés. L’ancien relevé à -120 dBFS était antérieur et non concluant |
+| API documentée, interface, profils, Swagger embarqué, journaux et contrôle du moteur | **Vérifié sur la version 1.0.0 installée** | Swagger confirmé par l’utilisateur; diagnostics API et `engine.log` consignent le démarrage et la configuration |
+| Parcours audio de bout en bout avec routage | **Testé; confirmé par l’utilisateur le 5 octobre 2026** | Renoise, 64 entrées/sorties, huit routes, SSL ASIO Driver 1 à 48 kHz/1024 frames; 60 événements `audio.meter` sur 3,5 s, crêtes de -101,65 à -26,43 dBFS |
 | Reconfiguration, redémarrage, déconnexion/reconnexion, refus d’incompatibilité et panne observable | **Partiellement vérifié** | Tests et probes couvrent des branches logicielles; validation complète sur l’hôte et le périphérique ciblés manque |
 | Licence GPL fournie avec l’application et avis juridique accessible | **Ajoutée au paquet candidat; accès UI non prévu** | Le paquet Electron est configuré pour embarquer `LICENSE`, `LICENSING.md` et l’avis du SDK ASIO dans `resources/legal/`. Aucun écran Licence n’est implémenté; le titulaire des droits n’est pas identifié dans la notice et ne doit pas être inventé |
-| Publication versionnée dans le dépôt public `TimoxVasio` | **Non réalisée** | Aucun tag ni push de publication n’est encore attesté |
+| Publication versionnée dans le dépôt public `TimoxVasio` | **Réalisée : `v1.0.0`** | Release et binaires publiés; voir les notes de version |
 
-Cette matrice distingue les preuves logicielles, les vérifications locales et
-l’acceptation audio réelle. La validation de bout en bout est réalisée; la
-publication demeure l’étape de livraison restante.
+Cette matrice historique a été actualisée avec le résultat du test et de la
+publication. Les réserves du 4 octobre sur l’audio et l’absence de release sont
+levées. La couverture d’autres hôtes et transitions ainsi que les contrôles
+d’accessibilité restent des extensions de périmètre, non des blocages de la
+version 1.0.0.
 
 ### Reprise UX/UI, moteur et journaux
 

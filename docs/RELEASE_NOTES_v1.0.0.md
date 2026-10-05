@@ -17,17 +17,23 @@ Electron `Timox VASIO Control`.
 - Revue UX/UI fondée sur cinq captures de la configuration et du routage,
   publiée dans [UX_UI_REVIEW.md](UX_UI_REVIEW.md).
 
-## Limites connues
+## Validation effectuée sur cette version
 
-- Le parcours audio de bout en bout a été testé et confirmé par l’utilisateur
-  le 5 octobre 2026. Les détails instrumentés et les niveaux mesurés ne sont
-  pas consignés dans ces notes; l’ancienne lecture à `-120 dBFS` était antérieure
-  à cet essai et ne permettait pas, à elle seule, de conclure.
-- Les captures UX/UI fournies précèdent la build renommée et les corrections
-  finales. Le clavier, le lecteur d’écran et le contraste calculé ne sont pas
-  couverts par cette revue.
-- Les profils de canaux ne prennent effet qu’au prochain démarrage de chaque
-  application audio concernée.
+- Le test audio de bout en bout a été confirmé par l’utilisateur après la
+  réinstallation de la version 1.0.0 : Renoise était connecté avec 64 entrées
+  et 64 sorties; le moteur utilisait SSL ASIO Driver 1 à 48 kHz et 1024 frames,
+  avec huit routes actives. L’utilisateur a confirmé le son.
+- Le flux `audio.meter` a fourni 60 relevés en 3,5 secondes sur les sorties
+  physiques routées et les sorties virtuelles sources. Les crêtes observées
+  allaient de `-101,65` à `-26,43 dBFS`.
+- Les journaux et l’API de diagnostics ont été vérifiés après réinstallation :
+  démarrage du moteur, configuration du pilote physique et application des
+  huit routes sont consignés dans
+  `%LOCALAPPDATA%/TimoxVasio/logs/engine.log`.
+- Swagger a été vérifié par l’utilisateur dans l’interface Electron installée.
+
+Les profils de canaux prennent effet au prochain démarrage de chaque
+application audio concernée.
 
 ## Fichiers de la release Windows x64
 
@@ -39,6 +45,6 @@ Electron `Timox VASIO Control`.
 | `TimoxVirtualAsioEngine.exe` | Exécutable du moteur audio utilisé par l’interface. La version empaquetée est incluse dans les deux applications ci-dessus; cet asset séparé sert au déploiement ou diagnostic manuel. |
 | `SHA256SUMS.txt` | Sommes SHA-256 des quatre binaires précédents, pour vérifier leur intégrité après téléchargement. |
 
-Pour une installation normale, installer d’abord **Timox VASIO Control** avec le Setup, puis installer et enregistrer séparément `TimoxVasio.dll` en suivant [INSTALL.md](https://github.com/timox/TimoxVasio/blob/v1.0.0/INSTALL.md). Les hôtes ASIO chargent la DLL; l’interface configure le moteur, qui est lancé avec elle.
+Pour une installation normale, installer d’abord **Timox VASIO Control** avec le Setup, puis installer et enregistrer séparément `TimoxVasio.dll` en suivant [INSTALL.md](https://github.com/timox/TimoxVasio/blob/main/INSTALL.md). Les hôtes ASIO chargent la DLL; l’interface configure le moteur, qui est lancé avec elle.
 
 La publication est destinée au dépôt public [TimoxVasio](https://github.com/timox/TimoxVasio).
