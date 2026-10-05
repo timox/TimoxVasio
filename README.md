@@ -18,6 +18,16 @@ Les séquences ASIO, les profils API et le chemin Mixxx sont illustrés dans [DR
 
 Le récapitulatif de cette version est dans [RELEASE_NOTES_v1.0.0.md](docs/RELEASE_NOTES_v1.0.0.md).
 
+## Utiliser l’API et soutenir le projet
+
+Le [quick start API](docs/API_QUICKSTART.md) présente l’architecture complète
+et des exemples PowerShell/Node.js. Le contrat détaillé se trouve dans
+[`API.md`](API.md) et [`openapi-v1.json`](openapi-v1.json).
+
+TimoxVasio peut être soutenu via [GitHub Sponsors](https://github.com/sponsors/timox).
+Voir [Soutenir le projet](docs/FUNDING.md) pour savoir comment le financement
+sera utilisé.
+
 ## Architecture simplifiée
 
 ```mermaid

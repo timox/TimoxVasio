@@ -2,6 +2,10 @@
 
 Cette API est le contrat entre l’interface de contrôle et le moteur natif. Electron main en est le client ; le renderer ne lit ni le registre, ni le fichier de configuration, ni la mémoire audio partagée.
 
+Pour une prise en main par étapes, avec schéma d’architecture et exemples
+PowerShell/Node.js, voir le [quick start API](docs/API_QUICKSTART.md). Ce fichier
+reste la référence détaillée du contrat.
+
 La définition [Swagger/OpenAPI 3.1](openapi-v1.json) décrit les routes HTTP et référence les schémas JSON partagés. Son extension `x-websocket` décrit les commandes, réponses et événements de la connexion WebSocket.
 
 Le serveur natif utilise `cpp-httplib` 0.58.0 pour HTTP et WebSocket, et `nlohmann/json` 3.12.0 pour encoder et décoder les messages. Les en-têtes et licences de ces dépendances sont conservés dans `vendor/`.
