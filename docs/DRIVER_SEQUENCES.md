@@ -23,7 +23,7 @@ sequenceDiagram
     D->>S: "Résoudre le profil du nom d'exécutable"
     S-->>D: "Comptes d'entrée et de sortie effectifs"
     H->>D: "init(systemHandle)"
-    D-->>H: "ASIOTrue (métadonnées; pas de flux audio)"
+    D-->>H: "ASIOTrue (métadonnées, pas de flux audio)"
     H->>D: "getChannels()"
     D-->>H: "inputCount, outputCount du profil"
     loop Pour chaque canal demandé par l'hôte
