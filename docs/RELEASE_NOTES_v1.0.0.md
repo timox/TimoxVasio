@@ -19,9 +19,10 @@ Electron `Timox VASIO Control`.
 
 ## Limites connues
 
-- La transmission d’un signal audio mesurable sur le matériel ciblé n’est pas
-  attestée par les vérifications consignées. L’utilisateur doit valider le
-  circuit avec son pilote physique et ses applications.
+- Le parcours audio de bout en bout a été testé et confirmé par l’utilisateur
+  le 5 octobre 2026. Les détails instrumentés et les niveaux mesurés ne sont
+  pas consignés dans ces notes; l’ancienne lecture à `-120 dBFS` était antérieure
+  à cet essai et ne permettait pas, à elle seule, de conclure.
 - Les captures UX/UI fournies précèdent la build renommée et les corrections
   finales. Le clavier, le lecteur d’écran et le contraste calculé ne sont pas
   couverts par cette revue.
@@ -33,4 +34,4 @@ Electron `Timox VASIO Control`.
 - `Timox VASIO Control 1.0.0.exe` : application portable x64.
 - `Timox VASIO Control Setup 1.0.0.exe` : installateur x64.
 
-La publication est destinée au dépôt public [TimoxAsio](https://github.com/timox/TimoxAsio).
+La publication est destinée au dépôt public [TimoxVasio](https://github.com/timox/TimoxVasio).

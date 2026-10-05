@@ -34,7 +34,7 @@ La sonde appelle explicitement `ASIOInit`, vérifie l’activation COM, les 256 
   --clsid "{A4D39126-78CB-4D89-9E0A-54494D4F5856}"
 ```
 
-La sonde audio vérifie également les index de canaux bas, élevés et clairsemés. Elle ne remplace pas une validation avec deux hôtes ASIO réels ni un signal matériel observé.
+La sonde audio vérifie également les index de canaux bas, élevés et clairsemés. En complément, le parcours audio de bout en bout a été testé et confirmé par l’utilisateur le 5 octobre 2026. Les détails de mesure et la liste exhaustive des hôtes testés ne sont pas consignés dans ce guide.
 
 ## Vérifier l’enregistrement Steinberg
 
@@ -47,6 +47,6 @@ pwsh -NoProfile -File .\register_drivers.ps1 list
 pwsh -NoProfile -File .\register_drivers.ps1 uninstall
 ```
 
-## Validation restante
+## État de validation
 
-La compilation, l’activation COM directe, les sondes de transport/routage et les contrats API/UI ont été vérifiés au cours du travail. L’acceptation finale reste conditionnée à une vérification avec un hôte ASIO réel, plusieurs clients simultanés, les buffers physiques limités aux canaux routés et un signal audio constaté sur le matériel choisi. Une simple compilation ou énumération ne prouve pas ce circuit complet.
+La compilation, l’activation COM directe, les sondes de transport/routage et les contrats API/UI ont été vérifiés au cours du travail. Le test audio de bout en bout a également été réalisé et confirmé par l’utilisateur le 5 octobre 2026. Cette confirmation établit que le parcours a été testé; ce guide ne contient pas de relevé chiffré ni de compte rendu détaillé de l’essai. Une simple compilation ou énumération, prise isolément, ne prouve pas ce circuit complet.

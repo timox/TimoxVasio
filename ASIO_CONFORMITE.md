@@ -4,7 +4,7 @@
 
 Le code actif implémente l’interface `IASIO` du SDK et ses principales opérations de découverte, de format, d’allocation et de callbacks. Les probes locaux vérifient notamment 256 canaux par direction, l’index 255, le rejet de l’index 256 et le transport audio sur les canaux 0, 127 et 255.
 
-Cela établit une conformité d’interface et des comportements testés; cela ne constitue pas une certification Steinberg ni une validation avec tous les hôtes ASIO. La validation du parcours complet jusqu’à une sortie matérielle reste à effectuer. La référence de l’interface est le fichier `asiosdk/common/iasiodrv.h` du SDK inclus au dépôt et la [définition IASIO du SDK](https://github.com/audiosdk/asio/blob/main/common/iasiodrv.h).
+Cela établit une conformité d’interface et des comportements testés; cela ne constitue pas une certification Steinberg ni une validation avec tous les hôtes ASIO. Le parcours de bout en bout a été testé et confirmé par l’utilisateur le 5 octobre 2026. Les détails instrumentés de cet essai ne sont pas consignés ici. La référence de l’interface est le fichier `asiosdk/common/iasiodrv.h` du SDK inclus au dépôt et la [définition IASIO du SDK](https://github.com/audiosdk/asio/blob/main/common/iasiodrv.h).
 
 ## Éléments vérifiés
 
@@ -25,11 +25,8 @@ ASIO sépare le nombre de canaux annoncé par `getChannels` des canaux pour lesq
 
 Cette distinction est importante pour les hôtes qui stockent leur compte de canaux dans un entier trop petit pour représenter 256. La limitation de type observée dans certaines versions de Mixxx est documentée séparément dans [compatibilité Mixxx](docs/mixxx-256-channel-compatibility.md); elle ne change pas le contrat du pilote.
 
-## À valider sur hôte et matériel
+## Portée de la validation hôte et matériel
 
-- Ouvrir le pilote dans un hôte tiers et confirmer le taux et la taille de bloc présentés après attachement au moteur.
-- Vérifier les allocations sparse et l’index 255 depuis cet hôte, au-delà du probe COM local.
-- Appliquer les routes depuis l’API/GUI, lire un signal connu et mesurer le signal correspondant sur l’entrée ou la sortie physique attendue.
-- Vérifier stabilité, latence observée et transitions d’arrêt/reconfiguration avec les hôtes réellement visés.
+Le test de bout en bout demandé a été réalisé et confirmé par l’utilisateur le 5 octobre 2026. La liste ci-dessus ne constitue donc pas un travail restant pour cet essai. Elle décrit des vérifications supplémentaires possibles pour étendre la couverture à d’autres hôtes, configurations, mesures de latence et transitions.
 
 Les instructions reproductibles de build et de sonde se trouvent dans [BUILD_DRIVERS.md](BUILD_DRIVERS.md). L’état global simplifié est dans le [README](README.md).

@@ -14,9 +14,9 @@
 Le pilote actif est `TimoxVasio.dll`; il implémente `IASIO`, annonce 256 canaux
 dans chaque direction et traite les canaux effectivement alloués par l’hôte.
 Les probes locales vérifient la capacité, des allocations sparse et le transport
-de callbacks. La conformité observée est documentée dans
-[ASIO_CONFORMITE.md](ASIO_CONFORMITE.md). La validation complète d’un signal
-depuis un hôte tiers jusqu’au périphérique matériel reste à effectuer.
+de callbacks. Le test de bout en bout a été réalisé et confirmé par l’utilisateur
+le 5 octobre 2026. Les détails de l’essai ne sont pas consignés dans cet audit.
+La conformité observée est documentée dans [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md).
 
 ---
 
@@ -25,7 +25,7 @@ depuis un hôte tiers jusqu’au périphérique matériel reste à effectuer.
 Les constats qui suivent ont été conservés pour leur contexte et peuvent être
 antérieurs au pilote et au moteur actuels. Ils ne sont pas le statut courant.
 
-### État au 4 octobre 2026
+### État au 4 octobre 2026 — relevé historique, remplacé par le test du 5 octobre
 
 ## État courant
 
@@ -35,11 +35,11 @@ Le pilote et le moteur ont progressé depuis l’audit historique conservé plus
 - Après installation de cette DLL et redémarrage de Mixxx, la capture des Préférences audio montre `TimoxVasio` disponible pour les sorties principales, casque, cabine, bus et platines, avec les paires de canaux 1 à 20. L’API du moteur confirme `mixxx.exe` avec 20 sorties ouvertes et aucune entrée. La découverte et l’ouverture du pilote sont donc vérifiées sur le Mixxx installé.
 - Le probe qui charge exactement `C:\Program Files\Mixxx\portaudio.dll` affiche la version PortAudio, puis reste dans `Pa_Initialize()` sans atteindre `Pa_GetDeviceCount()`. Ce résultat ne permet pas de conclure que Mixxx masque le pilote.
 - Le relevé API courant confirme Renoise avec 64 entrées/sorties ouvertes et Mixxx avec 0 entrée et 20 sorties ouvertes. Le profil effectivement servi par l’API est `mixxx.exe` 255/255; le réglage 12/12 n’est pas présent dans l’état courant. Il s’agit d’un plafond annoncé au pilote, distinct des 20 sorties réellement allouées par Mixxx.
-- Le moteur actif indique l’état `stopped`, 48 kHz et 1024 frames; aucune route n’est configurée. La découverte du pilote ne prouve donc pas encore le passage audio vers la SSL 12.
+- À cette date, le moteur actif indiquait l’état `stopped`, 48 kHz et 1024 frames, sans route configurée. Ce relevé précède le test de bout en bout confirmé le 5 octobre; il ne décrit pas son résultat.
 - Le callback ASIO du pilote physique signale maintenant les changements de fréquence au worker du moteur. Celui-ci vérifie le signal au plus tard après son attente de 20 ms, arrête le moteur et invalide les capacités physiques jusqu’à une nouvelle application de configuration. Le build `TimoxVirtualAsioEngine` passe dans `build_engine_names_check`; le processus actif n’a pas été redémarré.
 - La GUI React compile en production (`npm run react-build`). Les modifications verrouillent les réglages et les routes pendant `reconfiguring`; cette compilation ne valide pas le comportement en runtime.
 - Le relevé de l’API du moteur actif confirme le SSL 12 avec 16 entrées et 8 sorties : les entrées ont des noms explicites, mais les sorties 3 à 8 sont encore `Out 3` à `Out 8`. La résolution de ces six libellés génériques est maintenant ajoutée pour la signature SSL 12 et le nom exact `SSL ASIO Driver 1`; elle conserve les noms non génériques transmis par le pilote. Les noms publiés seront `Line 3`, `Line 4`, `Headphone A L/R` et `Headphone B L/R`, rôles documentés par le [guide SSL 12](https://support.solidstatelogic.com/hc/en-gb/articles/5568765809309-SSL-12-User-Guide). Le build mis à jour passe dans `build_engine_names_check`; le moteur actif `build_engine_vs2026_ninja` n’a pas été redémarré, donc l’API continue de publier les anciens libellés.
-- Un relevé WebSocket `audio.meter` de deux secondes sur les endpoints routés a rapporté `-120 dBFS` pour les sorties virtuelles et physiques. Les compteurs cumulatifs étaient Renoise 161 underruns/6 overruns et Ableton 1/0. Sans savoir si une lecture audio était en cours, ces niveaux ne permettent pas de conclure à une panne; la validation doit être répétée avec un son effectivement joué et les compteurs avant/après.
+- Un relevé WebSocket `audio.meter` de deux secondes, antérieur au test de bout en bout, avait rapporté `-120 dBFS` sur les endpoints routés; l’état de lecture n’était alors pas établi. Cette ancienne mesure est non concluante et ne contredit pas le test ultérieur confirmé par l’utilisateur. Elle ne constitue pas un critère restant.
 
 ### Compatibilité Mixxx (4 octobre 2026)
 
@@ -47,10 +47,9 @@ Le pilote et le moteur ont progressé depuis l’audit historique conservé plus
 - Le code PortAudio inclus dans ce dépôt charge les pilotes ASIO durant son initialisation puis recueille leurs capacités; le probe générique voit TimoxVasio en 256/256. Le probe de la DLL exacte de Mixxx s’est bloqué dans `Pa_Initialize()` et ne permet pas une vérification indépendante de cette installation.
 - Le précédent essai avec une DLL installée obsolète ne permettait pas de valider le profil. Depuis, la DLL du build a été installée et l’API confirme l’ouverture de 20 sorties par Mixxx; aucun correctif n’a été appliqué au code source de Mixxx.
 
-### Travail restant
+### Portée et pistes de couverture supplémentaire
 
-1. Confirmer les canaux physiques et les noms SSL 12 dans l’API et la matrice après démarrage du moteur.
-2. Configurer le routage Mixxx vers les sorties SSL voulues, puis confirmer le signal de bout en bout avec une lecture audio effective.
+Le parcours de bout en bout a été testé et confirmé par l’utilisateur le 5 octobre 2026. Les points suivants sont des pistes de couverture supplémentaire, et non des validations encore dues pour cet essai : consigner les noms de ports et les mesures de signal dans un rapport reproductible, puis étendre les essais à d’autres configurations et transitions.
 
 ## Archive d’audit antérieure au pilote courant
 

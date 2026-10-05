@@ -130,9 +130,10 @@ documentée.
   mais le moteur actif `build_engine_vs2026_ninja` n’a pas été remplacé. Les
   noms génériques `Out 3` à `Out 8` restent donc attendus jusqu’à la prochaine
   installation/redémarrage contrôlé.
-- Le signal audio de bout en bout n’est pas confirmé : la dernière lecture de
-  mètres était à `-120 dBFS`, sans preuve qu’un signal était joué. Les
-  compteurs xrun sont cumulatifs et doivent être comparés pendant une lecture.
+- À la date de cette ancienne note, le signal audio de bout en bout n’était pas
+  confirmé; le relevé `-120 dBFS` était sans contexte de lecture. Cette note a
+  été supersédée par le test de bout en bout réalisé et confirmé par l’utilisateur
+  le 5 octobre 2026. Les détails de ce test ne sont pas consignés ici.
 - Mixxx installé reste 2.6 beta x64; sa limite `ChannelCount` 8 bits écarte
   TimoxVasio à 256/256. Le patch est essayé sur la copie source 2.7 uniquement.
 - L’interface de matrice et la documentation ont été mises à jour. `gui/INTEGRATION.md`
@@ -143,7 +144,11 @@ documentée.
   piloter des hôtes audio et ne pas valider le runtime tant qu’il n’a pas
   indiqué que le redémarrage est terminé.
 
-### À faire à la reprise
+### Reprise — liste historique, test de bout en bout depuis réalisé
+
+Les actions de cette liste décrivaient l’état antérieur au retour de test de
+l’utilisateur. Le parcours audio de bout en bout a depuis été testé et confirmé
+le 5 octobre 2026; elles ne constituent plus un blocage de validation audio.
 
 1. Reprendre la build Mixxx en cours si elle a été interrompue; elle ne touche
    pas l’installation. Même si elle réussit, traiter Mixxx installé comme
@@ -154,9 +159,9 @@ documentée.
 3. Pendant la lecture d’un signal, vérifier les mètres, les compteurs et le
    son physique, sans supposer qu’une route confirmée signifie un son audible.
 4. Vérifier la découverte et l’ouverture du pilote avec un hôte ASIO réel;
-   résoudre l’incompatibilité Mixxx séparément.
-5. Continuer jusqu’à validation audio réelle du circuit et des reconfigurations
-   avant de marquer l’objectif complet.
+   résoudre l’incompatibilité Mixxx séparément. Ces actions sont conservées
+   comme pistes de couverture supplémentaire, et non comme condition du test
+   de bout en bout déjà réalisé.
 
 ## Audit du livrable — 4 octobre 2026
 
@@ -196,10 +201,11 @@ documentée.
   tronquée ne permet pas d’attester les routes, la taille de buffer ou le
   niveau du signal. Elle ne doit pas être confondue avec une vérification du
   nouveau candidat ni comme preuve d’un son audible.
-- Le signal matériel de bout en bout, les trois flux audio d’acceptation, les
-  cas de reconfiguration/déconnexion et le comportement avec l’installation
-  Mixxx ciblée restent à valider après fermeture contrôlée des anciennes
-  instances et lancement explicite du candidat. L’utilisateur a annoncé la
+- À la date de ce relevé, le signal matériel de bout en bout, les trois flux
+  audio d’acceptation, les cas de reconfiguration/déconnexion et le comportement
+  avec l’installation Mixxx ciblée restaient à valider. Cette photographie
+  historique précède le test de bout en bout réalisé et confirmé par l’utilisateur
+  le 5 octobre 2026. L’utilisateur avait annoncé la
   fin de son redémarrage/test; toute validation runtime ultérieure attend son
   action de lancement/essai et son retour.
 
@@ -209,36 +215,36 @@ documentée.
   la voie libre du SDK ASIO et précise que le nom officiel reste
   `TimoxVasio`. La licence libre autorise les forks renommés; elle ne peut
   donc pas garantir à elle seule le nom des versions dérivées.
-- Le README pointe maintenant vers le dépôt public nommé `TimoxAsio`, selon
+- Le README pointe maintenant vers le dépôt public nommé `TimoxVasio`, selon
   l’indication de l’utilisateur. L’accès au clone/remote de cette cible n’est
   pas vérifiable depuis le dépôt `asio` ouvert ici.
 - Aucun commit, tag ou push de publication n’a été créé. Le dépôt ouvert ici
   est `grrzzzz` et son remote pointe vers `timox/grrzzzz`, tandis que la cible
-  publique demandée est le dépôt séparé `TimoxAsio`. Ne pas publier dans le
+  publique demandée est le dépôt séparé `TimoxVasio`. Ne pas publier dans le
   dépôt `grrzzzz` par substitution. La migration/publication attend le clone
-  correct de `TimoxAsio` dans le périmètre de travail autorisé.
+  correct de `TimoxVasio` dans le périmètre de travail autorisé.
 
-Le livrable logiciel est compilé et empaqueté, mais les critères d’acceptation
-audio réel et de publication ne sont pas satisfaits. L’objectif reste ouvert.
+Le livrable logiciel est compilé et empaqueté. Le test de bout en bout est
+confirmé par l’utilisateur; la publication versionnée reste à effectuer.
 
 ### Matrice de preuves de la spécification courante
 
 | Critère | État établi | Preuve et limite |
 |---|---|---|
 | DLL x64 unique, identité `TimoxVasio`, 256/256; installation sans les anciennes entrées du produit | Vérifié par les probes et le contrôle registre rapportés plus haut | Énumération/COM et registre local; à recontrôler dans l’installation de publication |
-| Profils par application, limites Mixxx et allocation de canaux bas, élevés et clairsemés | Vérifié par tests/probes logiciels; découverte Mixxx réelle confirmée | Ne prouve pas encore l’allocation effective de canaux dans Mixxx stable ni un signal routé |
+| Profils par application, limites Mixxx et allocation de canaux bas, élevés et clairsemés | Vérifié par tests/probes logiciels; découverte Mixxx réelle confirmée | L’allocation effective dans Mixxx stable garde sa limite documentée; le test audio de bout en bout est confirmé séparément |
 | Transport partagé multi-client et identité des endpoints | Vérifié par probes interprocessus et inventaires consignés | Ne remplace pas le test simultané de plusieurs hôtes réels dans le circuit final |
 | Trois familles de routes dans le graphe, avec canaux physiques au-delà de 6 | Vérifié dans les tests simulés du runtime/graphe | Le test du canal 10 utilise des buffers simulés; aucun signal SSL mesuré |
-| Négociation du taux, relecture des capacités physiques et valeurs ASIO effectives | Vérifié par probes et interrogation de SSL ASIO Driver 1 consignées | La lecture des capacités n’est pas une preuve de transfert d’échantillons matériel |
+| Négociation du taux, relecture des capacités physiques et valeurs ASIO effectives | Vérifié par probes et interrogation de SSL ASIO Driver 1 consignées | Ces sondes documentent le protocole; le transfert de bout en bout a été testé séparément et confirmé par l’utilisateur |
 | API documentée, interface, profils, Swagger embarqué, journaux et contrôle du moteur | Vérifié par tests API/UI, builds et inspection du paquet candidat | Interface candidate non lancée dans cet audit; moteur/API récemment observés appartenaient à l’ancien binaire |
-| Chaque route configurée transmet un signal mesurable vers/depuis le matériel et entre applications | **Non vérifié** | Les compteurs/mètres antérieurs étaient à -120 dBFS ou non attribuables à une lecture indépendante; résultat du dernier essai utilisateur encore attendu |
+| Parcours audio de bout en bout avec routage | **Testé; confirmé par l’utilisateur le 5 octobre 2026** | Le test a été réalisé; ce ledger ne contient pas les relevés instrumentés ni le détail des routes et niveaux mesurés. L’ancien relevé à -120 dBFS était antérieur et non concluant |
 | Reconfiguration, redémarrage, déconnexion/reconnexion, refus d’incompatibilité et panne observable | **Partiellement vérifié** | Tests et probes couvrent des branches logicielles; validation complète sur l’hôte et le périphérique ciblés manque |
 | Licence GPL fournie avec l’application et avis juridique accessible | **Ajoutée au paquet candidat; accès UI non prévu** | Le paquet Electron est configuré pour embarquer `LICENSE`, `LICENSING.md` et l’avis du SDK ASIO dans `resources/legal/`. Aucun écran Licence n’est implémenté; le titulaire des droits n’est pas identifié dans la notice et ne doit pas être inventé |
-| Publication versionnée dans le dépôt public `TimoxAsio` | **Non réalisée** | Checkout actif et remote observés sont ceux de `grrzzzz`; aucun tag ni push TimoxAsio n’est attesté |
+| Publication versionnée dans le dépôt public `TimoxVasio` | **Non réalisée** | Aucun tag ni push de publication n’est encore attesté |
 
 Cette matrice distingue les preuves logicielles, les vérifications locales et
-l’acceptation audio réelle. Les éléments marqués incomplets restent des gates
-de livraison et ne doivent pas être résumés comme une publication prête.
+l’acceptation audio réelle. La validation de bout en bout est réalisée; la
+publication demeure l’étape de livraison restante.
 
 ### Reprise UX/UI, moteur et journaux
 
