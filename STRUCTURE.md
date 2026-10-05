@@ -11,12 +11,17 @@ flowchart LR
     Mapping <--> Engine[TimoxVirtualAsioEngine.exe]
     Engine <--> Physical[Hôte ASIO physique]
     Engine <--> API[API HTTP et WebSocket]
-    GUI[VASIO Control] <--> API
+    GUI[Timox VASIO Control] <--> API
 ```
 
 Le pilote ASIO physique sélectionné fournit l’horloge, la fréquence et la taille de buffer. `PhysicalAsioHost` crée des buffers uniquement pour les canaux physiques référencés par les routes; les index matériels sont conservés dans le graphe.
 
 ## Composants
+
+Le produit comporte trois composants distincts : le pilote ASIO virtuel
+`TimoxVasio.dll`, le moteur `TimoxVirtualAsioEngine.exe` et l’interface
+Electron `Timox VASIO Control`. L’interface configure le moteur par l’API
+documentée; les applications audio chargent le pilote ASIO.
 
 - `src/vasio_driver.cpp` et `src/audio_transport.cpp` : contrat ASIO, allocation client et transport partagé 256/256.
 - `src/vasio_client_manager.cpp` : découverte et snapshots des clients actifs.

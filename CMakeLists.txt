@@ -42,6 +42,7 @@ set(SOURCES
     ${SRC_DIR}/audio_controller.cpp
     ${SRC_DIR}/audio_configuration_store.cpp
     ${SRC_DIR}/application_profile_store.cpp
+    ${SRC_DIR}/engine_diagnostics.cpp
 )
 
 # Windows-specific
@@ -127,6 +128,16 @@ if(WIN32)
         ${CMAKE_SOURCE_DIR}/vendor
     )
 
+    add_executable(EngineDiagnosticsTests
+        ${CMAKE_SOURCE_DIR}/tests/engine_diagnostics_tests.cpp
+        ${SRC_DIR}/engine_diagnostics.cpp
+    )
+    target_include_directories(EngineDiagnosticsTests PRIVATE
+        ${INCLUDE_DIR}
+        ${SRC_DIR}
+        ${CMAKE_SOURCE_DIR}/vendor
+    )
+
     add_executable(ApplicationProfileStoreTests
         ${CMAKE_SOURCE_DIR}/tests/application_profile_store_tests.cpp
         ${SRC_DIR}/application_profile_store.cpp
@@ -165,6 +176,7 @@ if(WIN32)
     add_executable(ApplicationProfilesApiTests
         ${CMAKE_SOURCE_DIR}/tests/application_profiles_api_tests.cpp
         ${SRC_DIR}/control_api_server.cpp
+        ${SRC_DIR}/engine_diagnostics.cpp
         ${SRC_DIR}/audio_controller.cpp
         ${SRC_DIR}/audio_configuration_store.cpp
         ${SRC_DIR}/application_profile_store.cpp

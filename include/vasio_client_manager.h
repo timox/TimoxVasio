@@ -33,6 +33,7 @@ public:
     void Stop();
     // Pins the mapping lifetime while a controller builds or publishes an audio snapshot.
     std::vector<VasioClientSnapshot> GetClientSnapshots() const;
+    bool TryReserveShutdown();
     void SetDriverConfiguration(std::uint32_t preferredBufferFrames, std::uint32_t sampleRate);
 
 private:
@@ -50,4 +51,5 @@ private:
     std::vector<Client> clients_;
     std::uint32_t preferredBufferFrames_{256};
     std::uint32_t sampleRate_{};
+    bool shutdownReserved_ = false;
 };

@@ -2,6 +2,7 @@
 #include "physical_asio_host.h"
 #include "control_api_server.h"
 #include "vasio_client_manager.h"
+#include "engine_diagnostics.h"
 
 #include <windows.h>
 #if defined(VASIO_ENABLE_CRASH_DUMP)
@@ -83,21 +84,35 @@ int wmain(int argc, wchar_t** argv) {
         return 2;
     }
 
+    EngineDiagnostics diagnostics;
+    std::string diagnosticsError;
+    const auto diagnosticsDirectory = EngineDiagnostics::DefaultDirectory();
+    if (diagnosticsDirectory.empty() || !diagnostics.Initialize(diagnosticsDirectory, diagnosticsError)) {
+        std::fprintf(stderr, "Impossible d’initialiser les journaux moteur: %s\n", diagnosticsError.c_str());
+        return 1;
+    }
+    diagnostics.Write(EngineDiagnostics::Level::Info, "engine", "Engine process started");
+
     VasioClientManager clients;
     if (!clients.Start()) {
+        diagnostics.Write(EngineDiagnostics::Level::Error, "clients", "Unable to start VASIO client discovery");
         std::fprintf(stderr, "Impossible de démarrer la découverte des clients VASIO.\n");
         return 1;
     }
     AudioController controller(clients);
     if (!controller.Start()) {
+        diagnostics.Write(EngineDiagnostics::Level::Error, "audio", "Unable to start the audio controller");
         clients.Stop();
         std::fprintf(stderr, "Impossible de démarrer le contrôleur audio.\n");
         return 1;
     }
-    ControlApiServer api(clients, controller);
+    ControlApiServer api(clients, controller, diagnostics, [] {
+        if (gStopEvent) SetEvent(gStopEvent);
+    });
     std::uint16_t port = 0;
     std::string apiError;
     if (!api.Start(52525, port, apiError)) {
+        diagnostics.Write(EngineDiagnostics::Level::Error, "api", apiError);
         controller.Stop();
         clients.Stop();
         std::fprintf(stderr, "Impossible de démarrer l’API locale: %s\n", apiError.c_str());
@@ -105,6 +120,7 @@ int wmain(int argc, wchar_t** argv) {
     }
     gStopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (!gStopEvent || !SetConsoleCtrlHandler(consoleControlHandler, TRUE)) {
+        diagnostics.Write(EngineDiagnostics::Level::Error, "engine", "Unable to initialize the orderly shutdown signal");
         if (gStopEvent) CloseHandle(gStopEvent);
         api.Stop();
         controller.Stop();
@@ -114,12 +130,14 @@ int wmain(int argc, wchar_t** argv) {
     }
 
     std::printf("{\"event\":\"api.ready\",\"port\":%u}\n", static_cast<unsigned>(port));
+    diagnostics.Write(EngineDiagnostics::Level::Info, "api", "Local control API listening on port " + std::to_string(port));
     std::fflush(stdout);
     WaitForSingleObject(gStopEvent, INFINITE);
     SetConsoleCtrlHandler(consoleControlHandler, FALSE);
     api.Stop();
     controller.Stop();
     clients.Stop();
+    diagnostics.Write(EngineDiagnostics::Level::Info, "engine", "Engine process stopped");
     CloseHandle(gStopEvent);
     gStopEvent = nullptr;
     return 0;

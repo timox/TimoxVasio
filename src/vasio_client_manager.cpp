@@ -52,6 +52,13 @@ std::vector<VasioClientSnapshot> VasioClientManager::GetClientSnapshots() const 
     return result;
 }
 
+bool VasioClientManager::TryReserveShutdown() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (shutdownReserved_ || !clients_.empty()) return false;
+    shutdownReserved_ = true;
+    return true;
+}
+
 void VasioClientManager::SetDriverConfiguration(
     std::uint32_t preferredBufferFrames, std::uint32_t sampleRate) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -108,6 +115,7 @@ void VasioClientManager::Scan() {
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (shutdownReserved_) return;
         for (auto& entry : fastMappings) {
             const auto& key = entry.first;
             const auto existing = std::find_if(clients_.begin(), clients_.end(), [&](const Client& client) {
@@ -152,6 +160,7 @@ void VasioClientManager::Scan() {
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
+    if (shutdownReserved_) return;
     clients_.erase(std::remove_if(clients_.begin(), clients_.end(), [&](Client& client) {
         const auto key = std::make_pair(client.info.driverId, client.info.processId);
         if (found.find(key) != found.end()) return false;

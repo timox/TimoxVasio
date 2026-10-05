@@ -8,6 +8,7 @@
     { "$ref": "#/definitions/applicationProfiles" },
     { "$ref": "#/definitions/applicationProfilesUpdate" },
     { "$ref": "#/definitions/applyCommand" },
+    { "$ref": "#/definitions/engineStopCommand" },
     { "$ref": "#/definitions/response" },
     { "$ref": "#/definitions/event" }
   ],
@@ -185,6 +186,32 @@
       },
       "additionalProperties": false
     },
+    "diagnosticLevel": {
+      "type": "object",
+      "required": ["level"],
+      "properties": {"level": {"enum": ["info", "debug"]}},
+      "additionalProperties": false
+    },
+    "diagnosticEntry": {
+      "type": "object",
+      "required": ["timestamp", "level", "component", "message"],
+      "properties": {
+        "timestamp": {"type": "string", "format": "date-time"},
+        "level": {"enum": ["debug", "info", "warning", "error"]},
+        "component": {"type": "string"},
+        "message": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": ["level", "entries"],
+      "properties": {
+        "level": {"enum": ["info", "debug"]},
+        "entries": {"type": "array", "maxItems": 500, "items": {"$ref": "#/definitions/diagnosticEntry"}}
+      },
+      "additionalProperties": false
+    },
     "applyCommand": {
       "type": "object",
       "required": ["id", "command", "payload"],
@@ -202,6 +229,15 @@
           },
           "additionalProperties": false
         }
+      },
+      "additionalProperties": false
+    },
+    "engineStopCommand": {
+      "type": "object",
+      "required": ["id", "command"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "command": { "const": "engine.stop" }
       },
       "additionalProperties": false
     },

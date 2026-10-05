@@ -5,6 +5,7 @@
 #include "audio_controller.h"
 #include "routing_graph.h"
 #include "vasio_client_manager.h"
+#include "engine_diagnostics.h"
 
 #include <windows.h>
 
@@ -171,6 +172,8 @@ Json meterEvent(const AudioMeterSnapshot& meter) {
 struct ControlApiServer::Impl {
     VasioClientManager& clients;
     AudioController& controller;
+    EngineDiagnostics& diagnostics;
+    std::function<void()> stopRequest;
     std::vector<PhysicalAsioDriverInfo> physicalInventory;
     httplib::Server server;
     std::atomic<bool> running{false};
@@ -178,8 +181,9 @@ struct ControlApiServer::Impl {
     std::thread listenerThread;
     std::uint16_t port = 0;
 
-    Impl(VasioClientManager& manager, AudioController& audioController)
-        : clients(manager), controller(audioController) {}
+    Impl(VasioClientManager& manager, AudioController& audioController, EngineDiagnostics& engineDiagnostics,
+         std::function<void()> requestStop)
+        : clients(manager), controller(audioController), diagnostics(engineDiagnostics), stopRequest(std::move(requestStop)) {}
     ~Impl() { Stop(); }
 
     Json physicalDriversJson() const {
@@ -298,6 +302,18 @@ struct ControlApiServer::Impl {
         if (id.empty() || id.size() > 128 || !request.is_object() ||
             !request.contains("command") || !request["command"].is_string())
             return errorEnvelope(id, "INVALID_CONFIGURATION", "Invalid request envelope", "validate");
+        diagnostics.Write(EngineDiagnostics::Level::Debug, "api", "Received command " + request["command"].get<std::string>());
+        if (request["command"] == "engine.stop") {
+            if (request.size() != 2)
+                return errorEnvelope(id, "INVALID_ENGINE_COMMAND", "engine.stop accepts only an id and command", "validate");
+            if (!clients.TryReserveShutdown())
+            {
+                diagnostics.Write(EngineDiagnostics::Level::Warning, "engine", "Stop refused because VASIO clients are still attached");
+                return errorEnvelope(id, "ENGINE_CLIENTS_CONNECTED", "Stop TimoxVasio clients before stopping the engine", "stop");
+            }
+            diagnostics.Write(EngineDiagnostics::Level::Info, "engine", "Ordered stop requested through the local API");
+            return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}}}};
+        }
         if (request["command"] != "configuration.apply")
             return errorEnvelope(id, "INVALID_CONFIGURATION", "Unsupported command", "validate");
         if (!request.contains("payload") || !request["payload"].is_object())
@@ -371,8 +387,17 @@ struct ControlApiServer::Impl {
         }
 
         const auto applied = controller.ApplyConfiguration(configuration);
-        if (!applied.success)
+        if (!applied.success) {
+            diagnostics.Write(EngineDiagnostics::Level::Error, "audio", applied.error);
             return errorEnvelope(id, "AUDIO_CONFIGURATION_FAILED", applied.error, "apply");
+        }
+        diagnostics.Write(EngineDiagnostics::Level::Info, "audio", "Audio configuration applied with " + std::to_string(configuration.routes.size()) + " routes");
+        const auto confirmed = controller.Snapshot();
+        if (confirmed.physicalDriverId && confirmed.sampleRate && confirmed.bufferFrames)
+            diagnostics.Write(EngineDiagnostics::Level::Info, "audio",
+                "Physical driver " + *confirmed.physicalDriverId + " configured at " +
+                std::to_string(*confirmed.sampleRate) + " Hz, " +
+                std::to_string(*confirmed.bufferFrames) + " frames");
         return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}}}};
     }
 
@@ -473,6 +498,58 @@ struct ControlApiServer::Impl {
             setCors(request, response);
             response.set_content(driversJson().dump(), "application/json; charset=utf-8");
         });
+        server.Get("/api/v1/diagnostics", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            std::size_t limit = 200;
+            if (request.has_param("limit")) {
+                try {
+                    const auto raw = request.get_param_value("limit");
+                    std::size_t consumed = 0;
+                    const auto parsed = std::stoul(raw, &consumed);
+                    if (consumed != raw.size() || parsed < 1 || parsed > 500) throw std::invalid_argument("limit");
+                    limit = parsed;
+                } catch (...) {
+                    response.status = 400;
+                    response.set_content(Json{{"code", "INVALID_LIMIT"}, {"message", "limit must be between 1 and 500"}}.dump(), "application/json; charset=utf-8");
+                    return;
+                }
+            }
+            Json entries = Json::array();
+            for (const auto& entry : diagnostics.ReadRecent(limit))
+                entries.push_back({{"timestamp", entry.timestamp}, {"level", entry.level},
+                    {"component", entry.component}, {"message", entry.message}});
+            response.set_content(Json{{"level", EngineDiagnostics::LevelName(diagnostics.GetLevel())},
+                {"entries", std::move(entries)}}.dump(), "application/json; charset=utf-8");
+        });
+        server.Put("/api/v1/diagnostics", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            try {
+                const auto body = Json::parse(request.body);
+                EngineDiagnostics::Level level{};
+                if (!body.is_object() || body.size() != 1 || !body.contains("level") ||
+                    !body["level"].is_string() || !EngineDiagnostics::ParseLevel(body["level"].get<std::string>(), level)) {
+                    response.status = 400;
+                    response.set_content(Json{{"code", "INVALID_DIAGNOSTIC_LEVEL"}, {"message", "level must be info or debug"}}.dump(), "application/json; charset=utf-8");
+                    return;
+                }
+                if (level != EngineDiagnostics::Level::Info && level != EngineDiagnostics::Level::Debug) {
+                    response.status = 400;
+                    response.set_content(Json{{"code", "INVALID_DIAGNOSTIC_LEVEL"}, {"message", "level must be info or debug"}}.dump(), "application/json; charset=utf-8");
+                    return;
+                }
+                std::string error;
+                if (!diagnostics.SetLevel(level, error)) {
+                    response.status = 500;
+                    response.set_content(Json{{"code", "DIAGNOSTICS_STORE_FAILED"}, {"message", error}}.dump(), "application/json; charset=utf-8");
+                    return;
+                }
+                diagnostics.Write(EngineDiagnostics::Level::Info, "diagnostics", "Log level changed to " + std::string(EngineDiagnostics::LevelName(level)));
+                response.set_content(Json{{"level", EngineDiagnostics::LevelName(level)}}.dump(), "application/json; charset=utf-8");
+            } catch (const Json::exception&) {
+                response.status = 400;
+                response.set_content(Json{{"code", "INVALID_DIAGNOSTIC_LEVEL"}, {"message", "Request body is not valid JSON"}}.dump(), "application/json; charset=utf-8");
+            }
+        });
         configureApplicationProfileRoutes();
         const auto optionsHandler = [](const httplib::Request& request, httplib::Response& response) {
             setCors(request, response);
@@ -483,6 +560,7 @@ struct ControlApiServer::Impl {
         server.Options("/api/v1/state", optionsHandler);
         server.Options("/api/v1/drivers", optionsHandler);
         server.Options("/api/v1/application-profiles", optionsHandler);
+        server.Options("/api/v1/diagnostics", optionsHandler);
         server.set_pre_request_handler([](const httplib::Request& request, httplib::Response& response) {
             const auto origin = request.get_header_value("Origin");
             if (!validOrigin(origin)) {
@@ -548,6 +626,11 @@ struct ControlApiServer::Impl {
                         reply = errorEnvelope("", "INVALID_CONFIGURATION", "Malformed JSON command", "parse");
                     }
                     if (!websocket.send(reply.dump())) break;
+                    if (reply.is_object() && reply.value("success", false) && request.is_object() &&
+                        request.value("command", std::string{}) == "engine.stop") {
+                        if (stopRequest) stopRequest();
+                        break;
+                    }
                     if (!sendStatusChanges()) break;
                     if (reply.is_object() && reply.value("success", false)) {
                         Json routes = stateJson()["routes"];
@@ -604,8 +687,9 @@ struct ControlApiServer::Impl {
     }
 };
 
-ControlApiServer::ControlApiServer(VasioClientManager& clients, AudioController& controller)
-    : impl_(std::make_unique<Impl>(clients, controller)) {}
+ControlApiServer::ControlApiServer(VasioClientManager& clients, AudioController& controller, EngineDiagnostics& diagnostics,
+    std::function<void()> stopRequest)
+    : impl_(std::make_unique<Impl>(clients, controller, diagnostics, std::move(stopRequest))) {}
 ControlApiServer::~ControlApiServer() = default;
 
 bool ControlApiServer::Start(std::uint16_t requestedPort, std::uint16_t& boundPort, std::string& error) {

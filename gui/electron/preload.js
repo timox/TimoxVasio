@@ -16,12 +16,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 contextBridge.exposeInMainWorld('vasio', {
     getState: () => ipcRenderer.invoke('api:get-state'),
     getDrivers: () => ipcRenderer.invoke('api:get-drivers'),
+    getApplicationProfiles: () => ipcRenderer.invoke('api:get-application-profiles'),
+    replaceApplicationProfiles: profiles => ipcRenderer.invoke('api:replace-application-profiles', profiles),
+    getDiagnostics: limit => ipcRenderer.invoke('api:get-diagnostics', limit),
+    setDiagnosticLevel: level => ipcRenderer.invoke('api:set-diagnostic-level', level),
     applyConfiguration: configuration => ipcRenderer.invoke('api:configuration-apply', configuration),
     subscribeEvents: callback => {
         const listener = (_event, payload) => callback(payload);
         ipcRenderer.on('api:event', listener);
         return () => ipcRenderer.removeListener('api:event', listener);
     },
+    startEngine: () => ipcRenderer.invoke('engine:start'),
+    stopEngine: () => ipcRenderer.invoke('engine:stop'),
     onDisconnect: callback => {
         const listener = () => callback();
         ipcRenderer.on('api:disconnect', listener);

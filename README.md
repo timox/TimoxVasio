@@ -1,6 +1,6 @@
 # TimoxVasio — synthèse du projet
 
-Le dépôt public dédié est [TimoxVasio](https://github.com/timox/TimoxVasio). Ce dossier `asio` du dépôt `grrzzzz` conserve un lien vers ce projet et les éléments de travail qui y sont migrés.
+Le dépôt public dédié est [TimoxAsio](https://github.com/timox/TimoxAsio). Ce dossier `asio` du dépôt `grrzzzz` conserve un lien vers ce projet et les éléments de travail qui y sont migrés.
 
 ## Objectif
 
@@ -14,7 +14,9 @@ Fournir un pilote ASIO virtuel Windows x64 unique, `TimoxVasio`, qui expose jusq
 - L’API publie les clients et les canaux réellement alloués; la GUI transmet les changements de configuration à cette API.
 - La découverte de `TimoxVasio` a été confirmée avec une build locale modifiée de Mixxx. La validation complète d’un signal routé jusqu’au matériel reste à faire.
 
-Les séquences ASIO, les profils API et le chemin Mixxx sont illustrés dans [DRIVER_SEQUENCES.md](docs/DRIVER_SEQUENCES.md). L'architecture est résumée dans [ARCHITECTURE.md](ARCHITECTURE.md). Les preuves et limites du contrôle de protocole sont résumées dans [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md). Les décisions détaillées sont dans la [spécification](docs/superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.md) et le [plan de réalisation](docs/superpowers/plans/2026-10-03-vasio-256-physical-master-plan.md).
+Les séquences ASIO, les profils API et le chemin Mixxx sont illustrés dans [DRIVER_SEQUENCES.md](docs/DRIVER_SEQUENCES.md). L'architecture est résumée dans [ARCHITECTURE.md](ARCHITECTURE.md). Les preuves et limites du contrôle de protocole sont résumées dans [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md). La [revue UX/UI](docs/UX_UI_REVIEW.md) documente l'interface, les corrections de lisibilité et les preuves visuelles. Les décisions détaillées sont dans la [spécification](docs/superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.md) et le [plan de réalisation](docs/superpowers/plans/2026-10-03-vasio-256-physical-master-plan.md).
+
+Le récapitulatif de cette version est dans [RELEASE_NOTES_v1.0.0.md](docs/RELEASE_NOTES_v1.0.0.md).
 
 ## Architecture simplifiée
 
@@ -49,3 +51,11 @@ Voir [BUILD_DRIVERS.md](BUILD_DRIVERS.md) pour reconstruire et sonder les compos
 ## Licence
 
 Le code original est sous GNU GPL version 3 (`GPL-3.0-only`). Les licences ASIO SDK et des dépendances tierces gardent leurs propres termes. Le nom du pilote reste **TimoxVasio**. Voir [LICENSING.md](LICENSING.md).
+
+## Les trois composants
+
+- **TimoxVasio** : pilote ASIO virtuel chargé par les applications audio.
+- **TimoxVirtualAsioEngine** : moteur qui transporte et route l’audio entre les applications et le pilote physique.
+- **Timox VASIO Control** : interface Electron qui configure le moteur, ses routes et ses diagnostics.
+
+L’interface et le moteur communiquent via l’API documentée. Le nom du pilote reste `TimoxVasio`; le nom de l’application Electron est `Timox VASIO Control`.

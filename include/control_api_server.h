@@ -2,14 +2,17 @@
 
 #include <cstdint>
 #include <memory>
+#include <functional>
 #include <string>
 
 class AudioController;
 class VasioClientManager;
+class EngineDiagnostics;
 
 class ControlApiServer final {
 public:
-    ControlApiServer(VasioClientManager& clients, AudioController& controller);
+    ControlApiServer(VasioClientManager& clients, AudioController& controller, EngineDiagnostics& diagnostics,
+        std::function<void()> stopRequest);
     ~ControlApiServer();
     ControlApiServer(const ControlApiServer&) = delete;
     ControlApiServer& operator=(const ControlApiServer&) = delete;

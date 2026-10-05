@@ -7,10 +7,37 @@ const { ApiClient } = require('./api-client');
 async function createApiFixture() {
     const state = { apiVersion: '1.0', engine: { state: 'stopped' }, routes: [] };
     const drivers = { physicalDrivers: [], virtualDrivers: [] };
+    const applicationProfiles = { profiles: [{ processName: 'mixxx.exe', inputChannels: 255, outputChannels: 255 }] };
+    const diagnostics = { level: 'info', entries: [] };
+    let diagnosticLevel = 'info';
+    let submittedProfiles = null;
     const server = http.createServer((request, response) => {
         response.setHeader('content-type', 'application/json');
         if (request.url === '/api/v1/state') response.end(JSON.stringify(state));
         else if (request.url === '/api/v1/drivers') response.end(JSON.stringify(drivers));
+        else if (request.url === '/api/v1/application-profiles' && request.method === 'GET')
+            response.end(JSON.stringify(applicationProfiles));
+        else if (request.url === '/api/v1/application-profiles' && request.method === 'PUT') {
+            const chunks = [];
+            request.on('data', chunk => chunks.push(chunk));
+            request.on('end', () => {
+                submittedProfiles = JSON.parse(Buffer.concat(chunks).toString());
+                response.end(JSON.stringify({
+                    profiles: submittedProfiles.profiles,
+                    restartRequiredClients: [{ pid: 42, processName: 'AudioApp.exe' }]
+                }));
+            });
+        }
+        else if (request.url.startsWith('/api/v1/diagnostics') && request.method === 'GET')
+            response.end(JSON.stringify({ ...diagnostics, level: diagnosticLevel }));
+        else if (request.url === '/api/v1/diagnostics' && request.method === 'PUT') {
+            const chunks = [];
+            request.on('data', chunk => chunks.push(chunk));
+            request.on('end', () => {
+                diagnosticLevel = JSON.parse(Buffer.concat(chunks).toString()).level;
+                response.end(JSON.stringify({ level: diagnosticLevel }));
+            });
+        }
         else { response.statusCode = 404; response.end('{}'); }
     });
     const sockets = new WebSocket.Server({ noServer: true });
@@ -37,7 +64,8 @@ async function createApiFixture() {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const port = server.address().port;
     return {
-        state, drivers,
+        state, drivers, applicationProfiles,
+        getSubmittedProfiles: () => submittedProfiles,
         client: new ApiClient({ baseUrl: `http://127.0.0.1:${port}`, webSocketUrl: `ws://127.0.0.1:${port}/api/v1/ws`, WebSocket }),
         close: async () => {
             for (const socket of connections) socket.terminate();
@@ -55,6 +83,29 @@ test('HTTP reads return the API state and driver inventory unchanged', async () 
     } finally { await fixture.close(); }
 });
 
+test('application profiles use the documented GET and complete-replacement PUT routes', async () => {
+    const fixture = await createApiFixture();
+    const profiles = [{ processName: 'mixxx.exe', inputChannels: 255, outputChannels: 192 }];
+    try {
+        assert.deepEqual(await fixture.client.getApplicationProfiles(), fixture.applicationProfiles);
+        const result = await fixture.client.replaceApplicationProfiles(profiles);
+        assert.deepEqual(fixture.getSubmittedProfiles(), { profiles });
+        assert.deepEqual(result, {
+            profiles,
+            restartRequiredClients: [{ pid: 42, processName: 'AudioApp.exe' }]
+        });
+    } finally { await fixture.close(); }
+});
+
+test('diagnostics use the documented HTTP read and level replacement routes', async () => {
+    const fixture = await createApiFixture();
+    try {
+        assert.deepEqual(await fixture.client.getDiagnostics(40), { level: 'info', entries: [] });
+        assert.deepEqual(await fixture.client.setDiagnosticLevel('debug'), { level: 'debug' });
+        assert.deepEqual(await fixture.client.getDiagnostics(40), { level: 'debug', entries: [] });
+    } finally { await fixture.close(); }
+});
+
 test('configuration.apply resolves only its matching response and forwards each event once', async () => {
     const fixture = await createApiFixture();
     const seen = [];
@@ -64,6 +115,14 @@ test('configuration.apply resolves only its matching response and forwards each 
         const result = await fixture.client.applyConfiguration({ routes: [] }, 'request-1');
         assert.deepEqual(result, { accepted: true });
         assert.deepEqual(seen, [{ event: 'engine.status', payload: { state: 'reconfiguring' } }]);
+    } finally { fixture.client.close(); await fixture.close(); }
+});
+
+test('engine.stop uses the documented WebSocket command and resolves its acknowledgement', async () => {
+    const fixture = await createApiFixture();
+    try {
+        await fixture.client.connect();
+        assert.deepEqual(await fixture.client.stopEngine('stop-1'), { accepted: true });
     } finally { fixture.client.close(); await fixture.close(); }
 });
 

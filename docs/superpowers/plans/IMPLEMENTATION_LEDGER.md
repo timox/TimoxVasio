@@ -157,3 +157,119 @@ documentée.
    résoudre l’incompatibilité Mixxx séparément.
 5. Continuer jusqu’à validation audio réelle du circuit et des reconfigurations
    avant de marquer l’objectif complet.
+
+## Audit du livrable — 4 octobre 2026
+
+### Interface, accès moteur et diagnostics
+
+- L’interface Electron inclut les vues Configuration, API/Swagger et Journaux.
+  Swagger UI est embarqué localement dans l’application, sans dépendance à un
+  CDN. Les réglages visuels augmentent la taille de texte, le contraste et la
+  visibilité des surfaces et du focus clavier.
+- L’interface sait démarrer et arrêter le moteur par le contrat API/WebSocket;
+  la fermeture de la fenêtre laisse le moteur actif. L’arrêt est refusé tant
+  qu’un client virtuel est attaché. Le point d’accès moteur reste
+  `TimoxVirtualAsioEngine.exe`, distinct de la DLL ASIO.
+- Le moteur écrit des journaux JSONL avec niveaux configurables, lecture
+  bornée par l’API et rotation limitée. Les événements de configuration et de
+  démarrage sont journalisés.
+- Vérifications logicielles de cette reprise : tests natifs
+  `EngineDiagnosticsTests` et `ApplicationProfilesApiTests`, tests React,
+  tests client API et contrats, script PowerShell de contrat avec pwsh 7,
+  build React et création des deux paquets Electron candidats ont réussi.
+  L’archive a été inspectée pour confirmer Swagger embarqué et le moteur
+  empaqueté correspond au binaire compilé. Ces vérifications ne valident pas
+  le rendu visuel interactif ni le son physique.
+- Paquets candidats précédents présents dans `gui/dist-candidate` :
+  `VASIO Control 1.0.0.exe` et `VASIO Control Setup 1.0.0.exe`. Ils n’ont pas
+  été lancés pendant cet audit, car une ancienne interface et un ancien moteur
+  étaient déjà actifs.
+
+### Dernier état runtime observé en lecture seule
+
+- Le 4 octobre, le moteur actif était l’ancien binaire
+  `build_engine_vs2026_ninja/TimoxVirtualAsioEngine.exe` (PID 20452), avec
+  l’ancienne interface Electron (PID 9128) et Mixxx (PID 19832). Le port API
+  52525 appartenait à ce moteur. Aucun processus n’a été arrêté, remplacé ou
+  reconfiguré pendant l’audit.
+- L’API de cet ancien moteur déclarait `running` à 48 kHz. Cette réponse
+  tronquée ne permet pas d’attester les routes, la taille de buffer ou le
+  niveau du signal. Elle ne doit pas être confondue avec une vérification du
+  nouveau candidat ni comme preuve d’un son audible.
+- Le signal matériel de bout en bout, les trois flux audio d’acceptation, les
+  cas de reconfiguration/déconnexion et le comportement avec l’installation
+  Mixxx ciblée restent à valider après fermeture contrôlée des anciennes
+  instances et lancement explicite du candidat. L’utilisateur a annoncé la
+  fin de son redémarrage/test; toute validation runtime ultérieure attend son
+  action de lancement/essai et son retour.
+
+### Publication
+
+- La notice de licence explique pourquoi le code reste en GPL-3.0-only avec
+  la voie libre du SDK ASIO et précise que le nom officiel reste
+  `TimoxVasio`. La licence libre autorise les forks renommés; elle ne peut
+  donc pas garantir à elle seule le nom des versions dérivées.
+- Le README pointe maintenant vers le dépôt public nommé `TimoxAsio`, selon
+  l’indication de l’utilisateur. L’accès au clone/remote de cette cible n’est
+  pas vérifiable depuis le dépôt `asio` ouvert ici.
+- Aucun commit, tag ou push de publication n’a été créé. Le dépôt ouvert ici
+  est `grrzzzz` et son remote pointe vers `timox/grrzzzz`, tandis que la cible
+  publique demandée est le dépôt séparé `TimoxAsio`. Ne pas publier dans le
+  dépôt `grrzzzz` par substitution. La migration/publication attend le clone
+  correct de `TimoxAsio` dans le périmètre de travail autorisé.
+
+Le livrable logiciel est compilé et empaqueté, mais les critères d’acceptation
+audio réel et de publication ne sont pas satisfaits. L’objectif reste ouvert.
+
+### Matrice de preuves de la spécification courante
+
+| Critère | État établi | Preuve et limite |
+|---|---|---|
+| DLL x64 unique, identité `TimoxVasio`, 256/256; installation sans les anciennes entrées du produit | Vérifié par les probes et le contrôle registre rapportés plus haut | Énumération/COM et registre local; à recontrôler dans l’installation de publication |
+| Profils par application, limites Mixxx et allocation de canaux bas, élevés et clairsemés | Vérifié par tests/probes logiciels; découverte Mixxx réelle confirmée | Ne prouve pas encore l’allocation effective de canaux dans Mixxx stable ni un signal routé |
+| Transport partagé multi-client et identité des endpoints | Vérifié par probes interprocessus et inventaires consignés | Ne remplace pas le test simultané de plusieurs hôtes réels dans le circuit final |
+| Trois familles de routes dans le graphe, avec canaux physiques au-delà de 6 | Vérifié dans les tests simulés du runtime/graphe | Le test du canal 10 utilise des buffers simulés; aucun signal SSL mesuré |
+| Négociation du taux, relecture des capacités physiques et valeurs ASIO effectives | Vérifié par probes et interrogation de SSL ASIO Driver 1 consignées | La lecture des capacités n’est pas une preuve de transfert d’échantillons matériel |
+| API documentée, interface, profils, Swagger embarqué, journaux et contrôle du moteur | Vérifié par tests API/UI, builds et inspection du paquet candidat | Interface candidate non lancée dans cet audit; moteur/API récemment observés appartenaient à l’ancien binaire |
+| Chaque route configurée transmet un signal mesurable vers/depuis le matériel et entre applications | **Non vérifié** | Les compteurs/mètres antérieurs étaient à -120 dBFS ou non attribuables à une lecture indépendante; résultat du dernier essai utilisateur encore attendu |
+| Reconfiguration, redémarrage, déconnexion/reconnexion, refus d’incompatibilité et panne observable | **Partiellement vérifié** | Tests et probes couvrent des branches logicielles; validation complète sur l’hôte et le périphérique ciblés manque |
+| Licence GPL fournie avec l’application et avis juridique accessible | **Ajoutée au paquet candidat; accès UI non prévu** | Le paquet Electron est configuré pour embarquer `LICENSE`, `LICENSING.md` et l’avis du SDK ASIO dans `resources/legal/`. Aucun écran Licence n’est implémenté; le titulaire des droits n’est pas identifié dans la notice et ne doit pas être inventé |
+| Publication versionnée dans le dépôt public `TimoxAsio` | **Non réalisée** | Checkout actif et remote observés sont ceux de `grrzzzz`; aucun tag ni push TimoxAsio n’est attesté |
+
+Cette matrice distingue les preuves logicielles, les vérifications locales et
+l’acceptation audio réelle. Les éléments marqués incomplets restent des gates
+de livraison et ne doivent pas être résumés comme une publication prête.
+
+### Reprise UX/UI, moteur et journaux
+
+- La revue UX/UI fondée sur cinq captures utilisateur est consignée dans
+  [`UX_UI_REVIEW.md`](../UX_UI_REVIEW.md), avec les captures conservées sous
+  `docs/ux-audit/evidence/`. Elles montrent la configuration et les routes,
+  mais pas les vues Journaux/Swagger ni la build candidate après corrections.
+- Dans les captures, l’en-tête affiche « VASIO Control » et aucune navigation
+  vers Journaux/Swagger n’est visible; la build candidate actuelle expose ces
+  vues et porte maintenant le titre « Timox VASIO Control ».
+- Les anciennes règles CSS qui rétablissaient des titres cyan à 18 px et des
+  barres de défilement cyan lumineuses ont été corrigées. Le build React et les
+  paquets Electron candidats ont été reconstruits après ce changement.
+- La légende de matrice affiche maintenant le nombre de routes sur la page
+  courante, ou précise qu’aucune route ne figure dans cette vue. Le build React
+  et les paquets Electron candidats ont été reconstruits après cette
+  correction observée sur les captures.
+- Le moteur de développement est
+  `build_engine_profile_audit_bin/TimoxVirtualAsioEngine.exe`. La copie
+  empaquetée se trouve dans
+  `gui/dist-candidate/win-unpacked/resources/backend/TimoxVirtualAsioEngine.exe`.
+  Leur SHA-256 est identique :
+  `2D97CE37F53B012E685498C81CF61CDF089873261412C36AACBBC454BF9380D5`.
+- L’interface expose le réglage `info/debug`, la lecture des diagnostics et le
+  démarrage/arrêt contrôlé du moteur dans l’onglet « Journaux ». Le chemin
+  configuré est `%LOCALAPPDATA%/TimoxVasio/logs/engine.log`; ce fichier et son
+  dossier n’existaient pas dans le profil vérifié à cette reprise. La création
+  effective du journal doit être constatée après lancement du nouveau moteur.
+- Le nom public de l’application Electron est **Timox VASIO Control**. Les
+  paquets reconstruits portent ce nom; l’identifiant interne reste stable
+  (`com.vasio.control`) afin de conserver l’identité d’installation.
+- Les notes de version candidates sont dans
+  [`RELEASE_NOTES_v1.0.0.md`](../../RELEASE_NOTES_v1.0.0.md); elles signalent
+  l’absence de preuve audio matérielle et les limites de l’audit visuel.

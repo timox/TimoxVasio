@@ -32,7 +32,7 @@ Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\TimoxVasio.dll"
 
 Fermer puis relancer les applications audio après l’enregistrement. Le pilote ASIO attendu est `TimoxVasio` et il annonce 256 entrées et 256 sorties. Chaque application n’expose toutefois que les canaux qu’elle a réellement alloués avec `createBuffers`.
 
-Pour router l’audio, lancer `TimoxVirtualAsioEngine.exe` ou VASIO Control, choisir le pilote ASIO physique, appliquer la fréquence et la taille de buffer acceptées par ce pilote, puis construire les routes dans l’interface. Le circuit matériel complet doit être validé avec le matériel utilisé.
+Pour router l’audio, lancer `TimoxVirtualAsioEngine.exe` ou Timox VASIO Control, choisir le pilote ASIO physique, appliquer la fréquence et la taille de buffer acceptées par ce pilote, puis construire les routes dans l’interface. Le circuit matériel complet doit être validé avec le matériel utilisé.
 
 ## Désinstallation
 

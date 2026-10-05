@@ -20,10 +20,44 @@ class ApiClient extends EventEmitter {
         return this.getJson('/api/v1/drivers');
     }
 
+    async getApplicationProfiles() {
+        return this.getJson('/api/v1/application-profiles');
+    }
+
+    async getDiagnostics(limit = 200) {
+        return this.getJson(`/api/v1/diagnostics?limit=${encodeURIComponent(limit)}`);
+    }
+
+    async setDiagnosticLevel(level) {
+        return this.requestJson('/api/v1/diagnostics', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ level })
+        });
+    }
+
+    async replaceApplicationProfiles(profiles) {
+        return this.requestJson('/api/v1/application-profiles', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ profiles })
+        });
+    }
+
     async getJson(path) {
-        const response = await fetch(`${this.baseUrl}${path}`);
-        if (!response.ok) throw new Error(`VASIO API ${path}: HTTP ${response.status}`);
-        return response.json();
+        return this.requestJson(path);
+    }
+
+    async requestJson(path, options) {
+        const response = await fetch(`${this.baseUrl}${path}`, options);
+        const body = await response.json();
+        if (!response.ok) {
+            const details = body.error || {};
+            const error = new Error(details.message || `VASIO API ${path}: HTTP ${response.status}`);
+            Object.assign(error, details, { status: response.status });
+            throw error;
+        }
+        return body;
     }
 
     connect() {
@@ -56,13 +90,21 @@ class ApiClient extends EventEmitter {
     }
 
     applyConfiguration(configuration, id = randomUUID()) {
+        return this.sendCommand({ id, command: 'configuration.apply', payload: configuration });
+    }
+
+    stopEngine(id = randomUUID()) {
+        return this.sendCommand({ id, command: 'engine.stop' });
+    }
+
+    sendCommand(command) {
         if (!this.socket || this.socket.readyState !== this.WebSocket.OPEN)
             return Promise.reject(new Error('WebSocket disconnected'));
         return new Promise((resolve, reject) => {
-            this.pending.set(id, { resolve, reject });
-            this.socket.send(JSON.stringify({ id, command: 'configuration.apply', payload: configuration }), error => {
+            this.pending.set(command.id, { resolve, reject });
+            this.socket.send(JSON.stringify(command), error => {
                 if (!error) return;
-                this.pending.delete(id);
+                this.pending.delete(command.id);
                 reject(error);
             });
         });

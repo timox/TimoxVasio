@@ -1,6 +1,11 @@
 node_modules/
+src/openapi-spec.generated.js
+public/swagger.html
+public/swagger-ui-bundle.js
+public/swagger-ui.css
 build/
 dist/
+dist-candidate/
 .env.local
 .env.development.local
 .env.test.local

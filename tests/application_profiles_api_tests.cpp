@@ -4,9 +4,11 @@
 #include "audio_controller.h"
 #include "control_api_server.h"
 #include "vasio_client_manager.h"
+#include "engine_diagnostics.h"
 
 #include <windows.h>
 
+#include <atomic>
 #include <cstdio>
 #include <string>
 
@@ -35,9 +37,13 @@ int wmain() {
     AudioController controller(clients, configPath, profilesPath);
     if (!controller.Start()) return 3;
 
-    ControlApiServer api(clients, controller);
-    std::uint16_t port = 0;
+    EngineDiagnostics diagnostics;
     std::string error;
+    if (!diagnostics.Initialize(tempPath(L"-logs"), error)) return 3;
+
+    std::atomic<bool> stopRequested{false};
+    ControlApiServer api(clients, controller, diagnostics, [&] { stopRequested.store(true); });
+    std::uint16_t port = 0;
     if (!api.Start(0, port, error)) {
         std::fprintf(stderr, "API server failed to start: %s\n", error.c_str());
         controller.Stop();
@@ -46,6 +52,17 @@ int wmain() {
 
     httplib::Client client("127.0.0.1", port);
     bool passed = true;
+    const auto diagnosticState = client.Get("/api/v1/diagnostics?limit=10");
+    passed = require(diagnosticState && diagnosticState->status == 200 &&
+        nlohmann::json::parse(diagnosticState->body)["level"] == "info",
+        "GET diagnostics returns the current level and entries") && passed;
+    const auto debugLevel = client.Put("/api/v1/diagnostics", R"({"level":"debug"})", "application/json");
+    passed = require(debugLevel && debugLevel->status == 200 &&
+        nlohmann::json::parse(debugLevel->body)["level"] == "debug",
+        "PUT diagnostics persists debug level") && passed;
+    const auto invalidLimit = client.Get("/api/v1/diagnostics?limit=501");
+    passed = require(invalidLimit && invalidLimit->status == 400,
+        "GET diagnostics rejects an out of range limit") && passed;
     const auto initial = client.Get("/api/v1/application-profiles");
     passed = require(initial && initial->status == 200,
         "GET application profiles returns the configured profile list") && passed;
@@ -87,6 +104,24 @@ int wmain() {
         const auto body = nlohmann::json::parse(afterReset->body);
         passed = require(body["profiles"].empty(),
             "an explicitly empty profile list survives API readback") && passed;
+    }
+
+    httplib::Headers websocketHeaders{{"Sec-WebSocket-Protocol", "vasio.api.v1"}};
+    httplib::ws::WebSocketClient websocket("ws://127.0.0.1:" + std::to_string(port) + "/api/v1/ws", websocketHeaders);
+    websocket.set_read_timeout(2);
+    passed = require(static_cast<bool>(websocket.connect()), "WebSocket accepts the documented subprotocol") && passed;
+    std::string websocketMessage;
+    if (passed) {
+        websocket.read(websocketMessage); // Initial engine.status
+        websocket.read(websocketMessage); // Initial devices.changed
+        passed = require(websocket.send(R"({"id":"stop-test","command":"engine.stop"})"),
+            "WebSocket accepts an engine.stop request") && passed;
+        const auto responseType = websocket.read(websocketMessage);
+        passed = require(responseType == httplib::ws::Text &&
+            nlohmann::json::parse(websocketMessage).value("success", false),
+            "engine.stop is acknowledged while no client is attached") && passed;
+        passed = require(stopRequested.load(), "accepted engine.stop signals the main shutdown callback") && passed;
+        websocket.close();
     }
 
     api.Stop();

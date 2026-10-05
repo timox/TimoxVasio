@@ -5,9 +5,9 @@
   "main": "electron/main.js",
   "homepage": "./",
   "scripts": {
-    "react-start": "react-scripts start",
-    "react-build": "react-scripts build",
-    "react-test": "react-scripts test",
+    "react-start": "node scripts/embed-openapi.js && react-scripts start",
+    "react-build": "node scripts/embed-openapi.js && react-scripts build",
+    "react-test": "node scripts/embed-openapi.js && react-scripts test",
     "contract-test": "node --test src/api-contract.test.cjs",
     "react-eject": "react-scripts eject",
     "electron-start": "electron .",
@@ -29,6 +29,7 @@
     "electron": "^28.3.3",
     "electron-builder": "^24.6.4",
     "react-scripts": "5.0.1",
+    "swagger-ui-dist": "^5.33.1",
     "wait-on": "^7.0.1"
   },
   "eslintConfig": {
@@ -48,7 +49,7 @@
   },
   "build": {
     "appId": "com.vasio.control",
-    "productName": "VASIO Control",
+    "productName": "Timox VASIO Control",
     "extraMetadata": {
       "main": "electron/main.js"
     },
@@ -59,12 +60,24 @@
     ],
     "extraResources": [
       {
-        "from": "../build_engine_vs2026_ninja/TimoxVirtualAsioEngine.exe",
+        "from": "../build_engine_profile_audit_bin/TimoxVirtualAsioEngine.exe",
         "to": "backend/TimoxVirtualAsioEngine.exe"
       },
       {
-        "from": "../build_engine_vs2026_ninja/config",
+        "from": "../build_engine_profile_audit_bin/config",
         "to": "backend/config"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "legal/LICENSE.txt"
+      },
+      {
+        "from": "../LICENSING.md",
+        "to": "legal/LICENSING.md"
+      },
+      {
+        "from": "../asiosdk/LICENSE.txt",
+        "to": "legal/ASIO-SDK-LICENSE.txt"
       }
     ],
     "directories": {

@@ -73,22 +73,44 @@
         }
       }
     },
+    "/api/v1/diagnostics": {
+      "get": {
+        "operationId": "getDiagnostics",
+        "summary": "Read recent engine log entries and the active log level",
+        "parameters": [{"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 500, "default": 200}}],
+        "responses": {
+          "200": {"description": "Recent persistent engine log entries", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Diagnostics"}}}},
+          "400": {"description": "Invalid entry limit", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "500": {"$ref": "#/components/responses/ServerError"}
+        }
+      },
+      "put": {
+        "operationId": "setDiagnosticLevel",
+        "summary": "Persist the engine log level",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DiagnosticLevel"}}}},
+        "responses": {
+          "200": {"description": "Confirmed active level", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DiagnosticLevel"}}}},
+          "400": {"description": "Invalid level", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "500": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
     "/api/v1/ws": {
       "get": {
         "operationId": "controlEngineWebSocket",
         "summary": "Upgrade to the TimoxVasio control WebSocket",
-        "description": "Connect with the vasio.api.v1 subprotocol. Send configuration.apply requests and receive matching responses and asynchronous events. audio.meter events are sent for endpoints in active routes at approximately two updates per second; peakDbfs is the peak of the most recently processed audio block, not a held peak. Meter publication runs outside the real-time audio callback. See x-websocket for message schemas.",
+        "description": "Connect with the vasio.api.v1 subprotocol. Send configuration.apply and engine.stop requests and receive matching responses and asynchronous events. engine.stop is refused while a TimoxVasio client is attached and signals an orderly process shutdown only after its response is sent. audio.meter events are sent for endpoints in active routes at approximately two updates per second; peakDbfs is the peak of the most recently processed audio block, not a held peak. Meter publication runs outside the real-time audio callback. See x-websocket for message schemas.",
         "responses": { "101": { "description": "WebSocket protocol upgrade" } },
         "x-websocket": {
           "subprotocol": "vasio.api.v1",
-          "clientMessages": { "$ref": "#/components/schemas/ApplyCommand" },
+          "clientMessages": { "oneOf": [{ "$ref": "#/components/schemas/ApplyCommand" }, { "$ref": "#/components/schemas/EngineStopCommand" }] },
           "serverMessages": {
             "oneOf": [
               { "$ref": "#/components/schemas/Response" },
               { "$ref": "#/components/schemas/Event" }
             ]
           },
-          "commands": ["configuration.apply"],
+          "commands": ["configuration.apply", "engine.stop"],
           "events": ["engine.status", "devices.changed", "routes.changed", "audio.meter", "engine.error"]
         }
       }
@@ -101,7 +123,10 @@
       "ApplicationProfiles": { "$ref": "./schemas/api-v1.json#/definitions/applicationProfiles" },
       "ReplaceApplicationProfiles": { "$ref": "./schemas/api-v1.json#/definitions/replaceApplicationProfiles" },
       "ApplicationProfilesUpdate": { "$ref": "./schemas/api-v1.json#/definitions/applicationProfilesUpdate" },
+      "Diagnostics": { "$ref": "./schemas/api-v1.json#/definitions/diagnostics" },
+      "DiagnosticLevel": { "$ref": "./schemas/api-v1.json#/definitions/diagnosticLevel" },
       "ApplyCommand": { "$ref": "./schemas/api-v1.json#/definitions/applyCommand" },
+      "EngineStopCommand": { "$ref": "./schemas/api-v1.json#/definitions/engineStopCommand" },
       "Response": { "$ref": "./schemas/api-v1.json#/definitions/response" },
       "Event": { "$ref": "./schemas/api-v1.json#/definitions/event" },
       "Error": { "$ref": "./schemas/api-v1.json#/definitions/error" }

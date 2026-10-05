@@ -178,3 +178,11 @@ Les identifiants doivent exister et leurs directions doivent correspondre. Les t
 ## Sécurité locale et frontière client
 
 Le moteur ne se lie pas aux interfaces réseau externes. Il accepte les connexions WebSocket locales sans en-tête `Origin` depuis le client natif et l’origine applicative VASIO déclarée ; les autres origines sont rejetées. La GUI obtient les inventaires, routes, erreurs et diagnostics uniquement par cette API. Le format des structures de mémoire audio et leur gestion restent privés au moteur et aux DLL.
+
+## Diagnostic et cycle de vie
+
+`GET /api/v1/diagnostics?limit=N` retourne le niveau de journalisation (`info` ou `debug`) et les entrées les plus récentes. `limit` vaut 200 par défaut et accepte 1 à 500. Chaque entrée contient `timestamp`, `level`, `component` et `message`.
+
+`PUT /api/v1/diagnostics` accepte exactement `{ "level": "info" }` ou `{ "level": "debug" }` et persiste ce choix. Les journaux sont écrits sous `%LOCALAPPDATA%\TimoxVasio\logs\engine.log`; quatre archives sont conservées. Les callbacks audio n’écrivent jamais dans le journal.
+
+La commande WebSocket `{ "id": "stop-1", "command": "engine.stop" }` demande l’arrêt ordonné du moteur. Le moteur refuse avec `ENGINE_CLIENTS_CONNECTED` tant qu’un client TimoxVasio est attaché. Lorsqu’elle est acceptée, la réponse est envoyée avant le signal d’arrêt. L’interface Electron ne termine pas le processus moteur en fermant sa fenêtre.

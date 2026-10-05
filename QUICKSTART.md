@@ -40,6 +40,6 @@ Voir [INSTALL.md](INSTALL.md) pour l’installation et [BUILD_DRIVERS.md](BUILD_
 
 ## Démarrer et router
 
-Lancer `TimoxVirtualAsioEngine.exe` seul pour démarrer le service local, ou lancer VASIO Control qui démarre ce moteur. Dans l’interface, choisir un pilote ASIO physique, appliquer ses valeurs de fréquence et de buffer, puis créer les routes à partir des endpoints proposés par l’API.
+Lancer `TimoxVirtualAsioEngine.exe` seul pour démarrer le service local, ou lancer Timox VASIO Control qui démarre ce moteur. Dans l’interface, choisir un pilote ASIO physique, appliquer ses valeurs de fréquence et de buffer, puis créer les routes à partir des endpoints proposés par l’API.
 
 La validation complète doit être effectuée avec un hôte ASIO réel et un signal observé sur le matériel. Voir [TEST_VERIFICATION.md](TEST_VERIFICATION.md).
