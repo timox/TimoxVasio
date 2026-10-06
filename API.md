@@ -54,7 +54,9 @@ absente restent dans `configuredRoutes` avec un identifiant stable de la forme
 `virtual:TimoxVasio:app:<executable>:output:<channel>` ou `:input:<channel>`.
 Le moteur les réactive lorsque cette application ouvre de nouveau les canaux,
 même si son PID a changé. L’API accepte ces identifiants stables déjà présents
-dans `configuredRoutes` lors d’une modification de configuration. Si plusieurs
+dans `configuredRoutes` lors d’une modification de configuration. Un nouvel
+identifiant stable peut aussi être soumis pour une application déclarée dans
+`application-profiles`, dans la limite de son nombre de canaux annoncé. Si plusieurs
 instances portent le même nom d’exécutable, la route attend une correspondance
 non ambiguë. Les anciennes routes enregistrées uniquement avec un PID ne
 peuvent pas être attribuées à une autre application après disparition du

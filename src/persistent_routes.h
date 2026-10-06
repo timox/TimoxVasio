@@ -1,6 +1,7 @@
 #pragma once
 
 #include "routing_graph.h"
+#include "application_profile.h"
 #include "vasio_client_manager.h"
 
 #include <windows.h>
@@ -144,5 +145,29 @@ inline std::vector<AudioRoute> Resolve(const std::vector<AudioRoute>& routes,
         result.push_back(std::move(route));
     }
     return result;
+}
+
+inline std::optional<RoutingEndpointType> ProfiledEndpointType(const std::string& id,
+        const std::vector<ApplicationProfile>& profiles) {
+    if (id.rfind(Detail::kAppPrefix, 0) != 0) return {};
+    const auto nameEnd = id.find(':', sizeof(Detail::kAppPrefix) - 1);
+    if (nameEnd == std::string::npos) return {};
+    const auto name = id.substr(sizeof(Detail::kAppPrefix) - 1,
+        nameEnd - (sizeof(Detail::kAppPrefix) - 1));
+    const auto rest = id.substr(nameEnd + 1);
+    const auto separator = rest.find(':');
+    if (separator == std::string::npos) return {};
+    const auto direction = rest.substr(0, separator);
+    std::uint32_t channel = 0;
+    if ((direction != "input" && direction != "output") ||
+        !Detail::parseChannel(rest.substr(separator + 1), channel)) return {};
+    for (const auto& profile : profiles) {
+        if (Detail::executableName(profile.processName) != name) continue;
+        if (channel > (direction == "input" ? profile.inputChannels : profile.outputChannels))
+            return {};
+        return direction == "input" ? RoutingEndpointType::VirtualInput
+            : RoutingEndpointType::VirtualOutput;
+    }
+    return {};
 }
 }

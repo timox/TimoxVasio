@@ -47,5 +47,15 @@ int main() {
         std::fputs("FAIL: route bound ambiguously to two instances\n", stderr);
         return 1;
     }
+    const std::vector<ApplicationProfile> profiles{{L"Renoise.exe", 8, 8}};
+    if (PersistentRoutes::ProfiledEndpointType(saved[0].sourceEndpointId, profiles) !=
+            RoutingEndpointType::VirtualOutput ||
+        PersistentRoutes::ProfiledEndpointType(
+            "virtual:TimoxVasio:app:renoise.exe:output:9", profiles) ||
+        PersistentRoutes::ProfiledEndpointType(
+            "virtual:TimoxVasio:app:unknown.exe:output:1", profiles)) {
+        std::fputs("FAIL: profiled pending route validation is incorrect\n", stderr);
+        return 1;
+    }
     return 0;
 }

@@ -4,6 +4,7 @@
 #include "control_api_server.h"
 #include "audio_controller.h"
 #include "routing_graph.h"
+#include "persistent_routes.h"
 #include "vasio_client_manager.h"
 #include "engine_diagnostics.h"
 
@@ -467,7 +468,13 @@ struct ControlApiServer::Impl {
                     endpointTypes.emplace(endpoint, RoutingEndpointType::VirtualOutput);
             }
         }
+        const auto profiles = controller.GetApplicationProfiles().profiles;
         for (const auto& route : configuration.routes) {
+            for (const auto& endpoint : {route.sourceEndpointId, route.destinationEndpointId}) {
+                if (endpointTypes.find(endpoint) != endpointTypes.end()) continue;
+                const auto type = PersistentRoutes::ProfiledEndpointType(endpoint, profiles);
+                if (type) endpointTypes.emplace(endpoint, *type);
+            }
             const auto source = endpointTypes.find(route.sourceEndpointId);
             const auto destination = endpointTypes.find(route.destinationEndpointId);
             if (source == endpointTypes.end() || destination == endpointTypes.end())
