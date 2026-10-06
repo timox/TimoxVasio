@@ -6,6 +6,10 @@
 
 ## Objectif
 
+
+<img width="1665" height="941" alt="{AD197DE5-301E-4BB9-B8A0-9F3CAD2BDD3B}" src="https://github.com/user-attachments/assets/4530be3c-ff8f-4613-b160-6f602c519c8a" />
+
+
 Fournir un pilote ASIO virtuel Windows x64 unique, `TimoxVasio`, qui expose jusqu’à 256 canaux d’entrée et 256 canaux de sortie à chaque application compatible ASIO. Un moteur distinct relie les canaux effectivement ouverts par les applications aux entrées et sorties d’un pilote ASIO physique. Une interface configure le périphérique maître et les routes.
 
 ## État actuel
