@@ -103,7 +103,7 @@ class ApiClient extends EventEmitter {
         const documented = routes.includes(path) ||
             (typeof path === 'string' && /^\/api\/v1\/diagnostics\?limit=\d+$/.test(path));
         if (!['GET', 'PUT'].includes(method) || !documented)
-            throw new TypeError('Requête hors des routes HTTP documentées de TimoxVasio');
+            throw new TypeError('Request is outside the documented TimoxVasio HTTP routes');
         const response = await fetch(`${this.baseUrl}${path}`, {
             method,
             headers: body === undefined ? {} : { 'Content-Type': 'application/json' },

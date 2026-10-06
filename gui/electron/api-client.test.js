@@ -142,8 +142,8 @@ test('the API console HTTP bridge only forwards documented local routes', async 
     const fixture = await createApiFixture();
     try {
         assert.deepEqual(await fixture.client.httpRequest('GET', '/api/v1/state'), { status: 200, body: fixture.state });
-        await assert.rejects(fixture.client.httpRequest('GET', '/../secret'), /documentées/);
-        await assert.rejects(fixture.client.httpRequest('POST', '/api/v1/state'), /documentées/);
+        await assert.rejects(fixture.client.httpRequest('GET', '/../secret'), /documented/);
+        await assert.rejects(fixture.client.httpRequest('POST', '/api/v1/state'), /documented/);
     } finally { await fixture.close(); }
 });
 

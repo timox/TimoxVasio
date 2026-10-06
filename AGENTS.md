@@ -1,23 +1,23 @@
-# Repères du dépôt TimoxVasio
+# TimoxVasio repository guide
 
-## Dépôt actif
-- Racine : dossier retourné par `git rev-parse --show-toplevel` dans ce clone.
-- Limiter les modifications à ce dépôt public.
-- Avant toute compilation ou installation, confirmer la racine avec `git rev-parse --show-toplevel` et lire `git status`.
+## Active repository
+- The root is the directory returned by `git rev-parse --show-toplevel` in this clone.
+- Keep changes within this public repository.
+- Before any build or installation, confirm the root with `git rev-parse --show-toplevel` and read `git status`.
 
-## Binaires : fonctions et chemins canoniques
-| Composant | Fonction | Build | Distribution |
+## Canonical binaries and paths
+| Component | Role | Build | Distribution |
 |---|---|---|---|
-| `TimoxVasio.dll` | Pilote ASIO chargé par les applications | `build_driver_110\Release\TimoxVasio.dll` | `gui\dist\TimoxVasio Driver 1.1.0.zip` |
-| `TimoxVirtualAsioEngine.exe` | Moteur audio et serveur API | `build_codex_110\Release\TimoxVirtualAsioEngine.exe` | Embarqué sous `resources\backend\` dans les deux exécutables Electron |
-| `Timox VASIO Control` | Interface Electron | Sources `gui\` | `gui\dist\Timox VASIO Control Setup 1.1.0.exe` et `gui\dist\Timox VASIO Control 1.1.0.exe` |
+| `TimoxVasio.dll` | ASIO driver loaded by applications | `build_driver_110\Release\TimoxVasio.dll` | `gui\dist\TimoxVasio Driver 1.1.1.zip` |
+| `TimoxVirtualAsioEngine.exe` | Audio engine and API server | `build_codex_110\Release\TimoxVirtualAsioEngine.exe` | Embedded under `resources\backend\` in both Electron executables |
+| `Timox VASIO Control` | Electron interface | Sources in `gui\` | `gui\dist\Timox VASIO Control Setup 1.1.1.exe` and `gui\dist\Timox VASIO Control 1.1.1.exe` |
 
-Electron utilise le moteur de `build_codex_110\Release` en développement et pendant l’empaquetage; empaqueté, il le lance sous `process.resourcesPath\backend`. Le Setup Electron installe l’interface et le moteur, mais n’installe ni n’enregistre la DLL ASIO, distribuée séparément dans le ZIP.
+Electron uses the engine in `build_codex_110\Release` during development and packaging. The packaged application launches it from `process.resourcesPath\backend`. Electron Setup installs the interface and engine. The ASIO DLL is distributed separately in the ZIP and must be installed and registered separately.
 
-Le pilote 1.1.0 s’installe sous `C:\Program Files\Steinberg\VirtualASIO\1.1.0\TimoxVasio.dll`. Ce chemin versionné permet de l’enregistrer même si une application conserve une ancienne DLL ouverte. Cette application doit être relancée pour charger la nouvelle version.
+The 1.1.1 driver installs to `C:\Program Files\Steinberg\VirtualASIO\1.1.1\TimoxVasio.dll`. This versioned path allows registration while another application still holds an older DLL open. Restart that application to load the new version.
 
 ## Provenance
-- Ne jamais choisir un binaire d’après son nom seul. Vérifier son chemin, sa date et son SHA-256.
-- Comparer le moteur empaqueté au moteur compilé et le pilote du ZIP au pilote compilé.
-- En cas de fichier absent ou d’empreinte différente, arrêter le packaging et reconstruire le composant concerné.
-- `gui\dist\win-unpacked\resources\backend\TimoxVirtualAsioEngine.exe` est une copie de contrôle, pas un livrable séparé.
+- Never select a binary by name alone. Check its path, timestamp, and SHA-256.
+- Compare the packaged engine with the built engine and the driver in the ZIP with the built driver.
+- If a file is missing or its hash differs, stop packaging and rebuild the relevant component.
+- `gui\dist\win-unpacked\resources\backend\TimoxVirtualAsioEngine.exe` is a control copy, not a separate deliverable.

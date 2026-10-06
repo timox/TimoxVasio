@@ -20,16 +20,16 @@ In an administrator terminal at the repository root:
 .\build_and_install.bat
 ```
 
-The script builds `TimoxVasio` in `build_driver_110`, copies the DLL to `C:\Program Files\Steinberg\VirtualASIO\1.1.0`, and registers it. It removes known old VASIO1–VASIO4 registrations and attempts to delete their DLLs. A locked old DLL may remain on disk, but is no longer registered.
+The script builds `TimoxVasio` in `build_driver_110`, copies the DLL to `C:\Program Files\Steinberg\VirtualASIO\1.1.1`, and registers it. It removes known old VASIO1–VASIO4 registrations and attempts to delete their DLLs. A locked old DLL may remain on disk, but is no longer registered.
 
 ## Install the release download
 
-Download and extract `TimoxVasio.Driver.1.1.0.zip` from the [1.1.0 release](https://github.com/timox/TimoxVasio/releases/tag/v1.1.0). Run `Installer TimoxVasio.bat` as administrator from the extracted directory. The installer uses a versioned directory so it can register the new driver even if an application still holds an older DLL open.
+Download and extract `TimoxVasio Driver 1.1.1.zip` from the [1.1.1 release](https://github.com/timox/TimoxVasio/releases/tag/v1.1.1). Run `Installer TimoxVasio.bat` as administrator from the extracted directory. The installer uses a versioned directory so it can register the new driver even if an application still holds an older DLL open.
 
 To perform the same operation manually, open an administrator PowerShell in the extracted directory:
 
 ```powershell
-$driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.1.0'
+$driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.1.1'
 New-Item -ItemType Directory -Force -Path $driverDir | Out-Null
 Copy-Item -LiteralPath '.\TimoxVasio.dll' -Destination (Join-Path $driverDir 'TimoxVasio.dll') -Force
 pwsh -NoProfile -File '.\register_drivers.ps1' install -DllDirectory $driverDir
@@ -41,7 +41,7 @@ This registers the ASIO name `TimoxVasio` and removes only known TimoxVasio and 
 
 ```powershell
 pwsh -NoProfile -File .\register_drivers.ps1 list
-Get-ChildItem 'C:\Program Files\Steinberg\VirtualASIO\1.1.0\TimoxVasio.dll'
+Get-ChildItem 'C:\Program Files\Steinberg\VirtualASIO\1.1.1\TimoxVasio.dll'
 pwsh -NoProfile -File .\tests\verify-installed-stack.ps1
 ```
 

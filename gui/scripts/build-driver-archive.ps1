@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $guiRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent $guiRoot
-$bundle = Join-Path $guiRoot 'dist\driver_bundle_1_1_0'
-$archive = Join-Path $guiRoot 'dist\TimoxVasio Driver 1.1.0.zip'
+$bundle = Join-Path $guiRoot 'dist\driver_bundle_1_1_1'
+$archive = Join-Path $guiRoot 'dist\TimoxVasio Driver 1.1.1.zip'
 $driver = Join-Path $repoRoot 'build_driver_110\Release\TimoxVasio.dll'
 $readmeSource = Join-Path $PSScriptRoot 'driver-archive-README.md'
 $englishReadmeSource = Join-Path $PSScriptRoot 'driver-archive-README.en.md'
@@ -15,6 +15,7 @@ foreach ($source in @($driver, $readmeSource, $englishReadmeSource, (Join-Path $
     }
 }
 
+New-Item -ItemType Directory -Path $bundle -Force | Out-Null
 Copy-Item -LiteralPath $driver -Destination (Join-Path $bundle 'TimoxVasio.dll') -Force
 Copy-Item -LiteralPath $readmeSource -Destination $readme -Force
 Copy-Item -LiteralPath $englishReadmeSource -Destination $englishReadme -Force

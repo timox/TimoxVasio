@@ -1,12 +1,12 @@
-# Pilote TimoxVasio 1.1.0
+# TimoxVasio 1.1.1 driver
 
-Cette archive contient le pilote ASIO x64, son installateur et la licence. Elle ne contient ni l’interface Electron ni le moteur audio.
+This archive contains the x64 ASIO driver, its installer, and the license. It does not contain the Electron interface or the audio engine.
 
-1. Extraire tous les fichiers dans le même dossier.
-2. Exécuter `Installer TimoxVasio.bat` en administrateur.
-3. Fermer puis relancer les applications audio qui utilisaient déjà TimoxVasio. Une application ouverte garde l’ancienne DLL en mémoire jusqu’à son redémarrage.
-4. Installer ou lancer séparément `Timox VASIO Control`.
+1. Extract all files into the same folder.
+2. Run `Installer TimoxVasio.bat` as administrator.
+3. Close and reopen audio applications that were already using TimoxVasio. An open application keeps the old DLL in memory until it restarts.
+4. Install or start `Timox VASIO Control` separately.
 
-Le pilote 1.1.0 est installé dans `C:\Program Files\Steinberg\VirtualASIO\1.1.0\TimoxVasio.dll`. Une ancienne DLL peut rester sur disque si elle est encore ouverte; l’enregistrement ASIO pointe vers la version 1.1.0.
+The 1.1.1 driver is installed at `C:\Program Files\Steinberg\VirtualASIO\1.1.1\TimoxVasio.dll`. An older DLL may remain on disk while it is open; the ASIO registration points to version 1.1.1.
 
-Pour vérifier l’enregistrement, exécuter `register_drivers.ps1 list` dans PowerShell. Pour le retirer, exécuter `register_drivers.ps1 uninstall` en administrateur.
+To verify registration, run `register_drivers.ps1 list` in PowerShell. To remove it, run `register_drivers.ps1 uninstall` as administrator.

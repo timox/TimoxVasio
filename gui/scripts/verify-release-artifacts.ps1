@@ -10,8 +10,8 @@ $repoRoot = Split-Path -Parent $guiRoot
 $enginePath = Join-Path $repoRoot 'build_codex_110\Release\TimoxVirtualAsioEngine.exe'
 $engineDir = Split-Path -Parent $enginePath
 $driverPath = Join-Path $repoRoot 'build_driver_110\Release\TimoxVasio.dll'
-$driverBundle = Join-Path $guiRoot 'dist\driver_bundle_1_1_0\TimoxVasio.dll'
-$driverZip = Join-Path $guiRoot 'dist\TimoxVasio Driver 1.1.0.zip'
+$driverBundle = Join-Path $guiRoot 'dist\driver_bundle_1_1_1\TimoxVasio.dll'
+$driverZip = Join-Path $guiRoot 'dist\TimoxVasio Driver 1.1.1.zip'
 $packagedEngine = Join-Path $guiRoot 'dist\win-unpacked\resources\backend\TimoxVirtualAsioEngine.exe'
 
 function Require-File([string]$Path) {
@@ -47,8 +47,8 @@ function Require-SameHash([string]$ExpectedPath, [string]$ActualPath, [string]$D
 function Require-ProductVersion([string]$Path, [string]$Description) {
     Require-File $Path
     $version = (Get-Item -LiteralPath $Path).VersionInfo.ProductVersion
-    if ($version -ne '1.1.0') {
-        throw "$Description : ProductVersion attendu 1.1.0, obtenu '$version' dans '$Path'."
+    if ($version -ne '1.1.1') {
+        throw "$Description : ProductVersion attendu 1.1.1, obtenu '$version' dans '$Path'."
     }
     Write-Host "OK version $Description : $version"
 }
@@ -69,7 +69,7 @@ function Get-ZipEntryHash([string]$ArchivePath, [string]$EntryName) {
 
 $manifestPath = Join-Path $guiRoot 'package.json'
 $package = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-if ($package.version -ne '1.1.0') { throw "Version GUI attendue 1.1.0, trouvée $($package.version)." }
+if ($package.version -ne '1.1.1') { throw "Version GUI attendue 1.1.1, trouvée $($package.version)." }
 $mainSource = Get-Content -LiteralPath (Join-Path $guiRoot 'electron\main.js') -Raw
 if ($mainSource -notmatch [regex]::Escape('../../build_codex_110/Release/TimoxVirtualAsioEngine.exe')) {
     throw 'Le chemin du moteur de développement dans electron/main.js ne correspond pas au build canonique.'
@@ -109,8 +109,8 @@ if ($Stage -eq 'PrePackage') {
 
 Require-SameHash $enginePath $packagedEngine 'moteur empaqueté/build'
 $outputs = @(
-    (Join-Path $guiRoot 'dist\Timox VASIO Control Setup 1.1.0.exe'),
-    (Join-Path $guiRoot 'dist\Timox VASIO Control 1.1.0.exe')
+    (Join-Path $guiRoot 'dist\Timox VASIO Control Setup 1.1.1.exe'),
+    (Join-Path $guiRoot 'dist\Timox VASIO Control 1.1.1.exe')
 )
 foreach ($output in $outputs) {
     Require-File $output
@@ -124,22 +124,22 @@ foreach ($output in $outputs) {
 $gitCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
 $gitStatus = @(& git -C $repoRoot status --short)
 $manifest = [ordered]@{
-    version = '1.1.0'
+    version = '1.1.1'
     validatedAtUtc = [DateTime]::UtcNow.ToString('o')
     commit = $gitCommit
     workingTreeClean = ($gitStatus.Count -eq 0)
     source = [ordered]@{
-        engine = [ordered]@{ path = 'build_codex_110/Release/TimoxVirtualAsioEngine.exe'; productVersion = '1.1.0'; sha256 = (Get-Hash $enginePath) }
-        driver = [ordered]@{ path = 'build_driver_110/Release/TimoxVasio.dll'; productVersion = '1.1.0'; sha256 = $builtDriverHash }
+        engine = [ordered]@{ path = 'build_codex_110/Release/TimoxVirtualAsioEngine.exe'; productVersion = '1.1.1'; sha256 = (Get-Hash $enginePath) }
+        driver = [ordered]@{ path = 'build_driver_110/Release/TimoxVasio.dll'; productVersion = '1.1.1'; sha256 = $builtDriverHash }
     }
     artifacts = [ordered]@{
         enginePackaged = [ordered]@{ path = 'dist/win-unpacked/resources/backend/TimoxVirtualAsioEngine.exe'; sha256 = (Get-Hash $packagedEngine) }
-        setup = [ordered]@{ path = 'dist/Timox VASIO Control Setup 1.1.0.exe'; sha256 = (Get-Hash $outputs[0]) }
-        portable = [ordered]@{ path = 'dist/Timox VASIO Control 1.1.0.exe'; sha256 = (Get-Hash $outputs[1]) }
-        driverArchive = [ordered]@{ path = 'dist/TimoxVasio Driver 1.1.0.zip'; sha256 = (Get-Hash $driverZip); driverSha256 = $zipDriverHash }
+        setup = [ordered]@{ path = 'dist/Timox VASIO Control Setup 1.1.1.exe'; sha256 = (Get-Hash $outputs[0]) }
+        portable = [ordered]@{ path = 'dist/Timox VASIO Control 1.1.1.exe'; sha256 = (Get-Hash $outputs[1]) }
+        driverArchive = [ordered]@{ path = 'dist/TimoxVasio Driver 1.1.1.zip'; sha256 = (Get-Hash $driverZip); driverSha256 = $zipDriverHash }
     }
 }
-$reportDirectory = Join-Path $guiRoot 'dist\release-validation-1.1.0'
+$reportDirectory = Join-Path $guiRoot 'dist\release-validation-1.1.1'
 New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $reportDirectory 'MANIFEST.json') -Encoding utf8
 Write-Host "Postflight réussi. Manifeste : $reportDirectory\MANIFEST.json"

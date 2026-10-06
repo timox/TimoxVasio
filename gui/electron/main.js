@@ -31,7 +31,7 @@ function startEngine() {
         ? path.resolve(__dirname, '../../build_codex_110/Release/TimoxVirtualAsioEngine.exe')
         : path.join(process.resourcesPath, 'backend/TimoxVirtualAsioEngine.exe');
     if (!fs.existsSync(enginePath)) {
-        const error = new Error(`TimoxVirtualAsioEngine.exe est absent du chemin attendu : ${enginePath}`);
+        const error = new Error(`TimoxVirtualAsioEngine.exe is missing from the expected path: ${enginePath}`);
         console.error(error.message);
         readiness.reject(error);
         notify('engine-connection', { connected: false, error: error.message });
@@ -70,7 +70,7 @@ function startEngine() {
     engineProcess.on('exit', (code, signal) => {
         console.error(`VASIO engine exited: code=${code} signal=${signal}`);
         if (apiReady === readiness && !engineStopping)
-            readiness.reject(new Error('TimoxVirtualAsioEngine s’est arrêté avant le démarrage de l’API'));
+            readiness.reject(new Error('TimoxVirtualAsioEngine stopped before the API started'));
         apiPort = undefined;
         engineProcess = null;
         if (apiClient) apiClient.close();
@@ -172,9 +172,9 @@ app.on('before-quit', () => {
 });
 
 Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'Fichier', submenu: [{ label: 'Quitter', accelerator: 'CmdOrCtrl+Q', click: () => app.quit() }] },
-    { label: 'Affichage', submenu: [
-        { label: 'Recharger', accelerator: 'CmdOrCtrl+R', click: () => mainWindow && mainWindow.reload() },
-        { label: 'Outils de développement', accelerator: 'CmdOrCtrl+I', click: () => mainWindow && mainWindow.toggleDevTools() }
+    { label: 'File', submenu: [{ label: 'Quit', accelerator: 'CmdOrCtrl+Q', click: () => app.quit() }] },
+    { label: 'View', submenu: [
+        { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => mainWindow && mainWindow.reload() },
+        { label: 'Developer Tools', accelerator: 'CmdOrCtrl+I', click: () => mainWindow && mainWindow.toggleDevTools() }
     ] }
 ]));

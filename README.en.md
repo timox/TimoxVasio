@@ -2,7 +2,7 @@
 
 [Français](README.md) | **English**
 
-**Current release: [1.1.0](https://github.com/timox/TimoxVasio/releases/tag/v1.1.0).** The [1.1.0 feature guide](docs/FONCTIONS_1.1.0.en.md) explains the five Control views, channel meters, stereo correlation, and API console with diagrams and examples.
+**Current release: [1.1.1](https://github.com/timox/TimoxVasio/releases/tag/v1.1.1).** The [release notes](docs/RELEASE_NOTES_v1.1.1.en.md) describe the updated interface. The [1.1.0 feature guide](docs/FONCTIONS_1.1.0.en.md) explains the existing meters, correlation, and API console.
 
 ## Purpose
 
@@ -15,10 +15,10 @@ TimoxVasio is one Windows x64 virtual ASIO driver that can expose up to 256 inpu
 - The engine uses the selected physical ASIO driver's actual sample rate and block size as the common reference.
 - The API reports connected clients, allocated channels, saved routes, and active routes. The interface sends configuration changes through that API.
 - Routes saved under an executable name can wait for the application to reconnect, without depending on its former PID.
-- Timox VASIO Control shows meters for active routed channels, stereo L/R correlation, Swagger, an API console, and logs.
+- Timox VASIO Control offers a graphical patchbay alongside the routing matrix, plus meters for active routed channels, stereo L/R correlation, Swagger, an API console, and logs.
 - Discovery was confirmed with a locally modified Mixxx build. The user also confirmed an end-to-end routed audio test on October 5, 2026; measurement details are not recorded here.
 
-See the [driver sequences](docs/DRIVER_SEQUENCES.en.md), [architecture](ARCHITECTURE.en.md), and [ASIO compliance assessment](ASIO_CONFORMITE.en.md). The [1.1.0 release notes](docs/RELEASE_NOTES_v1.1.0.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.1.0.en.md) explain the release. Future work is tracked in the [roadmap](docs/ROADMAP.en.md).
+See the [driver sequences](docs/DRIVER_SEQUENCES.en.md), [architecture](ARCHITECTURE.en.md), and [ASIO compliance assessment](ASIO_CONFORMITE.en.md). The [1.1.1 release notes](docs/RELEASE_NOTES_v1.1.1.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.1.1.en.md) explain the release. Future work is tracked in the [roadmap](docs/ROADMAP.en.md).
 
 ## API and support
 

@@ -8,7 +8,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-set "DRIVER_DIR=%ProgramFiles%\Steinberg\VirtualASIO\1.1.0"
+set "DRIVER_DIR=%ProgramFiles%\Steinberg\VirtualASIO\1.1.1"
 if not exist "%~dp0TimoxVasio.dll" (
     echo TimoxVasio.dll est introuvable a cote de ce script.
     exit /b 1

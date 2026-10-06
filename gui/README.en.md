@@ -13,9 +13,9 @@ npm install
 npm start
 ```
 
-Electron attaches to an engine already running on the local port or starts `TimoxVirtualAsioEngine.exe`, then consumes its HTTP routes and WebSocket. Navigation includes Configuration, Channels, Analysis, API, and Logs. The routing matrix expands in Channels when it needs editing. Swagger UI and the schemas are generated from `../openapi-v1.json` and `../schemas/api-v1.json`, then bundled with local resources by `scripts/embed-openapi.js`.
+Electron attaches to an engine already running on the local port or starts `TimoxVirtualAsioEngine.exe`, then consumes its HTTP routes and WebSocket. The React development server uses port 4000. Navigation includes Configuration, Channels, Analysis, API, and Logs. Channels offers a graphical patchbay and the complementary routing matrix. Select a connection to inspect gain and mute, or remove it; select multiple connections to assign a shared display label and color. These visual settings do not change audio routing. Swagger UI and the schemas are generated from `../openapi-v1.json` and `../schemas/api-v1.json`, then bundled with local resources by `scripts/embed-openapi.js`.
 
-During development and packaging, Electron uses `../build_codex_110/Release/TimoxVirtualAsioEngine.exe` and its `config/` directory. Before packaging, `npm run dist` checks the presence and SHA-256 hashes of the engine, driver, and driver ZIP. After packaging, it compares the embedded engine with the source build and writes a manifest under `dist/release-validation-1.1.0/`. The ASIO DLL is distributed separately; it is not included in the Electron application.
+During development and packaging, Electron uses `../build_codex_110/Release/TimoxVirtualAsioEngine.exe` and its `config/` directory. Before packaging, `npm run dist` checks the presence and SHA-256 hashes of the engine, driver, and driver ZIP. After packaging, it compares the embedded engine with the source build and writes a manifest under `dist/release-validation-1.1.1/`. The ASIO DLL is distributed separately; it is not included in the Electron application.
 
 ## Usage
 
