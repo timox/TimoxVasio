@@ -1,5 +1,7 @@
 # Soutenir TimoxVasio
 
+**Français** | [English](FUNDING.en.md)
+
 TimoxVasio est un projet libre. Si le pilote, le moteur ou l’interface vous
 sont utiles, vous pouvez contribuer à financer leur développement et leur
 maintenance via [GitHub Sponsors](https://github.com/sponsors/timox).

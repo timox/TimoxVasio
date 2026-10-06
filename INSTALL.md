@@ -1,5 +1,7 @@
 # Installation de TimoxVasio
 
+**Français** | [English](INSTALL.en.md)
+
 Ce guide installe l’unique pilote ASIO virtuel `TimoxVasio.dll`. Il ne nécessite pas l’interface graphique de Visual Studio, PortAudio ni l’ouverture de `vasio.sln`.
 
 ## Prérequis

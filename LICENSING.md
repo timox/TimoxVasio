@@ -1,5 +1,7 @@
 # Licence et nom du produit
 
+**Français** | [English](LICENSING.en.md)
+
 Le code original du projet TimoxVasio est distribué sous licence GNU GPL version 3, version exacte (`GPL-3.0-only`). Le texte intégral est dans [LICENSE](LICENSE).
 
 Ce choix permet de publier le projet avec la voie libre du SDK ASIO Steinberg : le SDK propose la GPLv3 ou une licence propriétaire Steinberg, et ses fichiers conservent leurs propres avis. Le projet ne peut donc pas être présenté comme un ensemble MIT. Voir les [conditions du SDK conservées dans le dépôt](asiosdk/LICENSE.txt) et le [portail développeur Steinberg](https://www.steinberg.net/developers/). Les composants tiers sous `vendor/` conservent leurs licences respectives; la licence de ce dépôt ne les remplace pas.

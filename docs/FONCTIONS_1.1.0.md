@@ -1,5 +1,7 @@
 # Utiliser Timox VASIO Control 1.1.0
 
+**Français** | [English](FONCTIONS_1.1.0.en.md)
+
 Cette page décrit les fonctions livrées avec [TimoxVasio 1.1.0](https://github.com/timox/TimoxVasio/releases/tag/v1.1.0). L’application Windows réunit cinq vues :
 
 | Vue | Usage principal |

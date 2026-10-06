@@ -1,5 +1,7 @@
 # Livrables Windows 1.1.0
 
+**Français** | [English](RELEASE_WINDOWS_1.1.0.en.md)
+
 | Fichier | Contenu | Usage |
 | --- | --- | --- |
 | `Timox.VASIO.Control.Setup.1.1.0.exe` | Interface Electron et moteur `TimoxVirtualAsioEngine.exe` embarqué | Installation de l’interface et du moteur |

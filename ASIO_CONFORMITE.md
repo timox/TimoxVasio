@@ -1,5 +1,7 @@
 # TimoxVasio — vérification ASIO
 
+**Français** | [English](ASIO_CONFORMITE.en.md)
+
 ## Conclusion
 
 Le code actif implémente l’interface `IASIO` du SDK et ses principales opérations de découverte, de format, d’allocation et de callbacks. Les probes locaux vérifient notamment 256 canaux par direction, l’index 255, le rejet de l’index 256 et le transport audio sur les canaux 0, 127 et 255.

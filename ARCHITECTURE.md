@@ -1,5 +1,7 @@
 # Architecture de TimoxVasio
 
+**Français** | [English](ARCHITECTURE.en.md)
+
 ## Objectif
 
 TimoxVasio est un pilote ASIO virtuel Windows x64. La DLL ASIO fournit aux

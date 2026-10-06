@@ -1,5 +1,7 @@
 # Démarrage rapide de TimoxVasio
 
+**Français** | [English](QUICKSTART.en.md)
+
 Le projet expose un pilote ASIO virtuel unique, `TimoxVasio.dll`, et un moteur audio distinct, `TimoxVirtualAsioEngine.exe`. Le pilote annonce jusqu’à 256 entrées et 256 sorties; l’API ne publie que les canaux effectivement alloués par chaque client.
 
 ## Compiler

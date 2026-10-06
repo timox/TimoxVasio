@@ -1,5 +1,7 @@
 # TimoxVasio 1.1.0
 
+**Français** | [English](RELEASE_NOTES_v1.1.0.en.md)
+
 Cette version réunit le pilote ASIO virtuel, le moteur audio et Timox VASIO Control.
 
 ## Fichiers à télécharger

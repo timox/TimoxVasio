@@ -1,5 +1,7 @@
 # TimoxVasio
 
+**Français** | [English](README.en.md)
+
 **Version publiée : [1.1.0](https://github.com/timox/TimoxVasio/releases/tag/v1.1.0).** Le [guide des fonctions 1.1.0](docs/FONCTIONS_1.1.0.md) présente les cinq vues de l’interface, les vumètres, la corrélation stéréo et la console API avec des schémas et des exemples.
 
 ## Objectif

@@ -1,5 +1,7 @@
 # Feuille de route après la release 1.1.0
 
+**Français** | [English](ROADMAP.en.md)
+
 ## Diagnostic de la taille du tampon ASIO
 
 Déterminer si la taille de tampon configurée convient à la fréquence choisie et à la charge réelle, sans modifier automatiquement la configuration audio.

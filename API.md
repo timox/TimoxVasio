@@ -1,5 +1,7 @@
 # API locale de contrôle TimoxVasio v1
 
+**Français** | [English](API.en.md)
+
 Cette API est le contrat entre l’interface de contrôle et le moteur natif. Electron main en est le client ; le renderer ne lit ni le registre, ni le fichier de configuration, ni la mémoire audio partagée.
 
 Pour une prise en main par étapes, avec schéma d’architecture et exemples
