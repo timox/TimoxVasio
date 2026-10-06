@@ -2,9 +2,9 @@
 
 | File | Contents | Use |
 | --- | --- | --- |
-| `Timox VASIO Control Setup 1.1.1.exe` | Electron interface and bundled `TimoxVirtualAsioEngine.exe` | Install Control and the engine |
-| `Timox VASIO Control 1.1.1.exe` | Portable Electron interface and bundled engine | Run Control without installing it |
-| `TimoxVasio Driver 1.1.1.zip` | `TimoxVasio.dll`, installer, registration script, license | Install and register the ASIO driver |
+| `Timox.VASIO.Control.Setup.1.1.1.exe` | Electron interface and bundled `TimoxVirtualAsioEngine.exe` | Install Control and the engine |
+| `Timox.VASIO.Control.1.1.1.exe` | Portable Electron interface and bundled engine | Run Control without installing it |
+| `TimoxVasio.Driver.1.1.1.zip` | `TimoxVasio.dll`, installer, registration script, license | Install and register the ASIO driver |
 
 Install the driver before selecting TimoxVasio in an ASIO application. Extract the ZIP and run `Installer TimoxVasio.bat` as administrator. The DLL is registered from `C:\Program Files\Steinberg\VirtualASIO\1.1.1`. Restart applications that still have an earlier DLL open.
 

@@ -6,9 +6,9 @@ This release updates the Timox VASIO Control interface and rebuilds the Windows 
 
 | File | Purpose |
 | --- | --- |
-| `TimoxVasio Driver 1.1.1.zip` | ASIO driver DLL, administrator installer, registration script, and license. |
-| `Timox VASIO Control Setup 1.1.1.exe` | Installer for Control and its bundled audio engine. |
-| `Timox VASIO Control 1.1.1.exe` | Portable Control with the bundled audio engine. |
+| `TimoxVasio.Driver.1.1.1.zip` | ASIO driver DLL, administrator installer, registration script, and license. |
+| `Timox.VASIO.Control.Setup.1.1.1.exe` | Installer for Control and its bundled audio engine. |
+| `Timox.VASIO.Control.1.1.1.exe` | Portable Control with the bundled audio engine. |
 | `MANIFEST.json` | Version, source commit, and SHA-256 values of the validated files. |
 
 The driver ZIP is separate from the Control installers. Extract it and run `Installer TimoxVasio.bat` as administrator. Restart any audio application that has the older driver DLL open. See the [installation guide](../INSTALL.en.md).

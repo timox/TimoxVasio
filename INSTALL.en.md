@@ -24,7 +24,7 @@ The script builds `TimoxVasio` in `build_driver_110`, copies the DLL to `C:\Prog
 
 ## Install the release download
 
-Download and extract `TimoxVasio Driver 1.1.1.zip` from the [1.1.1 release](https://github.com/timox/TimoxVasio/releases/tag/v1.1.1). Run `Installer TimoxVasio.bat` as administrator from the extracted directory. The installer uses a versioned directory so it can register the new driver even if an application still holds an older DLL open.
+Download and extract `TimoxVasio.Driver.1.1.1.zip` from the [1.1.1 release](https://github.com/timox/TimoxVasio/releases/tag/v1.1.1). Run `Installer TimoxVasio.bat` as administrator from the extracted directory. The installer uses a versioned directory so it can register the new driver even if an application still holds an older DLL open.
 
 To perform the same operation manually, open an administrator PowerShell in the extracted directory:
 
