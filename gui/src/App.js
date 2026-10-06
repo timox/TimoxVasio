@@ -340,6 +340,10 @@ function App() {
     };
     const applyConfiguration = async () => {
         if (!configuration || configurationLocked) return;
+        if (incompatiblePhysicalRoutes.length) {
+            setNotice(`Remove the ${incompatiblePhysicalRoutes.length} route(s) targeting the previous physical driver before applying this configuration.`);
+            return;
+        }
         setApplying(true);
         setNotice('Applying configuration…');
         try {
@@ -357,6 +361,16 @@ function App() {
 
     const endpointName = id => endpoints.all.find(item => item.id === id)?.name || id;
     const physicalDrivers = apiState?.physicalDrivers || [];
+    const incompatiblePhysicalRoutes = (configuration?.routes || []).filter(route =>
+        [route.sourceEndpointId, route.destinationEndpointId].some(endpointId =>
+            endpointId.startsWith('physical:') &&
+            (!configuration.physicalDriverId ||
+                !endpointId.startsWith(`physical:${configuration.physicalDriverId}:`))));
+    const removeIncompatibleRoutes = () => updateDraft(current => ({
+        ...current,
+        routes: current.routes.filter(route => !incompatiblePhysicalRoutes.some(incompatible => incompatible.id === route.id))
+    }));
+    const clearAllRoutes = () => updateDraft(current => ({ ...current, routes: [] }));
     const selectedPhysical = physicalDrivers.find(driver => driver.id === configuration?.physicalDriverId);
     const availableRates = selectedPhysical?.sampleRates || [];
     const bufferSizes = (() => {
@@ -736,6 +750,16 @@ function App() {
                             {physicalDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                         </select>
                     </label>
+                    {incompatiblePhysicalRoutes.length > 0 && <div className="error-panel" role="alert">
+                        <p>{incompatiblePhysicalRoutes.length} {incompatiblePhysicalRoutes.length === 1 ? 'route still targets' : 'routes still target'} the previous physical driver. Remove those routes from the draft before applying the new driver.</p>
+                        <div className="analysis-actions">
+                            <button type="button" className="remove-incompatible-routes" disabled={configurationLocked}
+                                onClick={removeIncompatibleRoutes}>Remove previous hardware routes</button>
+                            <button type="button" className="clear-all-routes" disabled={configurationLocked}
+                                onClick={clearAllRoutes}>Clear all routes</button>
+                        </div>
+                        <p>These changes take effect only when you select Apply configuration.</p>
+                    </div>}
                     {configuration?.physicalDriverId && <>
                         <label className="field">Physical sample rate
                             <select disabled={configurationLocked} value={configuration.sampleRate || ''} onChange={event => updateConfiguration('sampleRate', event.target.value ? Number(event.target.value) : null)}>

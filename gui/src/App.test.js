@@ -5,9 +5,9 @@ import App from './App';
 
 const state = {
     apiVersion: '1.0',
-    engine: { state: 'stopped', physicalDriverId: null, sampleRate: null, bufferFrames: null, lastError: null },
+    engine: { state: 'stopped', physicalDriverId: 'interface-1', sampleRate: 48000, bufferFrames: 512, lastError: null },
     physicalDrivers: [{
-        id: 'physical:interface-1', name: 'Interface réelle',
+        id: 'interface-1', name: 'Interface réelle',
         inputEndpoints: [{ id: 'physical:interface-1:input:1', name: 'Entrée 1', direction: 'input', channel: 1 }],
         outputEndpoints: [{ id: 'physical:interface-1:output:1', name: 'Sortie 1', direction: 'output', channel: 1 }],
         sampleRates: [44100, 48000], bufferSizes: null, capabilitiesKnown: false
@@ -61,6 +61,65 @@ test('graphical connections and matrix edit the same pending routing configurati
     } finally {
         await act(async () => root.unmount());
         container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('switching physical drivers identifies old hardware routes before applying', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const physicalRoute = { id: 'master', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
+        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false };
+    const virtualRoute = { id: 'virtual', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
+        destinationEndpointId: 'virtual:TimoxVasio:42:input:1', gainDb: 0, mute: false };
+    const driverState = {
+        ...state,
+        engine: { ...state.engine, physicalDriverId: 'interface-1', sampleRate: 48000, bufferFrames: 512 },
+        physicalDrivers: [
+            { ...state.physicalDrivers[0], id: 'interface-1' },
+            { id: 'asio4all-1', name: 'ASIO4ALL v2', inputEndpoints: [], outputEndpoints: [],
+                sampleRates: [], bufferSizes: null, capabilitiesKnown: false }
+        ],
+        routes: [physicalRoute, virtualRoute]
+    };
+    const applyConfiguration = jest.fn().mockResolvedValue({ accepted: true });
+    window.vasio = {
+        getState: jest.fn().mockResolvedValue(driverState),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}),
+        onDisconnect: jest.fn(() => () => {}),
+        applyConfiguration
+    };
+    window.electronAPI = {
+        onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {})
+    };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        const driverSelect = [...container.querySelectorAll('select')].find(select => select.value === 'interface-1');
+        await act(async () => Simulate.change(driverSelect, { target: { value: 'asio4all-1' } }));
+        expect(container.textContent).toContain('1 route still targets the previous physical driver');
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(applyConfiguration).not.toHaveBeenCalled();
+        await act(async () => Simulate.click(container.querySelector('.remove-incompatible-routes')));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+            physicalDriverId: 'asio4all-1',
+            routes: [virtualRoute]
+        }));
+        await act(async () => Simulate.change(driverSelect, { target: { value: 'asio4all-1' } }));
+        await act(async () => Simulate.click(container.querySelector('.clear-all-routes')));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(applyConfiguration.mock.lastCall[0]).toEqual(expect.objectContaining({
+            physicalDriverId: 'asio4all-1',
+            routes: []
+        }));
+    } finally {
+        await act(async () => root.unmount());
+        container.remove();
+        delete window.vasio;
+        delete window.electronAPI;
     }
 });
 
@@ -300,7 +359,7 @@ test('active channels show meters and the Analyse and API views call documented 
         rightEndpointId: 'virtual:TimoxVasio:42:output:2', label: 'AudioApp.exe · Sorties 1–2' };
     const activeState = {
         ...state,
-        engine: { ...state.engine, state: 'running', physicalDriverId: 'physical:interface-1', sampleRate: 48000, bufferFrames: 256 },
+        engine: { ...state.engine, state: 'running', physicalDriverId: 'interface-1', sampleRate: 48000, bufferFrames: 256 },
         physicalDrivers: [{ ...state.physicalDrivers[0], outputEndpoints: [
             { id: 'physical:interface-1:output:1', name: 'Sortie 1', direction: 'output', channel: 1 },
             { id: 'physical:interface-1:output:2', name: 'Sortie 2', direction: 'output', channel: 2 }
