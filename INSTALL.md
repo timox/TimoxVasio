@@ -25,7 +25,7 @@ Le script configure et compile la cible `TimoxVasio` dans `build_driver_110`, co
 
 ## Installer la DLL téléchargée depuis une release
 
-Le Setup Electron installe l’interface et son moteur; il n’installe pas le pilote ASIO. Extraire `TimoxVasio Driver 1.1.0.zip`, puis lancer `Installer TimoxVasio.bat` en administrateur depuis le dossier extrait. Le script installe la DLL dans un dossier versionné afin de ne pas écraser un ancien pilote encore chargé par une application.
+Le Setup Electron installe l’interface et son moteur; il n’installe pas le pilote ASIO. Télécharger `TimoxVasio.Driver.1.1.0.zip` depuis la release, l’extraire, puis lancer `Installer TimoxVasio.bat` en administrateur depuis le dossier extrait. Le script installe la DLL dans un dossier versionné afin de ne pas écraser un ancien pilote encore chargé par une application.
 
 Pour effectuer la même opération manuellement depuis le dossier extrait, ouvrir PowerShell en administrateur :
 

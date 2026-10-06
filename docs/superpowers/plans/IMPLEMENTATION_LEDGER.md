@@ -223,14 +223,10 @@ le 5 octobre 2026; elles ne constituent plus un blocage de validation audio.
   la voie libre du SDK ASIO et précise que le nom officiel reste
   `TimoxVasio`. La licence libre autorise les forks renommés; elle ne peut
   donc pas garantir à elle seule le nom des versions dérivées.
-- Le README pointe maintenant vers le dépôt public nommé `TimoxVasio`, selon
-  l’indication de l’utilisateur. L’accès au clone/remote de cette cible n’est
-  pas vérifiable depuis le dépôt `asio` ouvert ici.
-- À cette date, aucun commit, tag ou push de publication n’avait été créé. Le dépôt ouvert ici
-  est `grrzzzz` et son remote pointe vers `timox/grrzzzz`, tandis que la cible
-  publique demandée est le dépôt séparé `TimoxVasio`. Ne pas publier dans le
-  dépôt `grrzzzz` par substitution. La migration/publication attend le clone
-  correct de `TimoxVasio` dans le périmètre de travail autorisé.
+- Le README pointait vers le dépôt public `TimoxVasio`, mais le clone de
+  publication n’était pas encore disponible dans cette session historique.
+- À cette date, aucun commit, tag ou push de publication n’avait été créé.
+  La publication attendait l’accès au clone public `TimoxVasio`.
 
 Cet état du 4 octobre a été remplacé : la release `v1.0.0` a depuis été publiée
 sur `timox/TimoxVasio` et le test audio de bout en bout confirmé le 5 octobre.

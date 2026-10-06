@@ -1,8 +1,8 @@
 # Repères du dépôt TimoxVasio
 
 ## Dépôt actif
-- Racine : `C:\Users\timo\Documents\GitHub\TimoxVasio`.
-- Ne pas modifier le dépôt voisin `grrzzzz`.
+- Racine : dossier retourné par `git rev-parse --show-toplevel` dans ce clone.
+- Limiter les modifications à ce dépôt public.
 - Avant toute compilation ou installation, confirmer la racine avec `git rev-parse --show-toplevel` et lire `git status`.
 
 ## Binaires : fonctions et chemins canoniques

@@ -28,7 +28,7 @@ sequenceDiagram
     D-->>H: "inputCount, outputCount du profil"
     loop Pour chaque canal demandé par l'hôte
         H->>D: getChannelInfo(direction, channel 0-based)
-        D-->>H: "Nom, direction, format et état du cana"l
+    D-->>H: "Nom, direction, format et état du canal"
     end
     H->>D: "createBuffers(liste sparse, frames, callbacks)"
     D->>D: "Vérifier compte, bornes, doublons et taille"

@@ -19,7 +19,7 @@
 - Les échantillons audio et contenus de buffers ne sont jamais écrits dans les journaux.
 - Une configuration audio est appliquée comme document complet `configuration.apply`.
 - L’arrêt du moteur est refusé tant qu’un client ASIO est attaché.
-- Les changements et assets sont limités au dossier `asio`; la publication va au dépôt public TimoxAsio, jamais au remote `grrzzzz`.
+- Les changements et assets sont limités à TimoxVasio; la publication va au dépôt public `timox/TimoxVasio`.
 - Le tag et la publication attendent les vérifications build, API, UI, Swagger et découverte Mixxx.
 
 ## Review Focus
@@ -282,9 +282,9 @@ Confirmer dans Mixxx le pilote TimoxVasio et dans l’API les canaux ouverts. Va
 
 Mettre à jour guides et ledger avec les commandes de diagnostic, chemin des logs, récupération Swagger, version de build, profils et critères audio réellement vérifiés. Ne pas écrire `achieved` pour un chemin audio sans mesure.
 
-- [ ] **Step 7: Préparer le tag et la publication sur TimoxAsio**
+- [ ] **Step 7: Préparer le tag et la publication sur TimoxVasio**
 
-Vérifier d’abord le remote et la branche du clone public TimoxAsio; vérifier que le commit ne contient que les changements de ce projet. Créer un tag versionné, joindre l’installateur et le portable; ne jamais pousser ces changements sur `grrzzzz`.
+Vérifier d’abord le remote et la branche du clone public TimoxVasio; vérifier que le commit ne contient que les changements de ce projet. Créer un tag versionné, joindre l’installateur et le portable.
 
 ## Auto-revue du plan
 

@@ -21,4 +21,6 @@ Installer le pilote depuis le ZIP, puis installer ou lancer Timox VASIO Control.
 - Interface réorganisée avec niveaux par canal actif, analyse de corrélation stéréo L/R, console API et journaux.
 - Contrôle post-installation de la DLL enregistrée, du moteur lancé et de la version de l’API.
 
+Le [guide des fonctions 1.1.0](https://github.com/timox/TimoxVasio/blob/main/docs/FONCTIONS_1.1.0.md) explique les cinq vues avec des schémas et donne des exemples HTTP et WebSocket pour les niveaux, la corrélation et les routes persistantes.
+
 Les builds, tests natifs et tests de l’interface passent. Les empreintes SHA-256 des artefacts figurent dans `MANIFEST.json`. Le diagnostic de la taille du tampon et des ratés audio est inscrit à la [feuille de route](https://github.com/timox/TimoxVasio/blob/v1.1.0/docs/ROADMAP.md) pour une version ultérieure.

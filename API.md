@@ -6,7 +6,7 @@ Pour une prise en main par étapes, avec schéma d’architecture et exemples
 PowerShell/Node.js, voir le [quick start API](docs/API_QUICKSTART.md). Ce fichier
 reste la référence détaillée du contrat.
 
-La définition [Swagger/OpenAPI 3.1](openapi-v1.json) décrit les routes HTTP et référence les schémas JSON partagés. Son extension `x-websocket` décrit les commandes, réponses et événements de la connexion WebSocket.
+La définition [Swagger/OpenAPI 3.1](openapi-v1.json) décrit les routes HTTP et référence les schémas JSON partagés. Son extension `x-websocket` décrit les commandes, réponses et événements de la connexion WebSocket. Le [guide des fonctions 1.1.0](docs/FONCTIONS_1.1.0.md) illustre les mesures et la console intégrée.
 
 Le serveur natif utilise `cpp-httplib` 0.58.0 pour HTTP et WebSocket, et `nlohmann/json` 3.12.0 pour encoder et décoder les messages. Les en-têtes et licences de ces dépendances sont conservés dans `vendor/`.
 
@@ -118,7 +118,7 @@ Chaque commande est un message JSON :
 }
 ```
 
-`id` est une chaîne non vide de 1 à 128 caractères et doit être unique parmi les commandes en attente sur cette connexion. La commande `configuration.apply` remplace en une opération le pilote physique, la fréquence, la taille de buffer et la liste complète des routes. L’objet complet est validé avant mutation. Répéter exactement la même configuration est idempotent.
+`id` est une chaîne non vide de 1 à 128 caractères et doit être unique parmi les commandes en attente sur cette connexion. La commande `configuration.apply` remplace le pilote physique, la fréquence, la taille de buffer et la liste complète des routes. L’objet complet est validé avant mutation. Une répétition ne duplique pas les routes; elle peut néanmoins interrompre brièvement le flux pendant la reconfiguration.
 
 `sampleRate` et `bufferFrames` sont les valeurs du pilote physique choisi. `null` demande respectivement le taux courant et la taille préférée annoncés par ce pilote. Le moteur fixe le taux physique, relit ses capacités dépendantes du taux et refuse toute taille qu’il n’annonce pas. TimoxVasio reçoit exactement ces valeurs ; il n’a pas de réglage de fréquence ou de taille indépendant.
 
@@ -185,7 +185,7 @@ Un changement effectif arrête le flux avant de détruire ou reconstruire les bu
 4. événement `engine.status` avec `state: "running"` si au moins une route existe et que la validation, l’ouverture du périphérique, la création des buffers et le démarrage réussissent ;
 5. sinon, événement `engine.error` puis `engine.status` avec `state: "error"`. Le moteur reste arrêté et ne réactive pas l’ancien graphe.
 
-Une configuration identique à celle qui est déjà active répond `accepted` sans arrêter à nouveau le flux. Une commande invalide est rejetée avant toute interruption. L’interface désactive les mutations pendant `reconfiguring` et affiche l’état confirmé par le moteur.
+Une configuration identique à celle qui est déjà active peut reconstruire le flux. Une commande invalide est rejetée avant toute interruption. L’interface désactive les mutations pendant `reconfiguring` et affiche l’état confirmé par le moteur.
 
 L’état `stopped` sans route signifie que le pilote a été configuré mais que le callback audio n’a pas démarré. Après `engine.stop`, l’état `stopped` peut aussi contenir des routes mémorisées, prêtes à être restaurées par `engine.start`. Le serveur HTTP/WebSocket reste disponible dans les deux cas pendant la durée de vie du processus moteur; à la fermeture de la fenêtre Electron, le processus moteur reste disponible pour les clients API qui en dépendent.
 

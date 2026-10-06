@@ -1,5 +1,8 @@
 # Revue UX/UI de Timox VASIO Control
 
+> Revue historique des captures antérieures à la version 1.1.0. Pour l’interface
+> livrée, voir le [guide des fonctions 1.1.0](FONCTIONS_1.1.0.md).
+
 ## Périmètre
 
 Parcours examiné : régler les profils d’applications, choisir le périphérique
@@ -47,10 +50,9 @@ configurée » laisse croire qu’une route existe dans cette matrice précise.
 
 ![Matrice de routage avec filtres et pagination](ux-audit/evidence/04-routing-matrix.png)
 
-La légende a été corrigée dans le code : elle indique maintenant le nombre de
-routes dans la page affichée ou « Aucune route dans cette vue ». Le build
-React et les paquets Electron candidats ont été reconstruits après cette
-correction. Les captures fournies précèdent ce changement.
+La légende a été corrigée depuis ces captures : elle indique le nombre de
+routes dans la page affichée ou « Aucune route dans cette vue ». Les captures
+fournies précèdent ce changement.
 
 ### 4. Liste des routes — commandes visibles, libellés trop techniques
 

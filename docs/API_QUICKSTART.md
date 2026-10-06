@@ -4,7 +4,8 @@ Ce guide présente les composants et les premières requêtes utiles pour
 intégrer un outil au moteur. Pour le contrat complet, les schémas et la liste
 des erreurs, voir la [référence API](../API.md), le
 [contrat OpenAPI](../openapi-v1.json) et les
-[schémas JSON](../schemas/api-v1.json).
+[schémas JSON](../schemas/api-v1.json). Les vues et mesures de la version 1.1.0
+sont illustrées dans le [guide des fonctions](FONCTIONS_1.1.0.md).
 
 ## Architecture complète
 
@@ -67,12 +68,16 @@ $base = "http://127.0.0.1:$port"
 $state = Invoke-RestMethod "$base/api/v1/state"
 $state.engine | Format-List
 $state.routes | Format-Table id, sourceEndpointId, destinationEndpointId
+$state.configuredRoutes | Format-Table id, sourceEndpointId, destinationEndpointId
+$state.stereoPairs | Format-Table id, label
 
 $drivers = Invoke-RestMethod "$base/api/v1/drivers"
 $drivers.physicalDrivers | Select-Object name, id, capabilitiesKnown
 ```
 
-`/api/v1/state` fournit l’état confirmé, les routes et les inventaires. Les
+`/api/v1/state` fournit l’état confirmé, les routes et les inventaires.
+`configuredRoutes` contient toutes les routes enregistrées; `routes` contient
+celles qui sont actives avec les clients actuellement connectés. Les
 identifiants `id` des pilotes et des extrémités sont opaques : réutilisez
 exactement ceux retournés par l’API. Les extrémités physiques peuvent ne pas
 avoir de capacités connues avant l’ouverture du pilote.
@@ -191,14 +196,41 @@ annoncées par le pilote. Les types de routes autorisés sont décrits dans la
 [référence](../API.md#règles-de-routage).
 
 `configuration.apply` remplace le pilote, les paramètres et la liste entière
-des routes : incluez toutes celles à conserver. Répéter la même configuration
-est idempotent. La réponse avec le même `id` acquitte ou rejette la commande;
+des routes : incluez toutes celles à conserver. Une répétition ne duplique pas
+les routes, mais peut reconstruire le flux et provoquer une brève interruption.
+Une nouvelle route virtuelle en attente peut utiliser un identifiant stable
+`virtual:TimoxVasio:app:<executable>:output:<canal>` si l’exécutable possède
+un profil enregistré et que le canal respecte ce profil. La réponse avec le
+même `id` acquitte ou rejette la commande;
 les événements suivants, dont `engine.status` et `routes.changed`, indiquent
 l’état confirmé. Les événements `audio.meter` donnent un niveau de crête et
 des compteurs de sous-débordement/sur-débordement; ils ne transportent pas
 l’audio.
 
-## 4. Consulter les diagnostics
+## 4. Observer les niveaux et la corrélation
+
+`audio.meter` publie le niveau de crête des extrémités routées. Dans l’interface,
+les vumètres de la vue **Canaux** sont limités aux canaux clients ouverts et
+routés. Les compteurs `underruns` et `overruns` décrivent le transport partagé.
+
+Les paires disponibles pour l’analyse L/R sont dans `stereoPairs`. Choisissez
+un `id` réellement retourné par `/api/v1/state`, puis envoyez :
+
+```json
+{
+  "id": "analyse-1",
+  "command": "audio.correlation.start",
+  "payload": { "stereoPairId": "stereo:TimoxVasio:1234:output:1-2" }
+}
+```
+
+Les événements `audio.correlation` renvoient un coefficient de `−1` à `+1`.
+En absence de signal mesurable, `correlation` est `null` et `state` vaut
+`no_signal`. Pour terminer, envoyez
+`{"id":"analyse-fin","command":"audio.correlation.stop"}`. Le [guide
+des fonctions](FONCTIONS_1.1.0.md) donne un schéma du cycle et un exemple Node.js.
+
+## 5. Consulter les diagnostics
 
 ```powershell
 $diagnostics = Invoke-RestMethod "$base/api/v1/diagnostics?limit=50"

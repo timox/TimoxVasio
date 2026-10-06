@@ -1,6 +1,6 @@
-# TimoxVasio — synthèse du projet
+# TimoxVasio
 
-Le dépôt public dédié est [TimoxVasio](https://github.com/timox/TimoxVasio). Ce dossier `asio` du dépôt `grrzzzz` conserve un lien vers ce projet et les éléments de travail qui y sont migrés.
+**Version publiée : [1.1.0](https://github.com/timox/TimoxVasio/releases/tag/v1.1.0).** Le [guide des fonctions 1.1.0](docs/FONCTIONS_1.1.0.md) présente les cinq vues de l’interface, les vumètres, la corrélation stéréo et la console API avec des schémas et des exemples.
 
 ## Objectif
 
@@ -11,12 +11,14 @@ Fournir un pilote ASIO virtuel Windows x64 unique, `TimoxVasio`, qui expose jusq
 - La DLL `TimoxVasio.dll` et le moteur `TimoxVirtualAsioEngine.exe` sont deux composants distincts; les builds sont documentés dans [BUILD_DRIVERS.md](BUILD_DRIVERS.md).
 - La sonde COM confirme 256 canaux dans chaque direction, jusqu’à l’index 255. Des probes couvrent aussi l’allocation de buffers, le transport et le graphe de routage.
 - Le moteur ouvre le pilote ASIO physique choisi et utilise sa fréquence et sa taille de bloc effectives comme référence commune.
-- L’API publie les clients et les canaux réellement alloués; la GUI transmet les changements de configuration à cette API.
+- L’API publie les clients, les canaux réellement alloués, les routes enregistrées et les routes actives; l’interface transmet les changements de configuration à cette API.
+- Les routes enregistrées par nom d’exécutable attendent la reconnexion d’une application sans dépendre de son ancien PID.
+- Timox VASIO Control présente les niveaux des canaux actifs et routés, la corrélation d’une paire stéréo L/R, Swagger, une console API et les journaux.
 - La découverte de `TimoxVasio` a été confirmée avec une build locale modifiée de Mixxx. Le test de bout en bout du signal routé a également été réalisé et confirmé par l’utilisateur le 5 octobre 2026; les détails de mesure ne sont pas consignés dans ce README.
 
-Les séquences ASIO, les profils API et le chemin Mixxx sont illustrés dans [DRIVER_SEQUENCES.md](docs/DRIVER_SEQUENCES.md). L'architecture est résumée dans [ARCHITECTURE.md](ARCHITECTURE.md). Les preuves et limites du contrôle de protocole sont résumées dans [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md). La [revue UX/UI](docs/UX_UI_REVIEW.md) documente l'interface, les corrections de lisibilité et les preuves visuelles. Les décisions détaillées sont dans la [spécification](docs/superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.md) et le [plan de réalisation](docs/superpowers/plans/2026-10-03-vasio-256-physical-master-plan.md).
+Les séquences ASIO, les profils API et le chemin Mixxx sont illustrés dans [DRIVER_SEQUENCES.md](docs/DRIVER_SEQUENCES.md). L’architecture est résumée dans [ARCHITECTURE.md](ARCHITECTURE.md). Les preuves et limites du contrôle de protocole sont résumées dans [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md). La [revue UX/UI historique](docs/UX_UI_REVIEW.md) documente les captures antérieures à l’interface 1.1.0.
 
-Le récapitulatif de cette version est dans [RELEASE_NOTES_v1.0.0.md](docs/RELEASE_NOTES_v1.0.0.md).
+Le récapitulatif de la livraison est dans les [notes de version 1.1.0](docs/RELEASE_NOTES_v1.1.0.md). Les [trois téléchargements Windows](docs/RELEASE_WINDOWS_1.1.0.md) ont des rôles distincts.
 Les travaux prévus après la release 1.1.0 figurent dans la [feuille de route](docs/ROADMAP.md).
 
 ## Utiliser l’API et soutenir le projet

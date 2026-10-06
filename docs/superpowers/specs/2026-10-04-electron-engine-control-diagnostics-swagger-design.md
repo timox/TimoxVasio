@@ -115,8 +115,7 @@ décrites dans les schémas, OpenAPI, Swagger et tests de contrat.
 
 Le build produit l’exécutable portable et l’installateur Windows depuis la
 même version de l’interface, du moteur et d’OpenAPI. La publication cible le
-dépôt public TimoxAsio; le remote actuel `grrzzzz` ne doit pas recevoir cette
-publication. Le tag et les assets ne sont créés qu’après validation du build,
+dépôt public TimoxVasio. Le tag et les assets ne sont créés qu’après validation du build,
 des tests et de la découverte Mixxx déjà confirmée.
 
 ## Contrats attendus
@@ -159,7 +158,7 @@ des tests et de la découverte Mixxx déjà confirmée.
    des surfaces et le focus clavier. Les builds portable et installateur
    embarquent les mêmes sources API et moteur.
 8. Après publication, le tag et les assets existent sur le dépôt public
-   TimoxAsio. Le chemin audio SSL 12 reste une validation distincte : au moment
+   TimoxVasio. Le chemin audio SSL 12 reste une validation distincte : au moment
    de cette conception, l’API indique encore zéro route et le moteur est arrêté.
 
 ## Hors périmètre
@@ -167,7 +166,7 @@ des tests et de la découverte Mixxx déjà confirmée.
 - Enregistrer, analyser ou transmettre des échantillons audio dans les
   diagnostics.
 - Exposer l’API de contrôle au réseau; elle reste liée à `127.0.0.1`.
-- Publier sur le dépôt `grrzzzz`.
+- Publier sur un dépôt sans lien avec TimoxVasio.
 - Modifier les préférences Mixxx ou le projet source Mixxx.
 - Déclarer le signal audio validé sans une lecture effective et une observation
   mesurée des sorties physiques.
