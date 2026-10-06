@@ -19,6 +19,8 @@ This release targets Windows 10 and 11 on x64 systems and 64-bit ASIO applicatio
 
 Windows 32-bit, 32-bit ASIO applications, Windows 7/8, and Windows on ARM are not validated for this release. Compatibility with every Windows computer or audio interface is not guaranteed.
 
+ASIO4ALL v2 can be selected as the physical ASIO driver when its 64-bit driver and a usable audio device are available, but TimoxVasio 1.1.1 has not been validated with ASIO4ALL. ASIO4ALL may be unable to open a device that another application is using exclusively.
+
 ## Interface changes
 
 - A graphical patchbay now sits alongside the routing matrix. Users can create, select, inspect, highlight, and remove connections in the graphical view while retaining the matrix for dense routing.
