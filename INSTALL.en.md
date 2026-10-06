@@ -10,7 +10,7 @@ This guide installs the `TimoxVasio.dll` virtual ASIO driver. The Electron setup
 - For a source build: Visual Studio 2026 C++ tools, CMake 3.16 or later, and the ASIO SDK in `asiosdk`.
 - An administrator terminal to copy and register the DLL.
 
-See [BUILD_DRIVERS.md](BUILD_DRIVERS.md) for source build instructions.
+See [BUILD_DRIVERS.en.md](BUILD_DRIVERS.en.md) for source build instructions.
 
 ## Build and install from source
 

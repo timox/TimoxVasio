@@ -25,10 +25,10 @@ These results establish tested interface behavior. They are neither Steinberg ce
 
 ASIO distinguishes the count advertised by `getChannels` from the channels for which a host requests buffers in `createBuffers`. TimoxVasio advertises at most 256 per direction; the engine reports only each client's allocated channels. Advertising 256 does not mean that an application opens all 256.
 
-This matters to hosts that store a channel count in a type too small for 256. The behavior observed in some Mixxx versions is documented in the [compatibility note](docs/mixxx-256-channel-compatibility.md). It does not change the driver contract.
+This matters to hosts that store a channel count in a type too small for 256. The behavior observed in some Mixxx versions is documented in the [compatibility note](docs/mixxx-256-channel-compatibility.en.md). It does not change the driver contract.
 
 ## Host and hardware validation — October 5, 2026
 
 After reinstalling version 1.0.0, the user confirmed audible end-to-end audio with Renoise and SSL ASIO Driver 1. The API showed the engine `running` at 48 kHz / 1024 frames, one Renoise client with 64 inputs and 64 outputs, and eight active routes. The `audio.meter` stream produced 60 events over 3.5 seconds for routed physical outputs and source virtual outputs; observed peaks ranged from `-101.65` to `-26.43 dBFS`. Diagnostics recorded application of all eight routes and the physical configuration. The user also verified Swagger in Electron.
 
-This validates the signal path tested on that workstation. Other ASIO hosts, devices, and transitions can be covered separately. Reproducible build and probe instructions are in [BUILD_DRIVERS.md](BUILD_DRIVERS.md); see also the [README](README.en.md).
+This validates the signal path tested on that workstation. Other ASIO hosts, devices, and transitions can be covered separately. Reproducible build and probe instructions are in [BUILD_DRIVERS.en.md](BUILD_DRIVERS.en.md); see also the [README](README.en.md).

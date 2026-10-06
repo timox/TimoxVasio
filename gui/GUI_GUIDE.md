@@ -1,5 +1,7 @@
 # Guide d’utilisation de Timox VASIO Control
 
+**Français** | [English](GUI_GUIDE.en.md)
+
 ## Configuration audio
 
 L’interface présente les pilotes ASIO physiques découverts par le moteur et l’unique pilote virtuel `TimoxVasio`. Sélectionner le pilote physique, puis choisir une fréquence et une taille de buffer parmi les capacités qu’il annonce. La même fréquence et la même taille sont utilisées par le moteur et les clients TimoxVasio.

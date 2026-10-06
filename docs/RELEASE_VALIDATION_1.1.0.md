@@ -1,5 +1,7 @@
 # Conditions de validation de TimoxVasio 1.1.0
 
+**Français** | [English](RELEASE_VALIDATION_1.1.0.en.md)
+
 Une compilation seule ne suffit pas à établir que l’application fonctionne. La validation doit relier les sources du commit aux binaires installés, puis vérifier le parcours réel.
 
 ## Provenance des trois composants

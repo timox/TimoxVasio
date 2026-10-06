@@ -10,7 +10,7 @@ TimoxVasio is one Windows x64 virtual ASIO driver that can expose up to 256 inpu
 
 ## Current state
 
-- `TimoxVasio.dll` and `TimoxVirtualAsioEngine.exe` are separate components; see the [build guide](BUILD_DRIVERS.md).
+- `TimoxVasio.dll` and `TimoxVirtualAsioEngine.exe` are separate components; see the [build guide](BUILD_DRIVERS.en.md).
 - Local COM probes confirm 256 channels in each direction, including index 255. Other probes cover buffer allocation, transport, and routing.
 - The engine uses the selected physical ASIO driver's actual sample rate and block size as the common reference.
 - The API reports connected clients, allocated channels, saved routes, and active routes. The interface sends configuration changes through that API.
@@ -18,7 +18,7 @@ TimoxVasio is one Windows x64 virtual ASIO driver that can expose up to 256 inpu
 - Timox VASIO Control shows meters for active routed channels, stereo L/R correlation, Swagger, an API console, and logs.
 - Discovery was confirmed with a locally modified Mixxx build. The user also confirmed an end-to-end routed audio test on October 5, 2026; measurement details are not recorded here.
 
-See the [driver sequences (French)](docs/DRIVER_SEQUENCES.md), [architecture](ARCHITECTURE.en.md), and [ASIO compliance assessment](ASIO_CONFORMITE.en.md). The [1.1.0 release notes](docs/RELEASE_NOTES_v1.1.0.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.1.0.en.md) explain the release. Future work is tracked in the [roadmap](docs/ROADMAP.en.md).
+See the [driver sequences](docs/DRIVER_SEQUENCES.en.md), [architecture](ARCHITECTURE.en.md), and [ASIO compliance assessment](ASIO_CONFORMITE.en.md). The [1.1.0 release notes](docs/RELEASE_NOTES_v1.1.0.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.1.0.en.md) explain the release. Future work is tracked in the [roadmap](docs/ROADMAP.en.md).
 
 ## API and support
 
@@ -42,7 +42,7 @@ The driver advertises its maximum capacity. Each application makes available onl
 
 ## Validation and installation
 
-Local builds and probes validate portions of the driver, transport, and engine. The user confirmed an end-to-end audio test in a third-party host on October 5, 2026. Detailed measurements are not reproduced here. See the [build guide](BUILD_DRIVERS.md) and [installation guide](INSTALL.en.md).
+Local builds and probes validate portions of the driver, transport, and engine. The user confirmed an end-to-end audio test in a third-party host on October 5, 2026. Detailed measurements are not reproduced here. See the [build guide](BUILD_DRIVERS.en.md) and [installation guide](INSTALL.en.md).
 
 ## License and components
 

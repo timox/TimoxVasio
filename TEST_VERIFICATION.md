@@ -1,5 +1,7 @@
 # Vérification de TimoxVasio et du moteur
 
+**Français** | [English](TEST_VERIFICATION.en.md)
+
 Le mainteneur a confirmé que les essais de bout en bout sur hôte ASIO et matériel ont été réalisés dans son environnement. Ce document donne les commandes de vérification reproductible du code et des contrats API; il ne présente pas ces essais comme restant à faire.
 
 ## Build x64

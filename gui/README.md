@@ -1,5 +1,7 @@
 # Timox VASIO Control
 
+**Français** | [English](README.en.md)
+
 Interface Electron et React de configuration du moteur VASIO. L’interface consomme le contrat déclaré dans `../schemas/api-v1.json` : HTTP pour l’état et l’inventaire, WebSocket `vasio.api.v1` pour `configuration.apply` et les événements du moteur.
 
 ## Démarrage en développement

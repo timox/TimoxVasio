@@ -1,6 +1,6 @@
 # VASIO Windows Drivers Implementation Plan
 
-> **Archive historique — ne pas exécuter.** Ce plan décrit quatre pilotes à six canaux. Le contrat courant est l’unique pilote `TimoxVasio.dll` à 256 entrées/sorties; voir [le plan maître](2026-10-03-vasio-256-physical-master-plan.md) et [la spécification](../specs/2026-10-03-vasio-single-driver-256-channel-design.md).
+> **Historical archive — do not execute.** This plan describes four six-channel drivers. The current contract uses one `TimoxVasio.dll` driver with 256 inputs/outputs; see the [master plan](2026-10-03-vasio-256-physical-master-plan.en.md) and [specification](../specs/2026-10-03-vasio-single-driver-256-channel-design.en.md).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -1,5 +1,7 @@
 # Séquences du pilote TimoxVasio
 
+**Français** | [English](DRIVER_SEQUENCES.en.md)
+
 Cette page décrit les échanges observables entre l'hôte ASIO, la DLL, l'API,
 le moteur et le pilote physique. Les diagrammes Mermaid peuvent être rendus
 directement par GitHub. Ils distinguent le nombre de canaux annoncé à un hôte

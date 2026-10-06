@@ -1,5 +1,7 @@
 # Conception : pilotes virtuels ASIO et routage applicatif
 
+**Français** | [English](2026-10-02-virtual-asio-routing-design.en.md)
+
 > **Conception antérieure — état historique.** Les principes de routage restent du contexte, mais l’état vérifié ci-dessous et les noms de pilotes/exécutable sont périmés. Pour le contrat courant et ses critères d’acceptation, consulter [la spécification TimoxVasio](2026-10-03-vasio-single-driver-256-channel-design.md) et [le plan maître](../plans/2026-10-03-vasio-256-physical-master-plan.md).
 
 ## Objectif

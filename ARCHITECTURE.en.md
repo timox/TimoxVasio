@@ -20,7 +20,7 @@ flowchart LR
     D -->|read profile on instance creation| F
 ```
 
-The DLL and engine are separate components. The API is the configuration and inventory contract. Control does not directly read shared audio memory or private engine files. See the [API contract](API.en.md) and [driver sequences (French)](docs/DRIVER_SEQUENCES.md).
+The DLL and engine are separate components. The API is the configuration and inventory contract. Control does not directly read shared audio memory or private engine files. See the [API contract](API.en.md) and [driver sequences](docs/DRIVER_SEQUENCES.en.md).
 
 ## Capacity and active channels
 
@@ -40,7 +40,7 @@ The engine follows the selected physical driver's sample rate and block size. A 
 
 ## Mixxx
 
-The 255-channel profile is a TimoxVasio-side compatibility measure. The generic channel-count representation fix belongs in Mixxx. The [Mixxx compatibility note](docs/mixxx-256-channel-compatibility.md) records the observations, local patch, and validation limits. The sequences provide reproducible material for a Mixxx maintainer; they do not claim a Mixxx PR has already been published.
+The 255-channel profile is a TimoxVasio-side compatibility measure. The generic channel-count representation fix belongs in Mixxx. The [Mixxx compatibility note](docs/mixxx-256-channel-compatibility.en.md) records the observations, local patch, and validation limits. The sequences provide reproducible material for a Mixxx maintainer; they do not claim a Mixxx PR has already been published.
 
 ## License and identity
 

@@ -1,5 +1,7 @@
 # TimoxVasio 256 canaux et horloge physique — plan d’implémentation
 
+**Français** | [English](2026-10-03-vasio-256-physical-master-plan.en.md)
+
 > **Pour les agents d’implémentation :** exécuter ce plan tâche par tâche dans cette session, en validant chaque tâche avant de passer à la suivante.
 
 **Objectif :** remplacer VASIO1–VASIO4 à six canaux par l’unique pilote `TimoxVasio.dll` à 256 entrées et 256 sorties, et aligner strictement le transport virtuel sur la fréquence et la taille de bloc effectives du périphérique ASIO physique.

@@ -1,5 +1,7 @@
 # Timox VASIO Control : configuration, documentation et diagnostic intégrés
 
+**Français** | [English](2026-10-04-electron-engine-control-diagnostics-swagger-design.en.md)
+
 ## Objectif
 
 Faire de l’exécutable Electron livré avec TimoxVasio le point d’accès direct

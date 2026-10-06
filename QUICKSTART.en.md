@@ -38,8 +38,8 @@ The registered ASIO name should be `TimoxVasio`. To probe COM without starting a
   --clsid "{A4D39126-78CB-4D89-9E0A-54494D4F5856}"
 ```
 
-See [Installation](INSTALL.en.md) and [BUILD_DRIVERS.md](BUILD_DRIVERS.md).
+See [Installation](INSTALL.en.md) and [BUILD_DRIVERS.en.md](BUILD_DRIVERS.en.md).
 
 ## Start and route
 
-Run the engine on its own to start the local service, or launch Timox VASIO Control, which starts it. In Control, select a physical ASIO driver, apply its accepted sample rate and buffer size, and create routes from endpoints returned by the API. Validate the full path with a real ASIO host and an observed signal on the hardware. See [TEST_VERIFICATION.md](TEST_VERIFICATION.md) and the [API quick start](docs/API_QUICKSTART.en.md).
+Run the engine on its own to start the local service, or launch Timox VASIO Control, which starts it. In Control, select a physical ASIO driver, apply its accepted sample rate and buffer size, and create routes from endpoints returned by the API. Validate the full path with a real ASIO host and an observed signal on the hardware. See [TEST_VERIFICATION.en.md](TEST_VERIFICATION.en.md) and the [API quick start](docs/API_QUICKSTART.en.md).

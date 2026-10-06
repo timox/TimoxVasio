@@ -1,14 +1,12 @@
-# Stratégies de Routage - Alternatives
+# Routing strategies — alternatives
 
-**Français** | [English](ROUTING_STRATEGIES.en.md)
+[Français](ROUTING_STRATEGIES.md) | **English**
 
-> Document d’exploration historique. Ses exemples VASIO1–VASIO4 ne décrivent
-> plus le produit actif. Le contrat courant est documenté dans [API.md](API.md)
-> et l’architecture actuelle dans [STRUCTURE.md](STRUCTURE.md).
+> Historical exploration. Its VASIO1–VASIO4 examples no longer describe the active product. The current contract is in [API.en.md](API.en.md), and the current architecture is in [STRUCTURE.en.md](STRUCTURE.en.md).
 
-## Approche 1: Matrice de Routage (Mixing Matrix)
+## Approach 1: Routing matrix
 
-La plus visuelle et intuitive - similaire aux consoles audio.
+The most visual and intuitive approach, similar to an audio mixing console.
 
 ```yaml
 # routing_matrix.yaml
@@ -25,12 +23,10 @@ channels:
   VASIO1:2 -> [VASIO2:2 (1.0), VASIO3:3 (0.5)]
 ```
 
-**Avantages:**
-- Interface graphique facile à implémenter
-- Gains par route visibles
-- Logique claire
+**Advantages:** Easy graphical interface, visible gain per route, and clear logic.
 
-**Implémentation:**
+**Implementation:**
+
 ```cpp
 struct MatrixRoute {
     std::string sourceDriver;
@@ -40,28 +36,26 @@ struct MatrixRoute {
 };
 ```
 
-## Approche 2: Routage basé sur Règles (Rule-Based)
+## Approach 2: Rule-based routing
 
-Conditionnels et filtres dynamiques.
+Dynamic conditions and filters.
 
 ```ini
 [rules]
-# Si la source est VASIO1, router vers VASIO2
+# If the source is VASIO1, route to VASIO2
 if source == VASIO1 then route to VASIO2
 
-# Router tous les canaux pairs vers VASIO3
+# Route all even-numbered channels to VASIO3
 if channel % 2 == 0 then route to VASIO3
 
-# Router avec atténuation basée sur le canal
+# Apply channel-dependent attenuation
 channel <= 3 ? gain=1.0 : gain=0.5
 ```
 
-**Avantages:**
-- Très flexible
-- Supporte les filtres complexes
-- Automatisation possible
+**Advantages:** Very flexible, supports complex filters, and allows automation.
 
-**Implémentation:**
+**Implementation:**
+
 ```cpp
 struct RoutingRule {
     std::string condition;  // "source == VASIO1"
@@ -69,9 +63,9 @@ struct RoutingRule {
 };
 ```
 
-## Approche 3: Graphe de Routage (Graph-Based)
+## Approach 3: Graph-based routing
 
-Comme une DAW - nœuds et connexions.
+Like a DAW, with nodes and connections.
 
 ```json
 {
@@ -91,13 +85,10 @@ Comme une DAW - nœuds et connexions.
 }
 ```
 
-**Avantages:**
-- Très flexible
-- Support pour les processeurs (EQ, compression, etc.)
-- Logique DAW-like
-- Visualisable comme un patch bay
+**Advantages:** Very flexible, supports processors such as EQ and compression, follows DAW-like logic, and can be visualized as a patchbay.
 
-**Implémentation:**
+**Implementation:**
+
 ```cpp
 struct Node {
     std::string id;
@@ -112,11 +103,11 @@ struct Edge {
 };
 ```
 
-## Approche 4: Contrôle en Temps-Réel (OSC / WebSocket)
+## Approach 4: Real-time control (OSC/WebSocket)
 
-Configuration dynamique sans redémarrage.
+Dynamic configuration without restart.
 
-```
+```text
 OSC (Open Sound Control):
 /vasio/route/add "VASIO1" 1 "VASIO2" 1 0.8
 /vasio/route/remove "VASIO1" 1 "VASIO2" 1
@@ -133,13 +124,10 @@ WebSocket JSON:
 }
 ```
 
-**Avantages:**
-- Contrôle en direct pendant la lecture
-- Compatible avec contrôleurs MIDI/OSC
-- Intégration OSC protocol standard
-- Pas de redémarrage nécessaire
+**Advantages:** Live control during playback, MIDI/OSC controller compatibility, standard OSC integration, and no restart required.
 
-**Implémentation:**
+**Implementation:**
+
 ```cpp
 class OSCServer {
     void onOSCMessage(const std::string& address, const std::vector<float>& args);
@@ -147,24 +135,22 @@ class OSCServer {
 };
 ```
 
-## Approche 5: Interface Web (HTTP/REST API)
+## Approach 5: Web interface (HTTP/REST API)
 
-Contrôle via navigateur.
+Browser-based control.
 
+```text
+GET  /api/drivers                    → List drivers
+GET  /api/routes                     → List routes
+POST /api/routes                     → Add a route
+PATCH /api/routes/{id}/gain          → Change gain
+DELETE /api/routes/{id}              → Delete a route
 ```
-GET  /api/drivers                    → Liste les pilotes
-GET  /api/routes                     → Liste les routes
-POST /api/routes                     → Ajouter une route
-PATCH /api/routes/{id}/gain          → Modifier le gain
-DELETE /api/routes/{id}              → Supprimer une route
-```
 
-**Avantages:**
-- Interface web interactive
-- Accessible depuis n'importe où
-- Intégration facile
+**Advantages:** Interactive web interface, remote accessibility, and straightforward integration.
 
-**Implémentation:**
+**Implementation:**
+
 ```cpp
 #include <nlohmann/json.hpp>  // JSON library
 
@@ -175,11 +161,11 @@ class WebServer {
 };
 ```
 
-## Approche 6: Visual Patchbay (Interface GUI)
+## Approach 6: Visual patchbay (GUI)
 
-Interface graphique natale type VST/AU.
+Native VST/AU-style graphical interface.
 
-```
+```text
 ┌─────────┐         ┌─────────┐
 │ VASIO1  │───────→ │ VASIO2  │
 │ 1,2,3   │   ╳ ╳   │ 1,2,3   │
@@ -193,12 +179,10 @@ Interface graphique natale type VST/AU.
            └─────────┘
 ```
 
-**Avantages:**
-- Très intuitif
-- Gestion visuelle des gains
-- Drag-and-drop des connexions
+**Advantages:** Very intuitive, visual gain management, and drag-and-drop connections.
 
-**Implémentation:**
+**Implementation:**
+
 ```cpp
 #include <imgui.h>  // ImGui library
 
@@ -209,33 +193,34 @@ class PatchbayUI {
 };
 ```
 
-## Recommandation
+## Recommendation from the historical exploration
 
-**Combiner plusieurs approches:**
+**Combine several approaches:**
 
-1. **Fichier INI (config initiale)** - pour démarrage simple
-2. **JSON Graph (persistance)** - pour sauvegarde/chargement complexe
-3. **OSC/WebSocket (runtime)** - pour contrôle en direct
-4. **Web UI (visualisation)** - pour management
+1. **INI file (initial configuration)** for simple startup.
+2. **JSON graph (persistence)** for complex save/load.
+3. **OSC/WebSocket (runtime)** for live control.
+4. **Web UI (visualization)** for management.
 
-**Stack proposé:**
-```
+**Proposed stack:**
+
+```text
 ┌─────────────────────────────────────┐
 │    Web UI (React/Vue)               │
 │  (http://localhost:8888)            │
 └──────────────┬──────────────────────┘
                │ HTTP / WebSocket
 ┌──────────────▼──────────────────────┐
-│  Routing Engine (C++)               │
-│  - Charge INI au démarrage          │
-│  - Accepte OSC/WebSocket            │
-│  - Stocke en JSON                   │
+│  Routing engine (C++)               │
+│  - Loads INI at startup             │
+│  - Accepts OSC/WebSocket            │
+│  - Stores JSON                       │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
-│  Audio Processing                   │
-│  (PortAudio / ASIO)                 │
+│  Audio processing                   │
+│  (PortAudio / ASIO)                  │
 └─────────────────────────────────────┘
 ```
 
-Quelle approche préférez-vous implémenter en priorité ?
+Which approach would you prefer to implement first?

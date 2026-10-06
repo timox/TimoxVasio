@@ -1,5 +1,7 @@
 # Revue UX/UI de Timox VASIO Control
 
+**Français** | [English](UX_UI_REVIEW.en.md)
+
 > Revue historique des captures antérieures à la version 1.1.0. Pour l’interface
 > livrée, voir le [guide des fonctions 1.1.0](FONCTIONS_1.1.0.md).
 

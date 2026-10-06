@@ -1,5 +1,7 @@
 # TimoxVasio unique, 256 canaux par direction et horloge ASIO physique
 
+**Français** | [English](2026-10-03-vasio-single-driver-256-channel-design.en.md)
+
 ## Contexte et décision
 
 Le modèle actuel expose quatre DLL COM, VASIO1 à VASIO4, chacune avec six

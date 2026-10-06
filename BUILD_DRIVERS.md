@@ -1,5 +1,7 @@
 # Compilation et vérification de TimoxVasio
 
+**Français** | [English](BUILD_DRIVERS.en.md)
+
 ## Environnement vérifié
 
 - Visual Studio 2026 depuis son Developer Command Prompt ;

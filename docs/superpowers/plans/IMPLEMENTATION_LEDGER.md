@@ -1,5 +1,7 @@
 # État d’implémentation TimoxVasio
 
+**Français** | [English](IMPLEMENTATION_LEDGER.en.md)
+
 > Mis à jour le 5 octobre 2026. Ce ledger remplace le suivi du prototype à quatre pilotes. Les relevés datés du 4 octobre et antérieurs sont historiques; le statut final est consigné ci-dessous.
 
 ## Contrat courant

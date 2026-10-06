@@ -1,5 +1,7 @@
 # Compilation de TimoxVasio
 
+**Français** | [English](COMPILATION.en.md)
+
 ## Prérequis
 
 - Windows 10 ou 11 x64 ;

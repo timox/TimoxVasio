@@ -1,5 +1,7 @@
 # Compatibilité Mixxx avec 256 canaux ASIO
 
+**Français** | [English](mixxx-256-channel-compatibility.en.md)
+
 > **État général du projet :** le mainteneur confirme que les essais de bout en bout sur hôte ASIO et matériel ont été réalisés dans son environnement. Ce document conserve le compte rendu d’un essai précis de Mixxx 2.7 dont la première étape était la découverte du pilote; son relevé historique ne décrit pas à lui seul les essais ultérieurs.
 
 ## Diagnostic établi

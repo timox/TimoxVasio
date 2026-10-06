@@ -1,5 +1,7 @@
 # Audit ASIO — notes de travail historiques
 
+**Français** | [English](ASIO_AUDIT.en.md)
+
 > **Attention : ce fichier contient des constats de dates et d’états différents.**
 > Les sections anciennes ci-dessous ne décrivent pas toutes le pilote actuel; en
 > particulier, l’affirmation qu’il n’existe pas d’interface `IASIO`, de DLL COM

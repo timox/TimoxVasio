@@ -1,5 +1,7 @@
 # Timox VASIO Control : implementation de configuration, Swagger et diagnostic
 
+**Français** | [English](2026-10-04-electron-control-diagnostics-swagger.en.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Livrer une application Electron qui permet de configurer et contrôler le moteur, de consulter Swagger en local et d’examiner des journaux persistants avec un mode debug.

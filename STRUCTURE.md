@@ -1,5 +1,7 @@
 # Structure du moteur TimoxVasio
 
+**Français** | [English](STRUCTURE.en.md)
+
 ## Architecture active
 
 `TimoxVasio.dll` est l’unique pilote ASIO virtuel. Il annonce 256 entrées et 256 sorties; chaque client choisit ses canaux avec `createBuffers`. Le moteur identifie les clients par PID et maintient un mapping partagé versionné par client.

@@ -1,5 +1,7 @@
 # Contrat d’intégration
 
+**Français** | [English](INTEGRATION.en.md)
+
 Le moteur C++ expose le contrat versionné `schemas/api-v1.json` et sa description OpenAPI. Electron démarre et arrête le processus moteur; React n’envoie aucune commande par stdin et ne lit aucun fichier de configuration.
 
 ## Démarrage et transport

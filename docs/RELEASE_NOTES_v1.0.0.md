@@ -1,5 +1,7 @@
 # TimoxVasio 1.0.0 — notes de version
 
+**Français** | [English](RELEASE_NOTES_v1.0.0.en.md)
+
 Première version publique du projet, organisée autour de ses trois composants :
 le pilote ASIO `TimoxVasio`, le moteur `TimoxVirtualAsioEngine` et l’interface
 Electron `Timox VASIO Control`.

@@ -1,6 +1,6 @@
 # VASIO Circuit GUI Implementation Plan
 
-> **Archive historique — ne pas exécuter comme plan courant.** Ce document décrit l’ancien contrat à quatre pilotes. Suivre [le plan maître](2026-10-03-vasio-256-physical-master-plan.md) et [la spécification](../specs/2026-10-03-vasio-single-driver-256-channel-design.md).
+> **Historical archive — do not execute as the current plan.** This document describes the old four-driver contract. Follow the [master plan](2026-10-03-vasio-256-physical-master-plan.en.md) and [specification](../specs/2026-10-03-vasio-single-driver-256-channel-design.en.md).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

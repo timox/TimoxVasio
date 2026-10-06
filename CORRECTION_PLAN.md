@@ -1,5 +1,7 @@
 # Plan de Correction - Implémentation ASIO Correcte
 
+**Français** | [English](CORRECTION_PLAN.en.md)
+
 > Plan historique remplacé par l’implémentation TimoxVasio à pilote unique.
 > Ne pas utiliser ses commandes VASIO1–VASIO4 comme procédure d’installation.
 > Le plan courant est [ici](docs/superpowers/plans/2026-10-03-vasio-256-physical-master-plan.md).
