@@ -52,6 +52,10 @@ int wmain() {
 
     httplib::Client client("127.0.0.1", port);
     bool passed = true;
+    const auto initialState = client.Get("/api/v1/state");
+    passed = require(initialState && initialState->status == 200 &&
+        nlohmann::json::parse(initialState->body).contains("configuredRoutes"),
+        "GET state exposes saved routes separately from active routes") && passed;
     const auto diagnosticState = client.Get("/api/v1/diagnostics?limit=10");
     passed = require(diagnosticState && diagnosticState->status == 200 &&
         nlohmann::json::parse(diagnosticState->body)["level"] == "info",

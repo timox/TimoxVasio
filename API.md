@@ -48,6 +48,18 @@ virtual:TimoxVasio:<client-pid>:output:<channel>
 
 Le suffixe canal est un entier décimal à partir de 1. Les ID renvoyés par le moteur sont à réutiliser tels quels dans la configuration et les vues.
 
+`GET /api/v1/state` distingue `routes`, les routes actuellement actives, de
+`configuredRoutes`, toutes les routes enregistrées. Les routes d’une application
+absente restent dans `configuredRoutes` avec un identifiant stable de la forme
+`virtual:TimoxVasio:app:<executable>:output:<channel>` ou `:input:<channel>`.
+Le moteur les réactive lorsque cette application ouvre de nouveau les canaux,
+même si son PID a changé. L’API accepte ces identifiants stables déjà présents
+dans `configuredRoutes` lors d’une modification de configuration. Si plusieurs
+instances portent le même nom d’exécutable, la route attend une correspondance
+non ambiguë. Les anciennes routes enregistrées uniquement avec un PID ne
+peuvent pas être attribuées à une autre application après disparition du
+processus ; elles restent enregistrées pour correction explicite.
+
 ## Profils de capacité par application
 
 `GET /api/v1/application-profiles` renvoie la liste complète des profils explicitement configurés :

@@ -57,6 +57,13 @@ int wmain() {
             "complete route data is preserved") && passed;
     }
 
+    expected.routes[0].sourceEndpointId = "virtual:TimoxVasio:app:renoise.exe:output:1";
+    passed = require(store.Save(expected, error), "an executable-bound route is saved") && passed;
+    passed = require(store.Load(restored, error) == ConfigurationLoadStatus::Loaded &&
+        restored.routes.size() == 1 &&
+        restored.routes[0].sourceEndpointId == expected.routes[0].sourceEndpointId,
+        "an executable-bound route survives a configuration reload") && passed;
+
     HANDLE malformed = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
         FILE_ATTRIBUTE_NORMAL, nullptr);
     if (malformed == INVALID_HANDLE_VALUE) passed = false;

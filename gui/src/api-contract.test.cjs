@@ -23,6 +23,13 @@ test('configuration is derived solely from the documented API state', () => {
     });
 });
 
+test('a disconnected application keeps its configured route in the editor', () => {
+    const pending = { id: 'pending', sourceEndpointId: 'virtual:TimoxVasio:app:renoise.exe:output:1',
+        destinationEndpointId: 'physical:device-1:output:1', gainDb: 0, mute: false };
+    const draft = configurationFromState({ ...state, routes: [], configuredRoutes: [pending] });
+    assert.deepEqual(draft.routes, [pending]);
+});
+
 test('configuration.apply has the documented command envelope and no legacy route fields', () => {
     const command = applyCommand(configurationFromState(state), 'gui-1');
     assert.deepEqual(command, { id: 'gui-1', command: 'configuration.apply', payload: configurationFromState(state) });

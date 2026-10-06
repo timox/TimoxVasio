@@ -1,11 +1,14 @@
 #include "audio_controller.h"
 
 #include "audio_routing_runtime.h"
+#include "persistent_routes.h"
 #include "vasio_client_manager.h"
 
 #include <windows.h>
 
 #include <cmath>
+#include <algorithm>
+#include <chrono>
 #include <stdexcept>
 #include <utility>
 
@@ -42,6 +45,18 @@ HWND createHostWindow() {
     if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return nullptr;
     return CreateWindowExW(0, kHostWindowClass, L"", 0, 0, 0, 0, 0,
         HWND_MESSAGE, nullptr, instance, nullptr);
+}
+
+bool sameRoutes(const std::vector<AudioRoute>& left, const std::vector<AudioRoute>& right) {
+    if (left.size() != right.size()) return false;
+    for (std::size_t index = 0; index < left.size(); ++index) {
+        if (left[index].id != right[index].id ||
+            left[index].sourceEndpointId != right[index].sourceEndpointId ||
+            left[index].destinationEndpointId != right[index].destinationEndpointId ||
+            left[index].gainDb != right[index].gainDb || left[index].mute != right[index].mute)
+            return false;
+    }
+    return true;
 }
 }
 
@@ -266,6 +281,7 @@ void AudioController::Run() noexcept {
         RestoreApplicationProfilesOnWorker();
         RestoreConfigurationOnWorker();
         if (startupEvent_) SetEvent(startupEvent_);
+        auto nextRouteReconcile = std::chrono::steady_clock::time_point{};
         for (;;) {
             const DWORD waitResult = MsgWaitForMultipleObjectsEx(1, &queueEvent_, 20,
                 QS_ALLINPUT, MWMO_INPUTAVAILABLE);
@@ -299,6 +315,37 @@ void AudioController::Run() noexcept {
                 failed.physicalCapabilities = {};
                 failed.lastError = "Physical ASIO driver reported a sample-rate change; reapply the configuration to resynchronize TimoxVasio";
                 SetStatus(failed);
+            }
+            if (!audioStoppedByCommand_ && desiredConfiguration_.physicalDriverId &&
+                !desiredConfiguration_.routes.empty()) {
+                const auto clients = clients_.GetClientSnapshots();
+                const auto resolved = PersistentRoutes::Resolve(desiredConfiguration_.routes, clients);
+                if (!sameRoutes(resolved, Snapshot().routes)) {
+                    const auto now = std::chrono::steady_clock::now();
+                    if (now >= nextRouteReconcile) {
+                        const auto applied = ApplyConfigurationCore(desiredConfiguration_);
+                        nextRouteReconcile = now + (applied.success
+                            ? std::chrono::milliseconds(250) : std::chrono::seconds(2));
+                    }
+                } else {
+                    nextRouteReconcile = std::chrono::steady_clock::time_point{};
+                }
+                if (resolved.size() == desiredConfiguration_.routes.size()) {
+                    std::string migrationError;
+                    auto durable = PersistentRoutes::Encode(desiredConfiguration_.routes,
+                        clients, migrationError);
+                    if (migrationError.empty() &&
+                        !sameRoutes(durable, desiredConfiguration_.routes)) {
+                        auto updated = desiredConfiguration_;
+                        updated.routes = std::move(durable);
+                        if (configurationStore_.Save(updated, migrationError)) {
+                            desiredConfiguration_ = std::move(updated);
+                            auto status = Snapshot();
+                            status.configuredRoutes = desiredConfiguration_.routes;
+                            SetStatus(status);
+                        }
+                    }
+                }
             }
             bool shouldStop = false;
             {
@@ -349,10 +396,15 @@ void AudioController::RestoreApplicationProfilesOnWorker() {
 AudioControllerResult AudioController::ApplyOnWorker(
     const AudioControllerConfiguration& configuration, bool persist) {
     try {
+        std::string routeError;
+        AudioControllerConfiguration durable = configuration;
+        durable.routes = PersistentRoutes::Encode(configuration.routes,
+            clients_.GetClientSnapshots(), routeError);
+        if (!routeError.empty()) return {false, routeError};
         auto applied = ApplyConfigurationCore(configuration);
         if (!applied.success || !persist) return applied;
         std::string error;
-        if (!configurationStore_.Save(configuration, error)) {
+        if (!configurationStore_.Save(durable, error)) {
             physicalHost_->stop();
             runtime_.reset();
             physicalHost_->close();
@@ -363,7 +415,10 @@ AudioControllerResult AudioController::ApplyOnWorker(
             SetStatus(failed);
             return {false, failed.lastError};
         }
-        desiredConfiguration_ = configuration;
+        desiredConfiguration_ = std::move(durable);
+        auto status = Snapshot();
+        status.configuredRoutes = desiredConfiguration_.routes;
+        SetStatus(status);
         audioStoppedByCommand_ = false;
         return applied;
     } catch (const std::exception& exception) {
@@ -415,8 +470,11 @@ void AudioController::RestoreConfigurationOnWorker() {
 
 AudioControllerResult AudioController::ApplyConfigurationCore(
     const AudioControllerConfiguration& configuration) {
+    const auto activeRoutes = PersistentRoutes::Resolve(configuration.routes,
+        clients_.GetClientSnapshots());
     AudioControllerSnapshot next;
     next.state = "reconfiguring";
+    next.configuredRoutes = configuration.routes;
     SetStatus(next);
     physicalHost_->stop();
     runtime_.reset();
@@ -478,7 +536,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     layout.physicalInputChannels = capabilities.inputChannels;
     layout.physicalOutputChannels = capabilities.outputChannels;
     layout.clients = clients_.GetClientSnapshots();
-    layout.routes = configuration.routes;
+    layout.routes = activeRoutes;
     runtime_ = AudioRoutingRuntime::Create(std::move(layout), error);
     if (!runtime_) {
         physicalHost_->close();
@@ -492,12 +550,12 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     // Keep the physical driver configured while the user discovers endpoints.
     // Starting a callback with no routed channels serves no audio purpose and
     // some ASIO drivers do not tolerate the hidden clock-only buffer path.
-    if (configuration.routes.empty()) {
+    if (activeRoutes.empty()) {
         next.state = "stopped";
         next.physicalDriverId = configuration.physicalDriverId;
         next.sampleRate = sampleRate;
         next.bufferFrames = physicalBufferFrames;
-        next.routes = configuration.routes;
+        next.routes = activeRoutes;
         next.physicalCapabilities = std::move(capabilities);
         SetStatus(next);
         return {true, {}};
@@ -520,7 +578,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     next.physicalDriverId = configuration.physicalDriverId;
     next.sampleRate = sampleRate;
     next.bufferFrames = physicalBufferFrames;
-    next.routes = configuration.routes;
+    next.routes = activeRoutes;
     next.physicalCapabilities = std::move(capabilities);
     SetStatus(next);
     return {true, {}};

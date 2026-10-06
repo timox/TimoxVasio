@@ -47,6 +47,7 @@ struct AudioControllerSnapshot {
     std::optional<std::uint32_t> bufferFrames;
     std::string lastError;
     std::vector<AudioRoute> routes;
+    std::vector<AudioRoute> configuredRoutes;
     PhysicalAsioCapabilities physicalCapabilities;
 };
 

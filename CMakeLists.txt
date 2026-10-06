@@ -133,6 +133,13 @@ if(WIN32)
         ${CMAKE_SOURCE_DIR}/vendor
     )
 
+    add_executable(PersistentRoutesTests
+        ${CMAKE_SOURCE_DIR}/tests/persistent_routes_tests.cpp
+        ${SRC_DIR}/audio_transport.cpp
+    )
+    target_include_directories(PersistentRoutesTests PRIVATE ${INCLUDE_DIR} ${SRC_DIR})
+    target_link_libraries(PersistentRoutesTests PRIVATE ole32)
+
     add_executable(EngineDiagnosticsTests
         ${CMAKE_SOURCE_DIR}/tests/engine_diagnostics_tests.cpp
         ${SRC_DIR}/engine_diagnostics.cpp

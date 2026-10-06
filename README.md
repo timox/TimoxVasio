@@ -17,6 +17,7 @@ Fournir un pilote ASIO virtuel Windows x64 unique, `TimoxVasio`, qui expose jusq
 Les séquences ASIO, les profils API et le chemin Mixxx sont illustrés dans [DRIVER_SEQUENCES.md](docs/DRIVER_SEQUENCES.md). L'architecture est résumée dans [ARCHITECTURE.md](ARCHITECTURE.md). Les preuves et limites du contrôle de protocole sont résumées dans [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md). La [revue UX/UI](docs/UX_UI_REVIEW.md) documente l'interface, les corrections de lisibilité et les preuves visuelles. Les décisions détaillées sont dans la [spécification](docs/superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.md) et le [plan de réalisation](docs/superpowers/plans/2026-10-03-vasio-256-physical-master-plan.md).
 
 Le récapitulatif de cette version est dans [RELEASE_NOTES_v1.0.0.md](docs/RELEASE_NOTES_v1.0.0.md).
+Les travaux prévus après la release 1.1.0 figurent dans la [feuille de route](docs/ROADMAP.md).
 
 ## Utiliser l’API et soutenir le projet
 

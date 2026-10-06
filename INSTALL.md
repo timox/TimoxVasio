@@ -43,11 +43,14 @@ Cette opération inscrit le pilote sous le nom ASIO `TimoxVasio`. Elle retire un
 ```powershell
 pwsh -NoProfile -File .\register_drivers.ps1 list
 Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\1.1.0\TimoxVasio.dll"
+pwsh -NoProfile -File .\tests\verify-installed-stack.ps1
 ```
 
 Fermer puis relancer les applications audio après l’enregistrement. Le pilote ASIO attendu est `TimoxVasio` et il annonce 256 entrées et 256 sorties. Chaque application n’expose toutefois que les canaux qu’elle a réellement alloués avec `createBuffers`.
 
 Pour router l’audio, lancer `TimoxVirtualAsioEngine.exe` ou Timox VASIO Control, choisir le pilote ASIO physique, appliquer la fréquence et la taille de buffer acceptées par ce pilote, puis construire les routes dans l’interface. Le circuit matériel complet doit être validé avec le matériel utilisé.
+
+Avant d’ouvrir Renoise ou une autre application ASIO, vérifier que Timox VASIO Control est connecté et que `http://127.0.0.1:52525/api/v1/state` répond. Le moteur doit être lancé même si l’interface est ensuite fermée. Une route liée à une application absente reste enregistrée et sera activée après l’ouverture de ses canaux ; la vue d’état distingue les routes `configuredRoutes` des routes `routes` effectivement actives.
 
 ## Désinstallation
 

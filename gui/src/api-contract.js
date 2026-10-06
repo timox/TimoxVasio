@@ -4,7 +4,9 @@ function configurationFromState(state) {
         physicalDriverId: state.engine.physicalDriverId,
         sampleRate: state.engine.sampleRate,
         bufferFrames: state.engine.bufferFrames,
-        routes: state.routes.map(({ id, sourceEndpointId, destinationEndpointId, gainDb, mute }) =>
+        routes: (state.configuredRoutes || state.routes)
+            .map(route => state.routes.find(active => active.id === route.id) || route)
+            .map(({ id, sourceEndpointId, destinationEndpointId, gainDb, mute }) =>
             ({ id, sourceEndpointId, destinationEndpointId, gainDb, mute }))
     };
 }

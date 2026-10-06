@@ -338,12 +338,16 @@ struct ControlApiServer::Impl {
             Json{{"code", "AUDIO_CONFIGURATION_FAILED"}, {"message", state.lastError}, {"operation", "apply"}};
         Json routes = Json::array();
         for (const auto& route : state.routes) routes.push_back(routeJson(route));
+        Json configuredRoutes = Json::array();
+        for (const auto& route : state.configuredRoutes)
+            configuredRoutes.push_back(routeJson(route));
         return Json{{"apiVersion", "1.0"},
             {"engine", {{"state", state.state}, {"physicalDriverId", std::move(physicalId)},
                          {"sampleRate", std::move(sampleRate)}, {"bufferFrames", std::move(bufferFrames)},
                          {"lastError", std::move(lastError)}}},
             {"physicalDrivers", physicalDriversJson()}, {"virtualDrivers", virtualDriversJson()},
-            {"routes", std::move(routes)}, {"stereoPairs", stereoPairsJson()}};
+            {"routes", std::move(routes)}, {"configuredRoutes", std::move(configuredRoutes)},
+            {"stereoPairs", stereoPairsJson()}};
     }
 
     Json applyCommand(const Json& request) {
@@ -450,6 +454,18 @@ struct ControlApiServer::Impl {
                 endpointTypes.emplace(item["id"].get<std::string>(), RoutingEndpointType::VirtualInput);
             for (const auto& item : driver["outputEndpoints"])
                 endpointTypes.emplace(item["id"].get<std::string>(), RoutingEndpointType::VirtualOutput);
+        }
+        // An existing saved application route remains editable while that client
+        // is disconnected. Only IDs already present in the confirmed configuration
+        // are accepted outside the current endpoint inventory.
+        for (const auto& saved : controller.Snapshot().configuredRoutes) {
+            for (const auto& endpoint : {saved.sourceEndpointId, saved.destinationEndpointId}) {
+                if (endpoint.rfind("virtual:TimoxVasio:app:", 0) != 0) continue;
+                if (endpoint.find(":input:") != std::string::npos)
+                    endpointTypes.emplace(endpoint, RoutingEndpointType::VirtualInput);
+                else if (endpoint.find(":output:") != std::string::npos)
+                    endpointTypes.emplace(endpoint, RoutingEndpointType::VirtualOutput);
+            }
         }
         for (const auto& route : configuration.routes) {
             const auto source = endpointTypes.find(route.sourceEndpointId);

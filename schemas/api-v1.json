@@ -117,13 +117,14 @@
     },
     "state": {
       "type": "object",
-      "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes", "stereoPairs"],
+      "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes", "configuredRoutes", "stereoPairs"],
       "properties": {
         "apiVersion": { "const": "1.0" },
         "engine": { "$ref": "#/definitions/engine" },
         "physicalDrivers": { "type": "array", "items": { "$ref": "#/definitions/physicalDriver" } },
         "virtualDrivers": { "type": "array", "items": { "$ref": "#/definitions/virtualDriver" } },
         "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } },
+        "configuredRoutes": { "type": "array", "description": "All saved routes, including application routes waiting for a client with an active channel.", "items": { "$ref": "#/definitions/route" } },
         "stereoPairs": { "type": "array", "items": { "$ref": "#/definitions/stereoPair" } }
       },
       "additionalProperties": false

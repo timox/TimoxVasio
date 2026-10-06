@@ -117,8 +117,7 @@ function App() {
             }
             if (message.event === 'devices.changed') setApiState(current => current && ({ ...current, ...message.payload }));
             if (message.event === 'routes.changed') {
-                setApiState(current => current && ({ ...current, routes: message.payload.routes }));
-                setConfiguration(current => current && ({ ...current, routes: message.payload.routes }));
+                refreshState().catch(error => setConnectionError(error.message));
                 setMeters({});
             }
             if (message.event === 'engine.error') setNotice(message.payload.message);
