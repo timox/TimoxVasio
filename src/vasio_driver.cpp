@@ -65,6 +65,7 @@ VASIODriver::VASIODriver(LPUNKNOWN outer, HRESULT* result, int driverId)
 VASIODriver::~VASIODriver() {
     stop();
     disposeBuffers();
+    if (transport_) transport_->PublishClientState(AudioClientMapping::ClientState::Detached);
     transport_.reset();
 }
 
@@ -93,6 +94,9 @@ ASIOBool VASIODriver::init(void*) {
         // will reject audio use until the physical clock is connected.
         return ASIOTrue;
     }
+    transport_->PublishClientState(AudioClientMapping::ClientState::Initialized);
+    transport_->PublishClientRequestedFormat(static_cast<std::uint32_t>(sampleRate_),
+        static_cast<std::uint32_t>(bufferFrames_));
     const ULONGLONG deadline = GetTickCount64() + kEngineAttachWaitMs;
     while (!transport_->EngineAttached() && GetTickCount64() < deadline) Sleep(10);
     if (!transport_->EngineAttached()) {
@@ -138,12 +142,18 @@ ASIOError VASIODriver::start() {
         error_[sizeof(error_) - 1] = '\0';
         return ASE_NotPresent;
     }
+    // The callback worker may have stopped itself after a format change.
+    // Reap it before assigning a new std::thread, which would otherwise terminate.
+    if (running_.load()) return ASE_InvalidMode;
+    if (callbackThread_.joinable()) callbackThread_.join();
     bool expected = false;
     if (!running_.compare_exchange_strong(expected, true)) return ASE_InvalidMode;
+    if (transport_) transport_->PublishClientState(AudioClientMapping::ClientState::Running);
     try {
         callbackThread_ = std::thread(&VASIODriver::callbackLoop, this);
     } catch (...) {
         running_.store(false);
+        if (transport_) transport_->PublishClientState(AudioClientMapping::ClientState::Stopped);
         std::strncpy(error_, "Unable to start TimoxVasio callback worker", sizeof(error_) - 1);
         error_[sizeof(error_) - 1] = '\0';
         return ASE_NoMemory;
@@ -155,8 +165,13 @@ ASIOError VASIODriver::start() {
 ASIOError VASIODriver::stop() {
     running_.store(false);
     if (transport_) transport_->SignalClient();
-    if (callbackThread_.joinable() && callbackThread_.get_id() != std::this_thread::get_id())
-        callbackThread_.join();
+    if (callbackThread_.joinable()) {
+        if (callbackThread_.get_id() == std::this_thread::get_id())
+            callbackThread_.detach();
+        else
+            callbackThread_.join();
+    }
+    if (transport_) transport_->PublishClientState(AudioClientMapping::ClientState::Stopped);
     return ASE_OK;
 }
 
@@ -211,10 +226,12 @@ ASIOError VASIODriver::setSampleRate(ASIOSampleRate rate) {
     if (transport_ && transport_->EngineAttached()) {
         if (static_cast<std::uint32_t>(rate) != transport_->SampleRate()) return ASE_InvalidMode;
         sampleRate_ = rate;
+        transport_->PublishClientRequestedFormat(static_cast<std::uint32_t>(rate), 0);
         return ASE_OK;
     }
     sampleRate_ = rate;
     if (transport_ && !transport_->SetSampleRate(static_cast<std::uint32_t>(rate))) return ASE_InvalidMode;
+    if (transport_) transport_->PublishClientRequestedFormat(static_cast<std::uint32_t>(rate), 0);
     return ASE_OK;
 }
 
@@ -302,7 +319,13 @@ ASIOError VASIODriver::createBuffers(ASIOBufferInfo* infos, long count, long fra
     channelBuffers_ = std::move(pendingChannels);
     transportBlock_.assign(static_cast<size_t>(frames) * kChannelCount, 0.0f);
     callbacks_ = callbacks;
+    resetMessage_.store(callbacks->asioMessage, std::memory_order_release);
     bufferFrames_ = frames;
+    if (transport_) {
+        transport_->PublishClientRequestedFormat(static_cast<std::uint32_t>(sampleRate_),
+            static_cast<std::uint32_t>(frames));
+        transport_->PublishClientState(AudioClientMapping::ClientState::BuffersReady);
+    }
     error_[0] = '\0';
     return ASE_OK;
 }
@@ -314,6 +337,8 @@ ASIOError VASIODriver::disposeBuffers() {
     channelBuffers_.clear();
     transportBlock_.clear();
     callbacks_ = nullptr;
+    resetMessage_.store(nullptr, std::memory_order_release);
+    if (transport_) transport_->PublishClientState(AudioClientMapping::ClientState::Initialized);
     return ASE_OK;
 }
 
@@ -323,13 +348,26 @@ ASIOError VASIODriver::outputReady() { return ASE_NotPresent; }
 
 void VASIODriver::callbackLoop() noexcept {
     long bufferIndex = 0;
+    bool formatChanged = false;
     while (running_.load()) {
         if (!transport_->EngineAttached()) {
             running_.store(false);
             break;
         }
+        if (transport_->SampleRate() != static_cast<std::uint32_t>(sampleRate_) ||
+            transport_->BlockFrames() != static_cast<std::uint32_t>(bufferFrames_)) {
+            formatChanged = true;
+            running_.store(false);
+            break;
+        }
         if (!transport_->WaitForClientSignal(250)) continue;
         while (running_.load() && transport_->ClientInputAvailable() >= static_cast<std::uint32_t>(bufferFrames_)) {
+            if (transport_->SampleRate() != static_cast<std::uint32_t>(sampleRate_) ||
+                transport_->BlockFrames() != static_cast<std::uint32_t>(bufferFrames_)) {
+                formatChanged = true;
+                running_.store(false);
+                break;
+            }
             transport_->ReadClientInput(transportBlock_.data(), static_cast<std::uint32_t>(bufferFrames_));
             for (const auto& channel : channelBuffers_) {
                 if (!channel.isInput) continue;
@@ -354,9 +392,30 @@ void VASIODriver::callbackLoop() noexcept {
                 for (long frame = 0; frame < bufferFrames_; ++frame)
                     transportBlock_[static_cast<size_t>(frame) * kChannelCount + channel.channel] = channel.buffers[bufferIndex][frame];
             }
-            transport_->WriteClientOutput(transportBlock_.data(), static_cast<std::uint32_t>(bufferFrames_));
+            const bool exchanged = transport_->WriteClientOutput(transportBlock_.data(),
+                static_cast<std::uint32_t>(bufferFrames_));
+            transport_->PublishClientExchange(exchanged ? static_cast<std::uint32_t>(bufferFrames_) : 0);
             samplePosition_.fetch_add(static_cast<std::uint64_t>(bufferFrames_), std::memory_order_relaxed);
             bufferIndex ^= 1;
         }
     }
+    if (transport_) transport_->PublishClientState(AudioClientMapping::ClientState::Stopped);
+    if (formatChanged && resetMessage_.load(std::memory_order_acquire)) {
+        // A host may close/reopen this COM object synchronously from asioMessage.
+        // Keep it alive and send the request off the audio callback worker.
+        NonDelegatingAddRef();
+        if (!QueueUserWorkItem(&VASIODriver::deliverResetRequest, this, WT_EXECUTEDEFAULT))
+            NonDelegatingRelease();
+    }
+}
+
+DWORD WINAPI VASIODriver::deliverResetRequest(void* context) noexcept {
+    auto* driver = static_cast<VASIODriver*>(context);
+    const auto message = driver->resetMessage_.load(std::memory_order_acquire);
+    if (message) {
+        if (driver->transport_) driver->transport_->PublishResetRequest();
+        message(kAsioResetRequest, 0, nullptr, nullptr);
+    }
+    driver->NonDelegatingRelease();
+    return 0;
 }

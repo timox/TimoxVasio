@@ -23,6 +23,13 @@ struct PhysicalAsioCapabilities {
     std::vector<double> supportedSampleRates;
 };
 
+struct PhysicalAsioTimingCounters {
+    std::uint64_t callbacks = 0;
+    std::uint64_t delayedStarts = 0;
+    std::uint64_t processingOverruns = 0;
+    std::uint64_t worstProcessingNs = 0;
+};
+
 using PhysicalAsioProcessCallback = void (*)(const float* const* inputs,
     float* const* outputs, std::uint32_t frames, void* context) noexcept;
 
@@ -40,6 +47,7 @@ public:
     bool setSampleRate(double sampleRate, std::string& error);
     bool refreshCapabilities(PhysicalAsioCapabilities& capabilities, std::string& error);
     bool consumeSampleRateChange() noexcept;
+    PhysicalAsioTimingCounters consumeTimingCounters() noexcept;
     bool start(std::uint32_t bufferFrames, const std::vector<std::uint32_t>& inputChannels,
                const std::vector<std::uint32_t>& outputChannels,
                PhysicalAsioProcessCallback callback, void* context, std::string& error);

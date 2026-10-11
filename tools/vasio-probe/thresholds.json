@@ -1,0 +1,37 @@
+{
+  "lifecycle": {
+    "maxInlineCycles": 10,
+    "maxStageMs": 2000,
+    "liveRateNotificationWaitMs": 1000,
+    "waitCallbacksMs": 5000,
+    "minCallbacksPerCycle": 3,
+    "maxHandleDelta": 2
+  },
+  "cadence": {
+    "maxJitterFraction": 0.25,
+    "regressionBlockSeconds": 10,
+    "maxMissingCallbacks": 0,
+    "maxDuplicateCallbacks": 0,
+    "maxPositionStepErrors": 0,
+    "minCallbacks": 3
+  },
+  "clockComparison": {
+    "minOverlapFraction": 0.8
+  },
+  "loopback": {
+    "minCallbacks": 3,
+    "maxAnalysisPendingBlocks": 65536,
+    "maxCorruptedSamples": 0,
+    "maxMissingSamples": 0,
+    "maxDuplicatedSamples": 0,
+    "minPostKillCallbacks": 3,
+    "minPostKillCoverage": 0.8
+  },
+  "multiclient": {
+    "minPostKillCoverage": 0.8,
+    "restartGraceSeconds": 1,
+    "minPostRestartCallbacks": 3,
+    "maxJitterFraction": 0.25,
+    "maxPositionStepErrors": 0
+  }
+}

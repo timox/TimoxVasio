@@ -64,6 +64,201 @@ test('graphical connections and matrix edit the same pending routing configurati
     }
 });
 
+test('an existing route opens on its matrix pages and can be revealed in connections', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const channels = Array.from({ length: 80 }, (_, index) => index + 1);
+    const route = { id: 'saved-route', sourceEndpointId: 'virtual:TimoxVasio:42:output:73',
+        destinationEndpointId: 'virtual:TimoxVasio:42:input:74', gainDb: 0, mute: false };
+    const routedState = { ...state, routes: [route], virtualDrivers: [{ ...state.virtualDrivers[0],
+        clients: [{ pid: 42, processName: 'AudioApp.exe', inputChannels: channels, outputChannels: channels }],
+        inputEndpoints: channels.map(channel => ({ id: `virtual:TimoxVasio:42:input:${channel}`,
+            name: `AudioApp In ${channel}`, direction: 'input', channel })),
+        outputEndpoints: channels.map(channel => ({ id: `virtual:TimoxVasio:42:output:${channel}`,
+            name: `AudioApp Out ${channel}`, direction: 'output', channel }))
+    }] };
+    window.vasio = { getState: jest.fn().mockResolvedValue(routedState),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        expect(container.querySelector('.route-legend').textContent).toContain('1 configured overall · 1 on these pages');
+        expect(container.querySelectorAll('.route-cell.active')).toHaveLength(1);
+        expect(container.querySelector('.matrix-pagers').textContent).toContain('Sources : 65–80 / 80');
+        expect(container.querySelector('.matrix-pagers').textContent).toContain('Destinations : 65–80 / 80');
+        await act(async () => Simulate.click(container.querySelector('[data-routing-view="patchbay"]')));
+        await act(async () => Simulate.click([...container.querySelectorAll('.patchbay-toolbar-actions button')]
+            .find(button => button.textContent === 'Show a configured connection')));
+        expect(container.querySelector('.patchbay-cables path.connection.selected')).not.toBeNull();
+    } finally {
+        await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('profiled virtual ports can be routed before their applications open channels', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const idleState = {
+        ...state,
+        engine: { ...state.engine, sampleRate: 44100, state: 'stopped' },
+        virtualDrivers: [{ ...state.virtualDrivers[0], clients: [], inputEndpoints: [], outputEndpoints: [] }],
+        routes: []
+    };
+    const applyConfiguration = jest.fn().mockResolvedValue({ accepted: true });
+    window.vasio = {
+        getState: jest.fn().mockResolvedValue(idleState),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [
+            { processName: 'mixxx.exe', inputChannels: 0, outputChannels: 2 },
+            { processName: 'scsynth.exe', inputChannels: 2, outputChannels: 0 }
+        ] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}),
+        applyConfiguration
+    };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await act(async () => Simulate.click(container.querySelector('[data-routing-view="patchbay"]')));
+        const sourceId = 'virtual:TimoxVasio:app:mixxx.exe:output:1';
+        const destinationId = 'virtual:TimoxVasio:app:scsynth.exe:input:1';
+        expect(container.querySelector(`[data-port-id="${sourceId}"]`)).not.toBeNull();
+        expect(container.querySelector(`[data-port-id="${destinationId}"]`)).not.toBeNull();
+        await act(async () => Simulate.click(container.querySelector(`[data-port-id="${sourceId}"]`)));
+        await act(async () => Simulate.click(container.querySelector(`[data-port-id="${destinationId}"]`)));
+        await act(async () => { await Simulate.click(container.querySelector('.apply-configuration')); });
+        expect(applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+            sampleRate: 44100,
+            routes: [expect.objectContaining({ sourceEndpointId: sourceId, destinationEndpointId: destinationId })]
+        }));
+        expect(container.textContent).toContain('Configured routes are waiting for their application channels to open.');
+    } finally {
+        await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('a configured but stopped driver can be released from the logs view', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const startAudio = jest.fn().mockResolvedValue({ accepted: true });
+    const stopAudio = jest.fn().mockResolvedValue({ accepted: true });
+    window.vasio = {
+        getState: jest.fn().mockResolvedValue({ ...state, virtualDrivers: [{ ...state.virtualDrivers[0], clients: [] }] }),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}),
+        startAudio, stopAudio
+    };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        const logsTab = [...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Logs');
+        await act(async () => Simulate.click(logsTab));
+        const startButton = container.querySelector('.engine-start');
+        expect(startButton).not.toBeNull();
+        await act(async () => { Simulate.click(startButton); await new Promise(resolve => setTimeout(resolve, 200)); });
+        expect(startAudio).toHaveBeenCalledTimes(1);
+        const stopButton = container.querySelector('.engine-stop');
+        expect(stopButton).not.toBeNull();
+        await act(async () => { await Simulate.click(stopButton); });
+        expect(stopAudio).toHaveBeenCalledTimes(1);
+    } finally {
+        await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('performance view distinguishes measured ASIO buffer pressure from missing observations', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const measured = { ...state, bufferHealth: { state: 'warning', sampleRate: 44100,
+        bufferFrames: 512, windowDurationMs: 5000, callbackCount: 430,
+        delayedStartCount: 7, processingOverrunCount: 6, blockPeriodNs: 11609977,
+        worstProcessingNs: 12500000, worstMarginNs: -890023 } };
+    window.vasio = { getState: jest.fn().mockResolvedValue(measured),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Performance')));
+        expect(container.querySelector('.buffer-health')?.textContent).toContain('Buffer may be too short');
+        expect(container.querySelector('.buffer-health')?.textContent).toContain('44100 Hz');
+        expect(container.querySelector('.buffer-health')?.textContent).toContain('6 processing overruns');
+        expect(container.querySelector('.buffer-health')?.textContent).toContain('7 starts were unusually late');
+        expect(container.querySelector('.buffer-health')?.textContent).toContain('The slowest callback took 12.50 ms, exceeding the 11.61 ms available per block');
+    } finally {
+        await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('performance view explains physical buffer measurements without suggesting another size', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    let onEvent;
+    const measured = { ...state, routes: [{ id: 'test-route', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
+        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false }], bufferHealth: { state: 'healthy', sampleRate: 48000,
+        bufferFrames: 1024, windowDurationMs: 5000, callbackCount: 235,
+        delayedStartCount: 0, processingOverrunCount: 0, blockPeriodNs: 21333333,
+        worstProcessingNs: 2500000, worstMarginNs: 18833333 } };
+    window.vasio = { getState: jest.fn().mockResolvedValue(measured),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(handler => { onEvent = handler; return () => {}; }), onDisconnect: jest.fn(() => () => {}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Logs')));
+        expect(container.querySelector('.buffer-health')).toBeNull();
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Performance')));
+        const clockDiagram = container.querySelector('.clock-source');
+        expect(clockDiagram?.textContent).toContain('Interface réelle');
+        expect(clockDiagram?.textContent).toContain('TimoxVasio');
+        expect(clockDiagram?.textContent).toContain('drift');
+        expect(clockDiagram?.textContent).toContain('jitter');
+        expect(container.querySelector('.performance-flow')?.textContent).toContain('ASIO application');
+        expect(container.querySelector('.performance-flow')?.textContent).toContain('Physical ASIO driver');
+        expect(container.querySelector('.performance-flow')?.textContent).toContain('shared ring');
+        expect(container.querySelector('.performance-flow')?.textContent).toContain('next physical callback');
+        expect(container.querySelector('.performance-flow')?.textContent).toContain('SuperCollider');
+        expect(container.querySelector('.performance-flow')?.textContent).toContain('not measured');
+        expect(container.querySelector('.transport-health')?.textContent).toContain('AudioApp.exe output');
+        expect(container.querySelector('.transport-health')?.textContent).toContain('—');
+        await act(async () => onEvent({ event: 'audio.meter', payload: { endpointId: 'virtual:TimoxVasio:42:output:1', peakDbfs: -12, underruns: 2, overruns: 1 } }));
+        expect(container.querySelector('.transport-table')?.textContent).toContain('AudioApp.exe output21');
+        expect(container.querySelector('.buffer-timeline')?.getAttribute('aria-label')).toContain('2.50 ms of processing within a 21.33 ms block');
+        const explanation = container.querySelector('.buffer-health .buffer-explanation')?.textContent;
+        expect(explanation).toContain('235 callbacks were observed over 5.0 seconds');
+        expect(explanation).toContain('None started unusually late or took longer than the 21.33 ms available per block');
+        expect(explanation).toContain('The slowest callback took 2.50 ms, leaving 18.83 ms');
+        expect(explanation).not.toMatch(/try|recommended|optimal/i);
+    } finally {
+        await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
 test('switching physical drivers identifies old hardware routes before applying', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const physicalRoute = { id: 'master', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
@@ -337,10 +532,10 @@ test('the API and diagnostics views use local Swagger assets and the diagnostics
     try {
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         const tabs = container.querySelectorAll('.view-tabs button');
-        await act(async () => Simulate.click(tabs[3]));
+        await act(async () => Simulate.click([...tabs].find(button => button.textContent === 'API and Swagger')));
         expect(container.querySelector('iframe[title="TimoxVasio Swagger documentation"]')?.getAttribute('src')).toBe('swagger.html');
         expect(container.textContent).toContain('engine.stop');
-        await act(async () => Simulate.click(tabs[4]));
+        await act(async () => Simulate.click([...tabs].find(button => button.textContent === 'Logs')));
         await act(async () => Promise.resolve());
         expect(window.vasio.getDiagnostics).toHaveBeenCalledWith(300);
         expect(container.textContent).toContain('Engine ready');
@@ -411,7 +606,7 @@ test('active channels show meters and the Analyse and API views call documented 
             leftEndpointId: pair.leftEndpointId, rightEndpointId: pair.rightEndpointId, correlation: -0.5, state: 'measuring' } }));
         expect(container.querySelector('.correlation-readout strong').textContent).toBe('-0.50');
 
-        await act(async () => Simulate.click(tabs[3]));
+        await act(async () => Simulate.click([...tabs].find(button => button.textContent === 'API and Swagger')));
         expect(container.textContent).toContain('Console API');
         await act(async () => container.querySelector('.api-console-panel .analysis-actions button').click());
         expect(window.vasio.executeCommand).toHaveBeenCalledWith(expect.objectContaining({ command: 'engine.start' }));

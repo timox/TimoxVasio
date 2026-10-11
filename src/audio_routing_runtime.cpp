@@ -362,13 +362,14 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
         auto& mapping = *client.client.mapping;
         if (!mapping.EngineAttached()) continue;
         std::fill(client.clientInput.begin(), client.clientInput.end(), 0.0f);
-        for (std::uint32_t frame = 0; frame < frames; ++frame) {
-            for (std::uint32_t channel = 0; channel < AudioClientMapping::kChannelCount; ++channel) {
-                const auto sourceIndex = client.inputEndpointIndices[channel];
-                if (sourceIndex == static_cast<std::size_t>(-1)) continue;
+        for (std::uint32_t channel = 0; channel < AudioClientMapping::kChannelCount; ++channel) {
+            const auto sourceIndex = client.inputEndpointIndices[channel];
+            if (sourceIndex == static_cast<std::size_t>(-1)) continue;
+            const auto* source = destinationSamples_.data() + sourceIndex * bufferFrames_;
+            for (std::uint32_t frame = 0; frame < frames; ++frame) {
                 client.clientInput[static_cast<std::size_t>(frame) *
                     AudioClientMapping::kChannelCount + channel] =
-                    destinationSamples_[sourceIndex * bufferFrames_ + frame];
+                    source[frame];
             }
         }
         mapping.WriteEngineInput(client.clientInput.data(), frames);

@@ -332,6 +332,23 @@ struct ControlApiServer::Impl {
 
     Json stateJson() const {
         const auto state = controller.Snapshot();
+        const auto bufferHealth = controller.ReadBufferHealth();
+        Json bufferHealthJson = nullptr;
+        if (bufferHealth.available) {
+            const char* healthState = bufferHealth.assessment.state == AsioBufferHealthState::Warning
+                ? "warning" : bufferHealth.assessment.state == AsioBufferHealthState::Insufficient
+                    ? "insufficient" : "healthy";
+            bufferHealthJson = {{"state", healthState},
+                {"sampleRate", bufferHealth.window.sampleRate},
+                {"bufferFrames", bufferHealth.window.bufferFrames},
+                {"windowDurationMs", bufferHealth.window.durationMs},
+                {"callbackCount", bufferHealth.window.callbacks},
+                {"delayedStartCount", bufferHealth.window.delayedStarts},
+                {"processingOverrunCount", bufferHealth.window.processingOverruns},
+                {"blockPeriodNs", bufferHealth.assessment.blockPeriodNs},
+                {"worstProcessingNs", bufferHealth.window.worstProcessingNs},
+                {"worstMarginNs", bufferHealth.assessment.worstMarginNs}};
+        }
         Json physicalId = state.physicalDriverId ? Json(*state.physicalDriverId) : Json(nullptr);
         Json sampleRate = state.sampleRate ? Json(*state.sampleRate) : Json(nullptr);
         Json bufferFrames = state.bufferFrames ? Json(*state.bufferFrames) : Json(nullptr);
@@ -347,6 +364,7 @@ struct ControlApiServer::Impl {
                          {"sampleRate", std::move(sampleRate)}, {"bufferFrames", std::move(bufferFrames)},
                          {"lastError", std::move(lastError)}}},
             {"physicalDrivers", physicalDriversJson()}, {"virtualDrivers", virtualDriversJson()},
+            {"bufferHealth", std::move(bufferHealthJson)},
             {"routes", std::move(routes)}, {"configuredRoutes", std::move(configuredRoutes)},
             {"stereoPairs", stereoPairsJson()}};
     }

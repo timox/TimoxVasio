@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 // Private data plane shared by a VASIO client and its routing engine.
 class AudioClientMapping final {
@@ -13,6 +14,44 @@ public:
     static constexpr std::uint32_t kRingCapacityFrames = 16384;
     static constexpr std::size_t kChannelMaskWords = kChannelCount / 64;
     using ChannelMask = std::array<std::uint64_t, kChannelMaskWords>;
+
+    enum class ClientState : std::uint32_t {
+        Initialized = 1, BuffersReady = 2, Running = 3,
+        Stopped = 4, Detached = 5
+    };
+    struct StatusSnapshot {
+        bool available = false;
+        std::uint32_t layoutVersion = 0;
+        std::uint32_t processId = 0;
+        std::uint32_t driverId = 0;
+        std::array<std::uint32_t, 4> dllVersion{};
+        std::wstring dllPath;
+        ClientState state = ClientState::Detached;
+        std::uint32_t requestedSampleRate = 0;
+        std::uint32_t requestedBufferFrames = 0;
+        std::uint32_t confirmedSampleRate = 0;
+        std::uint32_t confirmedBufferFrames = 0;
+        std::uint64_t qpcFrequency = 0;
+        std::uint64_t firstCallbackQpc = 0;
+        std::uint64_t lastCallbackQpc = 0;
+        std::uint64_t lastSuccessfulExchangeQpc = 0;
+        std::uint64_t lastIntervalQpc = 0;
+        std::uint64_t callbackCount = 0;
+        std::uint64_t successfulExchangeCount = 0;
+        std::uint64_t exchangedFrames = 0;
+        std::uint64_t resetRequests = 0;
+        bool stableExchange = true;
+        bool stableChannels = true;
+        std::uint64_t inputUnderruns = 0;
+        std::uint64_t outputOverruns = 0;
+        std::uint64_t inputOverruns = 0;
+        std::uint64_t outputUnderruns = 0;
+        ChannelMask activeInputs{};
+        ChannelMask activeOutputs{};
+    };
+
+    static bool ReadStatusReadOnly(std::uint32_t driverId, std::uint32_t processId,
+        StatusSnapshot& snapshot);
 
     static std::unique_ptr<AudioClientMapping> CreateClient(std::uint32_t driverId,
         std::uint32_t processId, std::uint32_t sampleRate, std::uint32_t blockFrames);
@@ -46,12 +85,18 @@ public:
     std::uint64_t ClientInputUnderruns() const noexcept;
     std::uint64_t ClientInputOverruns() const noexcept;
     std::uint64_t ClientOutputUnderruns() const noexcept;
+    void PublishClientState(ClientState state) noexcept;
+    void PublishClientRequestedFormat(std::uint32_t sampleRate,
+        std::uint32_t bufferFrames) noexcept;
+    void PublishClientExchange(std::uint32_t frames) noexcept;
+    void PublishResetRequest() noexcept;
 
 private:
     struct Shared;
     AudioClientMapping(HANDLE mapping, HANDLE eventHandle, Shared* shared, bool engineOwner) noexcept;
     static std::unique_ptr<AudioClientMapping> Open(bool create, std::uint32_t driverId,
-        std::uint32_t processId, std::uint32_t sampleRate, std::uint32_t blockFrames);
+        std::uint32_t processId, std::uint32_t sampleRate, std::uint32_t blockFrames,
+        bool versioned);
     std::uint32_t Available(volatile LONG64* write, volatile LONG64* read) const noexcept;
     bool Write(const float* src, std::uint32_t frames, volatile LONG64* write,
         volatile LONG64* read, float* ring, volatile LONG64* overruns) noexcept;

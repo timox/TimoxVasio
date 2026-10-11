@@ -12,6 +12,7 @@ function App() {
     const [configuration, setConfiguration] = useState(null);
     const [engine, setEngine] = useState(null);
     const [applicationProfiles, setApplicationProfiles] = useState(null);
+    const [confirmedProfiles, setConfirmedProfiles] = useState([]);
     const [profilesLoading, setProfilesLoading] = useState(true);
     const [profilesSaving, setProfilesSaving] = useState(false);
     const [profilesError, setProfilesError] = useState('');
@@ -48,6 +49,7 @@ function App() {
     const [consoleBusy, setConsoleBusy] = useState(false);
     const [consoleConfirmation, setConsoleConfirmation] = useState('');
     const confirmationDialog = useRef(null);
+    const initialMatrixRouteShown = useRef(false);
 
     useEffect(() => { saveRouteVisuals(routeVisuals); }, [routeVisuals]);
 
@@ -89,8 +91,8 @@ function App() {
         setEngineAction(action);
         setDiagnosticsError('');
         try {
-            if (action === 'start') await window.electronAPI.startEngine();
-            else await window.electronAPI.stopEngine();
+            if (action === 'start') await window.vasio.startAudio();
+            else await window.vasio.stopAudio();
             await new Promise(resolve => setTimeout(resolve, 150));
             await refreshState();
         } catch (error) { setDiagnosticsError(error.message); }
@@ -103,6 +105,7 @@ function App() {
         setEngine(state.engine);
         setConfiguration(configurationFromState(state));
         setSelectedStereoPairId(current => state.stereoPairs?.some(pair => pair.id === current) ? current : '');
+        return state;
     }, []);
 
     const refreshApplicationProfiles = useCallback(async () => {
@@ -111,6 +114,7 @@ function App() {
         try {
             const result = await window.vasio.getApplicationProfiles();
             setApplicationProfiles(result.profiles);
+            setConfirmedProfiles(result.profiles);
         } catch (error) {
             setProfilesError(error.status === 404
                 ? 'The running engine does not support application profiles yet. Rebuild and restart TimoxVasio Engine.'
@@ -183,17 +187,41 @@ function App() {
         };
     }, [refreshApplicationProfiles, refreshState]);
 
+    useEffect(() => {
+        if (activeView !== 'diagnostics' || !window.vasio?.getState) return undefined;
+        const timer = window.setInterval(() => {
+            window.vasio.getState().then(state => {
+                setApiState(state);
+                setEngine(state.engine);
+            }).catch(error => setConnectionError(error.message));
+        }, 2000);
+        return () => window.clearInterval(timer);
+    }, [activeView]);
+
     const endpoints = useMemo(() => {
         if (!apiState) return { all: [], sourceGroups: [], destinationGroups: [] };
         const physical = apiState.physicalDrivers;
         const virtual = apiState.virtualDrivers;
         const physicalInputs = physical.flatMap(driver => driver.inputEndpoints);
         const physicalOutputs = physical.flatMap(driver => driver.outputEndpoints);
-        const virtualInputs = virtual.flatMap(driver => driver.inputEndpoints);
-        const virtualOutputs = virtual.flatMap(driver => driver.outputEndpoints);
+        const profiled = confirmedProfiles.flatMap(profile => {
+            const name = profile.processName.trim().toLowerCase();
+            const ports = (direction, count) => Array.from({ length: Math.max(0, Math.min(256, count)) }, (_, index) => ({
+                id: `virtual:TimoxVasio:app:${name}:${direction}:${index + 1}`,
+                name: `TimoxVasio ${profile.processName} ${direction === 'input' ? 'In' : 'Out'} ${index + 1} (profile)`,
+                direction, channel: index + 1
+            }));
+            return [{ processName: profile.processName, direction: 'input', endpoints: ports('input', profile.inputChannels) },
+                { processName: profile.processName, direction: 'output', endpoints: ports('output', profile.outputChannels) }];
+        });
+        const virtualInputs = [...virtual.flatMap(driver => driver.inputEndpoints),
+            ...profiled.filter(group => group.direction === 'input').flatMap(group => group.endpoints)];
+        const virtualOutputs = [...virtual.flatMap(driver => driver.outputEndpoints),
+            ...profiled.filter(group => group.direction === 'output').flatMap(group => group.endpoints)];
         return {
             all: [...physical.flatMap(driver => [...driver.inputEndpoints, ...driver.outputEndpoints]),
-                ...virtual.flatMap(driver => [...driver.inputEndpoints, ...driver.outputEndpoints])],
+                ...virtualInputs, ...virtualOutputs],
+            profiled,
             sourceGroups: [
                 { id: 'physical-input', label: 'Physical inputs', endpoints: physicalInputs },
                 { id: 'physical-output', label: 'Physical outputs', endpoints: physicalOutputs },
@@ -207,7 +235,7 @@ function App() {
                 { id: 'virtual-output', label: 'Virtual outputs', endpoints: virtualOutputs }
             ]
         };
-    }, [apiState]);
+    }, [apiState, confirmedProfiles]);
     const patchbayGroups = useMemo(() => {
         if (!apiState) return { sources: [], destinations: [] };
         const physical = apiState.physicalDrivers || [];
@@ -222,9 +250,17 @@ function App() {
                     .filter(endpoint => endpoint.id.startsWith(prefix))
             };
         })).filter(group => group.endpoints.length);
+        const profileGroups = direction => endpoints.profiled.filter(group =>
+            group.direction === direction && group.endpoints.length).map(group => ({
+            id: `profile:${group.processName}:${direction}`,
+            label: `${group.processName} · Saved profile (available when channels open)`,
+            kind: direction === 'output' ? 'virtual-output' : 'virtual-input',
+            endpoints: group.endpoints
+        }));
         return {
             sources: [
                 ...virtualGroups('output'),
+                ...profileGroups('output'),
                 ...physical.filter(driver => driver.inputEndpoints.length).map(driver => ({
                     id: `${driver.id}:input`, label: `${driver.name} · Inputs`, kind: 'physical-input',
                     endpoints: driver.inputEndpoints
@@ -235,10 +271,11 @@ function App() {
                     id: `${driver.id}:output`, label: `${driver.name} · Outputs`, kind: 'physical-output',
                     endpoints: driver.outputEndpoints
                 })),
-                ...virtualGroups('input')
+                ...virtualGroups('input'),
+                ...profileGroups('input')
             ]
         };
-    }, [apiState]);
+    }, [apiState, endpoints.profiled]);
     const activeRouteKeys = useMemo(() => new Set((configuration?.routes || []).map(route =>
         `${route.sourceEndpointId}\u0000${route.destinationEndpointId}`)), [configuration?.routes]);
     const sourceGroup = endpoints.sourceGroups.find(group => group.id === sourceZone);
@@ -266,7 +303,7 @@ function App() {
     useEffect(() => { setSourcePage(page => Math.min(page, sourcePageCount - 1)); }, [sourcePageCount]);
     useEffect(() => { setDestinationPage(page => Math.min(page, destinationPageCount - 1)); }, [destinationPageCount]);
 
-    const showRouteInMatrix = route => {
+    const showRouteInMatrix = useCallback(route => {
         setRoutingView('matrix');
         const source = endpoints.all.find(endpoint => endpoint.id === route.sourceEndpointId);
         const destination = endpoints.all.find(endpoint => endpoint.id === route.destinationEndpointId);
@@ -282,7 +319,21 @@ function App() {
         const newDestinationGroup = endpoints.destinationGroups.find(group => group.id === destinationGroupId);
         setSourcePage(Math.floor(newSourceGroup.endpoints.findIndex(endpoint => endpoint.id === source.id) / channelPageSize));
         setDestinationPage(Math.floor(newDestinationGroup.endpoints.findIndex(endpoint => endpoint.id === destination.id) / channelPageSize));
-    };
+    }, [endpoints.all, endpoints.sourceGroups, endpoints.destinationGroups, channelPageSize]);
+
+    useEffect(() => {
+        if (initialMatrixRouteShown.current || !apiState || !configuration) return;
+        if (!configuration.routes.length) {
+            initialMatrixRouteShown.current = true;
+            return;
+        }
+        const firstVisibleRoute = configuration.routes.find(route =>
+            endpoints.all.some(endpoint => endpoint.id === route.sourceEndpointId) &&
+            endpoints.all.some(endpoint => endpoint.id === route.destinationEndpointId));
+        if (!firstVisibleRoute) return;
+        initialMatrixRouteShown.current = true;
+        showRouteInMatrix(firstVisibleRoute);
+    }, [apiState, configuration, endpoints.all, showRouteInMatrix]);
 
     const configurationLocked = applying || engine?.state === 'reconfiguring';
     const updateDraft = (update) => setConfiguration(current =>
@@ -326,6 +377,7 @@ function App() {
         try {
             const result = await window.vasio.replaceApplicationProfiles(applicationProfiles);
             setApplicationProfiles(result.profiles);
+            setConfirmedProfiles(result.profiles);
             const clients = result.restartRequiredClients;
             setProfilesNotice(clients.length
                 ? `Profiles saved. Restart ${clients.map(client => `${client.processName} (PID ${client.pid})`).join(', ')} to apply the changes.`
@@ -348,10 +400,12 @@ function App() {
         setNotice('Applying configuration…');
         try {
             await window.vasio.applyConfiguration(configuration);
+            const confirmed = await refreshState();
             setNotice(configuration.routes.length === 0
                 ? 'Physical driver configured. The audio engine remains stopped until a route is defined.'
+                : confirmed.engine.state === 'stopped' && !confirmed.routes.length
+                    ? 'Configured routes are waiting for their application channels to open.'
                 : 'Configuration applied. Audio routing was briefly interrupted.');
-            await refreshState();
         } catch (error) {
             setNotice(error.message);
         } finally {
@@ -389,6 +443,11 @@ function App() {
         return limits.preferredFrames > 0 ? [limits.preferredFrames] : [];
     })();
     const virtualDriver = apiState?.virtualDrivers.find(driver => driver.id === 'TimoxVasio');
+    const bufferHealth = apiState?.bufferHealth;
+    const activeClockDriver = physicalDrivers.find(driver => driver.id === engine?.physicalDriverId)?.name || 'Selected physical ASIO driver';
+    const blockMs = bufferHealth ? (bufferHealth.blockPeriodNs / 1000000).toFixed(2) : null;
+    const worstMs = bufferHealth ? (bufferHealth.worstProcessingNs / 1000000).toFixed(2) : null;
+    const marginMs = bufferHealth ? (Math.abs(bufferHealth.worstMarginNs) / 1000000).toFixed(2) : null;
     const stereoPairs = apiState?.stereoPairs || [];
     const selectedStereoPair = stereoPairs.find(pair => pair.id === selectedStereoPairId);
     const applicationChannelSummaries = (virtualDriver?.clients || []).map(client => {
@@ -409,6 +468,10 @@ function App() {
         };
     });
 
+    const routedTransportDirections = applicationChannelSummaries.flatMap(client => [
+        ...(client.outputMeterEndpoints.length ? [{ label: `${client.processName} output`, endpointId: client.outputMeterEndpoints[0].id }] : []),
+        ...(client.inputMeterEndpoints.length ? [{ label: `${client.processName} input`, endpointId: client.inputMeterEndpoints[0].id }] : [])
+    ]);
     const startCorrelation = async () => {
         if (!selectedStereoPairId) return;
         try { await window.vasio.startCorrelation(selectedStereoPairId); setCorrelationHistory([]); }
@@ -451,7 +514,7 @@ function App() {
                     {connectionError || `Engine: ${engine?.state || 'pending'}`}</div>
             </header>
             <nav className="view-tabs" aria-label="Application sections">
-                {[['configuration', 'Configuration'], ['channels', 'Channels'], ['analysis', 'Analysis'], ['api', 'API and Swagger'], ['diagnostics', 'Logs']].map(([id, label]) =>
+                {[['configuration', 'Configuration'], ['channels', 'Channels'], ['analysis', 'Analysis'], ['performance', 'Performance'], ['api', 'API and Swagger'], ['diagnostics', 'Logs']].map(([id, label]) =>
                     <button key={id} type="button" className={activeView === id ? 'selected' : ''} aria-current={activeView === id ? 'page' : undefined}
                         onClick={() => { setActiveView(id); if (id === 'diagnostics') refreshDiagnostics(); }}>{label}</button>)}
             </nav>
@@ -519,12 +582,71 @@ function App() {
                         <div className="analysis-actions"><button type="button" onClick={runConsoleRequest}>Confirm</button><button type="button" onClick={() => setConsoleConfirmation('')}>Cancel</button></div>
                     </dialog>
                 </section>
+            </main> : activeView === 'performance' ? <main className="main-content api-console">
+                <section className="section clock-source" aria-label="Audio clock source">
+                    <span className="performance-kicker">Audio clock</span>
+                    <h2>One card sets the pace</h2>
+                    <div className="clock-flow">
+                        <div><strong>{activeClockDriver}</strong><span>Physical ASIO callbacks</span></div>
+                        <span aria-hidden="true">→</span>
+                        <div><strong>TimoxVasio</strong><span>Publishes virtual blocks</span></div>
+                        <span aria-hidden="true">→</span>
+                        <div><strong>ASIO applications</strong><span>Wake on those blocks</span></div>
+                    </div>
+                    <p>TimoxVasio follows the selected card's audio clock instead of running an independent timer. This avoids accumulating clock drift between its virtual stream and that card. Callback jitter can still occur, and a separate audio device can still drift.</p>
+                </section>
+                <section className="section performance-flow" aria-label="Audio latency path">
+                    <h2>From the ASIO application to the audio output</h2>
+                    <ol className="transport-steps">
+                        <li><strong>Application produces a block</strong><span>Its ASIO callback writes the output samples into a shared ring in TimoxVasio.</span></li>
+                        <li><strong>Engine reads the shared ring</strong><span>At the next physical callback, the engine reads the completed block and applies the configured routes.</span></li>
+                        <li><strong>Physical ASIO driver receives the block</strong><span>The routed output is handed to the selected card; hardware conversion adds its own delay.</span></li>
+                    </ol>
+                    <p>If the route passes through SuperCollider, the engine first delivers a block to that application. SuperCollider then publishes its output for a following physical callback. A direct route skips this extra application stage.</p>
+                    <p className="hint">At the selected rate and buffer size, one block represents {engine?.sampleRate && engine?.bufferFrames ? `${(engine.bufferFrames * 1000 / engine.sampleRate).toFixed(2)} ms` : 'an unknown duration'}. The complete application-to-speaker latency is not measured. The callback measurement below answers a different question: did TimoxVasio finish routing each physical block within the time available?</p>
+                </section>
+                <section className="section transport-health" aria-label="Virtual transport losses">
+                    <h2>Virtual transport</h2>
+                    <p>The counters below come from existing audio meter events. They are cumulative for each client transport: an underrun means a block was requested before the transport had all its samples; an overrun means new samples arrived before previous samples were consumed. They do not measure elapsed transport time or prove an audible dropout.</p>
+                    {routedTransportDirections.length === 0 ? <p>No routed virtual channels.</p> :
+                        <div className="transport-table-wrap"><table className="transport-table"><thead><tr><th>Client transport</th><th>Underruns</th><th>Overruns</th></tr></thead>
+                            <tbody>{routedTransportDirections.map(direction => <tr key={direction.endpointId}><th scope="row">{direction.label}</th>
+                                <td>{meters[direction.endpointId]?.underruns ?? '—'}</td><td>{meters[direction.endpointId]?.overruns ?? '—'}</td></tr>)}</tbody>
+                        </table></div>}
+                    <p className="hint">Only directions used by active routes are shown. A dash means no meter event has arrived yet.</p>
+                </section>
+                <section className="section buffer-health" aria-live="polite">
+                    <h2>Physical ASIO buffer</h2>
+                    {!bufferHealth ? <p>No callback observation yet. Start an active route and wait for a five-second window.</p> : <>
+                        <p>{bufferHealth.state === 'warning' ? 'Buffer may be too short for the observed workload.' :
+                            bufferHealth.state === 'insufficient' ? 'Insufficient callback data to assess this buffer.' :
+                                'No repeated timing incidents in the observed windows.'}</p>
+                        <p className="buffer-explanation">
+                            {bufferHealth.callbackCount} callbacks were observed over {(bufferHealth.windowDurationMs / 1000).toFixed(1)} seconds.{' '}
+                            {bufferHealth.delayedStartCount === 0 && bufferHealth.processingOverrunCount === 0
+                                ? `None started unusually late or took longer than the ${blockMs} ms available per block. `
+                                : `${bufferHealth.delayedStartCount} starts were unusually late; ${bufferHealth.processingOverrunCount} callbacks took longer than the ${blockMs} ms available per block. `}
+                            {`The slowest callback took ${worstMs} ms, `}
+                            {bufferHealth.worstMarginNs >= 0 ? `leaving ${marginMs} ms.`
+                                : `exceeding the ${blockMs} ms available per block by ${marginMs} ms.`}
+                        </p>
+                        <div className="buffer-timeline" role="img" aria-label={`${worstMs} ms of processing within a ${blockMs} ms block; ${bufferHealth.worstMarginNs >= 0 ? `${marginMs} ms remaining` : `${marginMs} ms over the block time`}`}>
+                            <span className="buffer-timeline-work" style={{ width: `${Math.min(100, Math.max(0, bufferHealth.worstProcessingNs / bufferHealth.blockPeriodNs * 100))}%` }} />
+                            <span className="buffer-timeline-remaining" />
+                        </div>
+                        <div className="buffer-timeline-labels"><span>Slowest processing: {worstMs} ms</span><span>{bufferHealth.worstMarginNs >= 0 ? `Time left: ${marginMs} ms` : `Over time: ${marginMs} ms`}</span></div>
+                        <p>{bufferHealth.sampleRate} Hz · {bufferHealth.bufferFrames} frames · {(bufferHealth.windowDurationMs / 1000).toFixed(1)} s window · {bufferHealth.callbackCount} callbacks</p>
+                        <p>{bufferHealth.delayedStartCount} delayed starts · {bufferHealth.processingOverrunCount} processing overruns</p>
+                        <p>Block period {(bufferHealth.blockPeriodNs / 1000000).toFixed(2)} ms · worst processing {(bufferHealth.worstProcessingNs / 1000000).toFixed(2)} ms · worst margin {(bufferHealth.worstMarginNs / 1000000).toFixed(2)} ms</p>
+                        <p className="hint">Timing observations do not by themselves prove an audible dropout. Virtual transport underruns and overruns are separate.</p>
+                    </>}
+                </section>
             </main> : activeView === 'diagnostics' ? <main className="main-content api-console">
                 <section className="section diagnostics-view"><div className="section-heading"><div><h2>Engine logs</h2><p className="hint">Persistent file: %LOCALAPPDATA%\TimoxVasio\logs\engine.log</p></div>
                     <div className="diagnostics-actions"><label className="field">Log level<select value={diagnostics.level} onChange={event => setDiagnosticLevel(event.target.value)}><option value="info">Standard</option><option value="debug">Detailed</option></select></label>
                         <button type="button" onClick={refreshDiagnostics} disabled={diagnosticsLoading}>{diagnosticsLoading ? 'Refreshing…' : 'Refresh'}</button>
-                        {connectionError || engine?.state !== 'running' ? <button type="button" className="engine-start" onClick={() => manageEngine('start')} disabled={!!engineAction}>{engineAction === 'start' ? 'Starting…' : 'Start audio engine'}</button> :
-                            <button type="button" className="engine-stop" onClick={() => manageEngine('stop')} disabled={!!engineAction || (virtualDriver?.clients.length || 0) > 0} title={(virtualDriver?.clients.length || 0) > 0 ? 'Close connected ASIO applications before stopping the engine.' : undefined}>{engineAction === 'stop' ? 'Stopping…' : 'Stop audio engine'}</button>}</div></div>
+                        {(connectionError || engine?.state !== 'running') && <button type="button" className="engine-start" onClick={() => manageEngine('start')} disabled={!!engineAction}>{engineAction === 'start' ? 'Starting…' : 'Start audio engine'}</button>}
+                        {!connectionError && engine?.physicalDriverId && <button type="button" className="engine-stop" onClick={() => manageEngine('stop')} disabled={!!engineAction || (virtualDriver?.clients.length || 0) > 0} title={(virtualDriver?.clients.length || 0) > 0 ? 'Close connected ASIO applications before stopping the engine.' : undefined}>{engineAction === 'stop' ? 'Stopping…' : 'Stop audio engine'}</button>}</div></div>
                     {diagnosticsError && <div className="error-panel">{diagnosticsError}</div>}
                     <div className="log-table-wrap"><table className="log-table"><thead><tr><th>UTC time</th><th>Level</th><th>Component</th><th>Message</th></tr></thead>
                         <tbody>{diagnostics.entries.map((entry, index) => <tr key={`${entry.timestamp}-${index}`}><td>{entry.timestamp}</td><td><span className={`log-level ${entry.level}`}>{entry.level}</span></td><td>{entry.component}</td><td>{entry.message}</td></tr>)}
@@ -639,9 +761,11 @@ function App() {
                             <span>{sourceGroup?.label || 'Source'} · {matchingSources.length} channels</span>
                             <span>{destinationGroup?.label || 'Destination'} · {matchingDestinations.length} channels</span>
                             <span className={`route-legend${visibleRouteCount === 0 ? ' empty' : ''}`}>
-                                {visibleRouteCount === 0 ? 'No routes in this view' : <><i aria-hidden="true">●</i> {visibleRouteCount} {visibleRouteCount === 1 ? 'route' : 'routes'} in this view</>}
+                                {(configuration?.routes || []).length} configured overall · {visibleRouteCount} on these pages
                             </span>
                         </div>
+                        {visibleRouteCount === 0 && (configuration?.routes || []).length > 0 &&
+                            <p className="hint">Routes exist on other zones or pages. Use “Show in matrix” next to a route below to jump to it.</p>}
                         <div className="matrix-scroll" role="region" aria-label="Paginated routing matrix" tabIndex="0">
                             {!visibleSources.length || !visibleDestinations.length ? <div className="matrix-empty">
                                 <strong>{!sourceGroup?.endpoints.length || !destinationGroup?.endpoints.length ? 'No channels published in this zone.' : 'No channels match the search.'}</strong>

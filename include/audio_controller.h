@@ -1,10 +1,12 @@
 #pragma once
 
 #include "audio_meter.h"
+#include "asio_buffer_health.h"
 #include "application_profile.h"
 #include "application_profile_store.h"
 #include "audio_configuration_store.h"
 #include "physical_asio_host.h"
+#include "realtime_callback_slot.h"
 #include "routing_graph.h"
 
 #include <windows.h>
@@ -26,6 +28,7 @@
 
 class AudioRoutingRuntime;
 class VasioClientManager;
+struct VasioClientSnapshot;
 
 struct AudioControllerConfiguration {
     std::optional<std::string> physicalDriverId;
@@ -49,6 +52,12 @@ struct AudioControllerSnapshot {
     std::vector<AudioRoute> routes;
     std::vector<AudioRoute> configuredRoutes;
     PhysicalAsioCapabilities physicalCapabilities;
+};
+
+struct AudioBufferHealthSnapshot {
+    bool available = false;
+    AsioBufferWindow window{};
+    AsioBufferAssessment assessment{};
 };
 
 class AudioController final {
@@ -76,6 +85,7 @@ public:
     AudioControllerSnapshot Snapshot() const;
     std::vector<AudioControllerSnapshot> EventsSince(std::uint64_t revision) const;
     std::vector<AudioMeterSnapshot> ReadMeters();
+    AudioBufferHealthSnapshot ReadBufferHealth() const;
 
 private:
     template<class Function>
@@ -120,5 +130,15 @@ private:
     mutable std::mutex stateMutex_;
     AudioControllerSnapshot state_;
     std::deque<AudioControllerSnapshot> events_;
+    mutable std::mutex bufferHealthMutex_;
+    AudioBufferHealthSnapshot bufferHealth_;
+    AsioBufferHealthPolicy bufferHealthPolicy_;
+    std::uint64_t bufferHealthGeneration_ = 0; // Controller worker only.
     AudioControllerResult ApplyConfigurationCore(const AudioControllerConfiguration& configuration);
+    bool TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
+        const std::vector<VasioClientSnapshot>& clients);
+    void StopPhysicalRuntime() noexcept;
+    RealtimeCallbackSlot callbackSlot_;
+    std::vector<std::uint32_t> hostPhysicalInputs_;
+    std::vector<std::uint32_t> hostPhysicalOutputs_;
 };

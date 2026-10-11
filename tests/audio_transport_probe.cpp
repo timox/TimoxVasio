@@ -119,6 +119,30 @@ bool runHighChannelProbe() {
     return true;
 }
 
+bool runReadOnlyStatusProbe() {
+    constexpr std::uint32_t driver = 0xFF02;
+    const auto pid = GetCurrentProcessId();
+    auto mapping = AudioClientMapping::CreateClient(driver, pid, kRate, kBlockFrames);
+    if (!mapping) return false;
+    AudioClientMapping::StatusSnapshot status{};
+    if (!AudioClientMapping::ReadStatusReadOnly(driver, pid, status)) return false;
+    if (!status.available || status.layoutVersion != 7 || status.processId != pid ||
+        status.requestedSampleRate != kRate || status.requestedBufferFrames != kBlockFrames ||
+        status.dllPath.empty()) return false;
+    mapping->PublishClientState(AudioClientMapping::ClientState::Running);
+    mapping->PublishClientExchange(kBlockFrames);
+    if (!AudioClientMapping::ReadStatusReadOnly(driver, pid, status)) return false;
+    const auto successfulExchangeQpc = status.lastSuccessfulExchangeQpc;
+    if (successfulExchangeQpc != status.lastCallbackQpc) return false;
+    mapping->PublishClientExchange(0);
+    if (!AudioClientMapping::ReadStatusReadOnly(driver, pid, status)) return false;
+    return status.state == AudioClientMapping::ClientState::Running &&
+        status.callbackCount == 2 && status.successfulExchangeCount == 1 &&
+        status.exchangedFrames == kBlockFrames &&
+        status.lastCallbackQpc >= status.firstCallbackQpc && status.lastCallbackQpc > 0 &&
+        status.lastSuccessfulExchangeQpc == successfulExchangeQpc;
+}
+
 struct LegacyTransportHeader {
     std::uint32_t magic;
     std::uint32_t version;
@@ -133,7 +157,7 @@ struct LegacyTransportHeader {
 
 bool runLegacyVersionProbe() {
     const auto pid = GetCurrentProcessId();
-    const auto rejectsOldMapping = [pid](std::uint32_t driverId, std::uint32_t version, std::uint32_t channels) {
+    const auto checksOldMapping = [pid](std::uint32_t driverId, std::uint32_t version, std::uint32_t channels) {
         const auto mapName = L"Local\\VASIO-Map-" + std::to_wstring(pid) + L"-" + std::to_wstring(driverId);
         const auto eventName = L"Local\\VASIO-Event-" + std::to_wstring(pid) + L"-" + std::to_wstring(driverId);
         HANDLE legacyMap = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
@@ -155,25 +179,57 @@ bool runLegacyVersionProbe() {
             AudioClientMapping::kRingCapacityFrames, static_cast<LONG>(kBlockFrames), static_cast<LONG>(kBlockFrames)};
         UnmapViewOfFile(view);
 
-        const bool rejected = !AudioClientMapping::CreateClient(driverId, pid, kRate, kBlockFrames);
+        auto current = AudioClientMapping::CreateClient(driverId, pid, kRate, kBlockFrames);
+        const bool coexist = current != nullptr;
+        current.reset();
+        auto legacy = AudioClientMapping::OpenEngine(driverId, pid, kRate);
+        const bool legacyAccepted = legacy != nullptr;
+        legacy.reset();
+        AudioClientMapping::StatusSnapshot status{};
+        const bool legacyVisible = AudioClientMapping::ReadStatusReadOnly(driverId, pid, status);
         CloseHandle(legacyEvent);
         CloseHandle(legacyMap);
-        return rejected;
+        return coexist && (version == 6 ? legacyAccepted && legacyVisible &&
+            status.layoutVersion == 6 && !status.available : !legacyAccepted && !legacyVisible);
     };
 
-    return rejectsOldMapping(0xFF03, 4, 6) &&
-           rejectsOldMapping(0xFF04, 5, AudioClientMapping::kChannelCount);
+    return checksOldMapping(0xFF03, 4, 6) &&
+           checksOldMapping(0xFF04, 5, AudioClientMapping::kChannelCount) &&
+           checksOldMapping(0xFF05, 6, AudioClientMapping::kChannelCount);
 }
 }
 
 int wmain(int argc, wchar_t** argv) {
+    if (argc == 2 && std::wstring(argv[1]) == L"--status-hold") {
+        auto mapping = AudioClientMapping::CreateClient(1, GetCurrentProcessId(), kRate, kBlockFrames);
+        if (!mapping) return 20;
+        mapping->PublishClientState(AudioClientMapping::ClientState::Running);
+        mapping->PublishClientExchange(kBlockFrames);
+        Sleep(5000);
+        mapping->PublishClientState(AudioClientMapping::ClientState::Stopped);
+        return 0;
+    }
+    if (argc == 2 && std::wstring(argv[1]) == L"--status-error-hold") {
+        auto mapping = AudioClientMapping::CreateClient(1, GetCurrentProcessId(), kRate, kBlockFrames);
+        if (!mapping) return 21;
+        mapping->PublishClientState(AudioClientMapping::ClientState::Running);
+        mapping->PublishClientExchange(kBlockFrames);
+        Sleep(1000);
+        std::vector<float> full(AudioClientMapping::kRingCapacityFrames *
+            AudioClientMapping::kChannelCount, 0.0f);
+        if (!mapping->WriteClientOutput(full.data(), AudioClientMapping::kRingCapacityFrames)) return 22;
+        if (mapping->WriteClientOutput(full.data(), 1)) return 23;
+        Sleep(3000);
+        mapping->PublishClientState(AudioClientMapping::ClientState::Stopped);
+        return 0;
+    }
     if (argc == 4 && std::wstring(argv[1]) == L"--engine") {
         return engineChild(static_cast<std::uint32_t>(_wtoi(argv[2])),
                            static_cast<std::uint32_t>(_wtoi(argv[3])));
     }
 
     if (!runLegacyVersionProbe()) {
-        std::fprintf(stderr, "legacy shared mapping was not rejected\n");
+        std::fprintf(stderr, "legacy shared mapping compatibility failed\n");
         return 8;
     }
 
@@ -249,6 +305,7 @@ int wmain(int argc, wchar_t** argv) {
     CloseHandle(process.hProcess);
     passed = passed && childExit == 0 && runOverflowAndUnderflowProbe();
     passed = passed && runHighChannelProbe();
+    passed = passed && runReadOnlyStatusProbe();
     if (!passed) {
         std::fprintf(stderr, "cross-process ordering, wrap, overflow or underflow check failed (child=%lu)\n", childExit);
         return 4;

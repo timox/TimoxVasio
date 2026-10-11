@@ -46,6 +46,7 @@ set(SOURCES
     ${SRC_DIR}/audio_controller.cpp
     ${SRC_DIR}/audio_configuration_store.cpp
     ${SRC_DIR}/application_profile_store.cpp
+    ${SRC_DIR}/application_profile_store_write.cpp
     ${SRC_DIR}/engine_diagnostics.cpp
     ${SRC_DIR}/engine_version.rc
 )
@@ -82,9 +83,19 @@ if(WIN32)
     add_executable(AudioTransportProbe
         ${CMAKE_SOURCE_DIR}/tests/audio_transport_probe.cpp
         ${SRC_DIR}/audio_transport.cpp
+        ${SRC_DIR}/audio_transport_status_reader.cpp
     )
     target_include_directories(AudioTransportProbe PRIVATE ${INCLUDE_DIR})
     target_link_libraries(AudioTransportProbe PRIVATE ole32)
+
+    add_executable(vasio-status
+        ${CMAKE_SOURCE_DIR}/tools/vasio-status/main.cpp
+        ${SRC_DIR}/audio_transport_status_reader.cpp
+    )
+    target_include_directories(vasio-status PRIVATE ${INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/vendor ${CMAKE_SOURCE_DIR}/vendor/cpp-httplib)
+    target_compile_options(vasio-status PRIVATE /EHsc)
+    target_link_libraries(vasio-status PRIVATE ws2_32)
 
     add_executable(PhysicalAsioProbe
         ${CMAKE_SOURCE_DIR}/tests/physical_asio_probe.cpp
@@ -98,6 +109,55 @@ if(WIN32)
         ${ASIO_SDK_PATH}/host/pc
     )
     target_link_libraries(PhysicalAsioProbe PRIVATE ole32)
+
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        add_executable(vasio-clock-compare
+            ${CMAKE_SOURCE_DIR}/tools/vasio-doctor/clock_compare.cpp)
+        target_include_directories(vasio-clock-compare PRIVATE
+            ${CMAKE_SOURCE_DIR}/vendor
+            ${CMAKE_SOURCE_DIR}/tools/vasio-probe)
+        target_compile_options(vasio-clock-compare PRIVATE /EHsc)
+
+        add_executable(vasio-usb-descriptors
+            ${CMAKE_SOURCE_DIR}/tools/vasio-doctor/usb_audio_descriptors.cpp)
+        target_include_directories(vasio-usb-descriptors PRIVATE ${CMAKE_SOURCE_DIR}/vendor)
+        target_compile_options(vasio-usb-descriptors PRIVATE /EHsc)
+        target_link_libraries(vasio-usb-descriptors PRIVATE setupapi)
+
+        set(VASIO_PROBE_ASIO_LIST "${ASIO_SDK_PATH}/host/pc/asiolist.cpp")
+        if(EXISTS "${ASIO_SDK_PATH}/host/pc/patched_asiolist.cpp")
+            set(VASIO_PROBE_ASIO_LIST "${ASIO_SDK_PATH}/host/pc/patched_asiolist.cpp")
+        endif()
+        add_executable(vasio-probe
+            ${CMAKE_SOURCE_DIR}/tools/vasio-probe/main.cpp
+            ${CMAKE_SOURCE_DIR}/tools/vasio-probe/lifecycle.cpp
+            ${CMAKE_SOURCE_DIR}/tools/vasio-probe/cadence.cpp
+            ${CMAKE_SOURCE_DIR}/tools/vasio-probe/loopback.cpp
+            ${VASIO_PROBE_ASIO_LIST}
+        )
+        target_include_directories(vasio-probe PRIVATE
+            ${ASIO_SDK_PATH}/common
+            ${ASIO_SDK_PATH}/host/pc
+            ${CMAKE_SOURCE_DIR}/vendor
+            ${CMAKE_SOURCE_DIR}/tools/vasio-probe
+        )
+        target_compile_options(vasio-probe PRIVATE /EHsc)
+        target_link_libraries(vasio-probe PRIVATE ole32 user32 advapi32 psapi)
+        add_executable(VasioProbeRingTests tests/vasio_probe_ring_tests.cpp)
+        target_include_directories(VasioProbeRingTests PRIVATE ${CMAKE_SOURCE_DIR}/tools/vasio-probe)
+        add_executable(VasioCadenceStatsTests tests/vasio_cadence_stats_tests.cpp)
+        target_include_directories(VasioCadenceStatsTests PRIVATE ${CMAKE_SOURCE_DIR}/tools/vasio-probe)
+        add_executable(VasioLoopbackPatternTests tests/vasio_loopback_pattern_tests.cpp)
+        target_include_directories(VasioLoopbackPatternTests PRIVATE ${CMAKE_SOURCE_DIR}/tools/vasio-probe)
+        add_executable(VasioLifecycleCycleSinkTests tests/vasio_lifecycle_cycle_sink_tests.cpp)
+        target_include_directories(VasioLifecycleCycleSinkTests PRIVATE
+            ${CMAKE_SOURCE_DIR}/vendor
+            ${CMAKE_SOURCE_DIR}/tools/vasio-probe)
+        target_compile_options(VasioLifecycleCycleSinkTests PRIVATE /EHsc)
+    endif()
+
+    add_executable(AsioBufferHealthTests tests/asio_buffer_health_tests.cpp)
+    target_include_directories(AsioBufferHealthTests PRIVATE ${INCLUDE_DIR})
 
     add_executable(AsioSampleConversionTests
         ${CMAKE_SOURCE_DIR}/tests/asio_sample_conversion_tests.cpp
@@ -114,6 +174,12 @@ if(WIN32)
     )
     target_include_directories(RoutingGraphTests PRIVATE ${INCLUDE_DIR})
 
+    add_executable(RoutingGraphBenchmark
+        ${CMAKE_SOURCE_DIR}/tests/routing_graph_benchmark.cpp
+        ${SRC_DIR}/routing_graph.cpp
+    )
+    target_include_directories(RoutingGraphBenchmark PRIVATE ${INCLUDE_DIR})
+
     add_executable(AudioRoutingRuntimeTests
         ${CMAKE_SOURCE_DIR}/tests/audio_routing_runtime_tests.cpp
         ${SRC_DIR}/audio_routing_runtime.cpp
@@ -122,6 +188,17 @@ if(WIN32)
     )
     target_include_directories(AudioRoutingRuntimeTests PRIVATE ${INCLUDE_DIR})
     target_link_libraries(AudioRoutingRuntimeTests PRIVATE ole32)
+
+    add_executable(RealtimeCallbackSlotTests tests/realtime_callback_slot_tests.cpp)
+    target_include_directories(RealtimeCallbackSlotTests PRIVATE ${INCLUDE_DIR})
+
+    add_executable(AudioRoutingHotSwapTests
+        tests/audio_routing_hot_swap_tests.cpp
+        ${SRC_DIR}/audio_routing_runtime.cpp
+        ${SRC_DIR}/routing_graph.cpp
+        ${SRC_DIR}/audio_transport.cpp)
+    target_include_directories(AudioRoutingHotSwapTests PRIVATE ${INCLUDE_DIR})
+    target_link_libraries(AudioRoutingHotSwapTests PRIVATE ole32)
 
     add_executable(AudioConfigurationStoreTests
         ${CMAKE_SOURCE_DIR}/tests/audio_configuration_store_tests.cpp
@@ -153,6 +230,7 @@ if(WIN32)
     add_executable(ApplicationProfileStoreTests
         ${CMAKE_SOURCE_DIR}/tests/application_profile_store_tests.cpp
         ${SRC_DIR}/application_profile_store.cpp
+        ${SRC_DIR}/application_profile_store_write.cpp
     )
     target_include_directories(ApplicationProfileStoreTests PRIVATE
         ${INCLUDE_DIR}
@@ -165,6 +243,7 @@ if(WIN32)
         ${SRC_DIR}/audio_controller.cpp
         ${SRC_DIR}/audio_configuration_store.cpp
         ${SRC_DIR}/application_profile_store.cpp
+        ${SRC_DIR}/application_profile_store_write.cpp
         ${SRC_DIR}/physical_asio_host.cpp
         ${SRC_DIR}/asio_sample_conversion.cpp
         ${SRC_DIR}/audio_routing_runtime.cpp
@@ -192,6 +271,7 @@ if(WIN32)
         ${SRC_DIR}/audio_controller.cpp
         ${SRC_DIR}/audio_configuration_store.cpp
         ${SRC_DIR}/application_profile_store.cpp
+        ${SRC_DIR}/application_profile_store_write.cpp
         ${SRC_DIR}/physical_asio_host.cpp
         ${SRC_DIR}/asio_sample_conversion.cpp
         ${SRC_DIR}/audio_routing_runtime.cpp

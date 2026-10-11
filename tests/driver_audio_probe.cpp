@@ -17,29 +17,41 @@ namespace {
 constexpr long kFrames = 256;
 constexpr long kTransportChannels = 256;
 constexpr long kChannelsPerDirection = 3;
+volatile LONG gFrames = kFrames;
 std::array<long, kChannelsPerDirection> gSelectedChannels{};
 std::array<ASIOBufferInfo, kChannelsPerDirection * 2> gBuffers{};
 HANDLE gCallbackEvent = nullptr;
+HANDLE gResetEvent = nullptr;
 volatile LONG gCallbackErrors = 0;
+volatile LONG gResetRequests = 0;
 
 void bufferSwitch(long index, ASIOBool) {
+    const auto frames = InterlockedCompareExchange(&gFrames, 0, 0);
     for (const auto& info : gBuffers) {
         auto* samples = static_cast<float*>(info.buffers[index]);
         if (!samples) { InterlockedIncrement(&gCallbackErrors); continue; }
         const float value = static_cast<float>(info.channelNum + 1) * 0.01f;
         if (info.isInput) {
-            for (long frame = 0; frame < kFrames; ++frame)
+            for (long frame = 0; frame < frames; ++frame)
                 if (samples[frame] != value) InterlockedIncrement(&gCallbackErrors);
         } else {
             const float output = static_cast<float>(info.channelNum + 1) * 0.1f;
-            for (long frame = 0; frame < kFrames; ++frame) samples[frame] = output;
+            for (long frame = 0; frame < frames; ++frame) samples[frame] = output;
         }
     }
     SetEvent(gCallbackEvent);
 }
 
 void sampleRateChanged(ASIOSampleRate) {}
-long asioMessages(long, long, void*, double*) { return 0; }
+long asioMessages(long selector, long value, void*, double*) {
+    if (selector == kAsioSelectorSupported) return value == kAsioResetRequest ? 1 : 0;
+    if (selector == kAsioResetRequest) {
+        InterlockedIncrement(&gResetRequests);
+        if (gResetEvent) SetEvent(gResetEvent);
+        return 1;
+    }
+    return 0;
+}
 ASIOTime* bufferSwitchTimeInfo(ASIOTime*, long index, ASIOBool direct) {
     bufferSwitch(index, direct);
     return nullptr;
@@ -88,8 +100,9 @@ bool verifyBufferLimits(IASIO* driver, ASIOCallbacks* callbacks) {
 
 int wmain(int argc, wchar_t** argv) {
     const bool expectUnavailable = argc == 6 && std::wstring(argv[5]) == L"--expect-unavailable";
-    if ((argc != 5 && !expectUnavailable) || std::wstring(argv[1]) != L"--dll" || std::wstring(argv[3]) != L"--id") {
-        std::fwprintf(stderr, L"Usage: DriverAudioProbe --dll <path> --id 1 [--expect-unavailable]\n");
+    const bool expectReset = argc == 6 && std::wstring(argv[5]) == L"--expect-reset";
+    if ((argc != 5 && !expectUnavailable && !expectReset) || std::wstring(argv[1]) != L"--dll" || std::wstring(argv[3]) != L"--id") {
+        std::fwprintf(stderr, L"Usage: DriverAudioProbe --dll <path> --id 1 [--expect-unavailable|--expect-reset]\n");
         return 2;
     }
     const int driverId = _wtoi(argv[4]);
@@ -172,6 +185,7 @@ int wmain(int argc, wchar_t** argv) {
     bool passed = driver->init(GetConsoleWindow()) == ASIOTrue;
     auto engine = engineFuture.get();
     passed = passed && engine != nullptr;
+    if (passed) passed = engine->SetSampleRate(48000);
     if (passed) passed = driver->setSampleRate(48000.0) == ASE_OK;
 
     const long commonChannels = (std::min)(announcedChannels.inputs, announcedChannels.outputs);
@@ -193,7 +207,9 @@ int wmain(int argc, wchar_t** argv) {
     if (passed) passed = verifyBufferLimits(driver, &callbacks);
     if (passed) passed = driver->createBuffers(gBuffers.data(), static_cast<long>(gBuffers.size()), kFrames, &callbacks) == ASE_OK;
     gCallbackEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (expectReset) gResetEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     if (!gCallbackEvent) passed = false;
+    if (expectReset && !gResetEvent) passed = false;
     if (passed) passed = driver->start() == ASE_OK;
 
     if (passed) {
@@ -217,16 +233,43 @@ int wmain(int argc, wchar_t** argv) {
         passed = passed && InterlockedCompareExchange(&gCallbackErrors, 0, 0) == 0;
     }
 
+    if (passed && expectReset) {
+        passed = engine->SetSampleRate(44100) && engine->SetBlockFrames(512) &&
+            engine->SignalClient();
+        passed = passed && WaitForSingleObject(gResetEvent, 3000) == WAIT_OBJECT_0;
+        AudioClientMapping::StatusSnapshot status{};
+        passed = passed && AudioClientMapping::ReadStatusReadOnly(1, GetCurrentProcessId(), status) &&
+            status.resetRequests == 1 && InterlockedCompareExchange(&gResetRequests, 0, 0) == 1;
+        passed = passed && driver->stop() == ASE_OK && driver->disposeBuffers() == ASE_OK;
+        passed = passed && driver->setSampleRate(44100.0) == ASE_OK;
+        InterlockedExchange(&gFrames, 512);
+        passed = passed && driver->createBuffers(gBuffers.data(), static_cast<long>(gBuffers.size()),
+            512, &callbacks) == ASE_OK && driver->start() == ASE_OK;
+        if (passed) {
+            std::vector<float> input(512 * kTransportChannels);
+            for (long frame = 0; frame < 512; ++frame)
+                for (long channelIndex = 0; channelIndex < kChannelsPerDirection; ++channelIndex) {
+                    const auto channel = gSelectedChannels[channelIndex];
+                    input[frame * kTransportChannels + channel] = static_cast<float>(channel + 1) * 0.01f;
+                }
+            passed = engine->WriteEngineInput(input.data(), 512) && engine->SignalClient() &&
+                WaitForSingleObject(gCallbackEvent, 3000) == WAIT_OBJECT_0;
+            passed = passed && InterlockedCompareExchange(&gCallbackErrors, 0, 0) == 0;
+        }
+    }
+
     if (driver->stop() != ASE_OK) passed = false;
     if (driver->disposeBuffers() != ASE_OK) passed = false;
     if (gCallbackEvent) CloseHandle(gCallbackEvent);
+    if (gResetEvent) CloseHandle(gResetEvent);
     driver->Release();
     FreeLibrary(module);
     if (!passed) {
         std::fprintf(stderr, "TimoxVasio callback transport probe failed.\n");
         return 8;
     }
-    std::printf("PASS: TimoxVasio ASIO callbacks exchange sparse channels up to %ld through shared memory.\n",
-                gSelectedChannels.back());
+    std::printf(expectReset
+        ? "PASS: TimoxVasio requested reset and reopened buffers at 44.1 kHz / 512 frames.\n"
+        : "PASS: TimoxVasio ASIO callbacks exchange sparse channels through shared memory.\n");
     return 0;
 }

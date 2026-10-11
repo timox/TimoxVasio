@@ -74,17 +74,20 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
         if (collapsed) { selectSource(null); setDragPoint(null); }
     };
 
-    const revealSelectedRoute = () => {
-        if (!selectedRoute) return;
-        setSourceSearch('');
-        setDestinationSearch('');
-        const sourceGroup = sourceGroups.find(group => group.endpoints.some(endpoint => endpoint.id === selectedRoute.sourceEndpointId));
-        const destinationGroup = destinationGroups.find(group => group.endpoints.some(endpoint => endpoint.id === selectedRoute.destinationEndpointId));
+    const revealRoute = (route, focus = false) => {
+        if (!route) return;
+        const sourceGroup = sourceGroups.find(group => group.endpoints.some(endpoint => endpoint.id === route.sourceEndpointId));
+        const destinationGroup = destinationGroups.find(group => group.endpoints.some(endpoint => endpoint.id === route.destinationEndpointId));
+        if (!sourceGroup || !destinationGroup) return;
+        onSelectRoute(route.id);
+        setSourceSearch(focus ? sourceGroup.endpoints.find(endpoint => endpoint.id === route.sourceEndpointId).name : '');
+        setDestinationSearch(focus ? destinationGroup.endpoints.find(endpoint => endpoint.id === route.destinationEndpointId).name : '');
         setCollapsedGroups(current => ({ ...current,
-            ...(sourceGroup ? { [groupKey('source', sourceGroup)]: false } : {}),
-            ...(destinationGroup ? { [groupKey('destination', destinationGroup)]: false } : {})
+            [groupKey('source', sourceGroup)]: false,
+            [groupKey('destination', destinationGroup)]: false
         }));
     };
+    const revealSelectedRoute = () => revealRoute(selectedRoute);
 
     const measure = useCallback(() => {
         const stage = stageRef.current;
@@ -175,6 +178,9 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
         <div className="patchbay-toolbar">
             <p>Select an output and then an input, or drag a cable between two ports. Click or right-click a cable to edit it in the inspector. Changes remain pending until you select “Apply configuration”.</p>
             <div className="patchbay-toolbar-actions">
+                {routes.length > 0 && <button type="button" onClick={() => revealRoute(selectedRoute || routes[0], true)}>
+                    Show a configured connection
+                </button>}
                 <button type="button" onClick={() => setAllGroupsCollapsed(false)}>Expand all</button>
                 <button type="button" onClick={() => setAllGroupsCollapsed(true)}>Collapse all</button>
                 <button type="button" onClick={() => { selectSource(null); setDragPoint(null); }} disabled={!selectedSourceId}>Cancel selection</button>

@@ -1,8 +1,9 @@
 #include <windows.h>
+#include "driver_version.h"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,1,1,0
- PRODUCTVERSION 1,1,1,0
+ FILEVERSION TIMOX_FILE_VERSION
+ PRODUCTVERSION TIMOX_FILE_VERSION
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x0L
  FILEOS VOS_NT_WINDOWS32
@@ -14,10 +15,10 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "TimoxVasio ASIO Driver\0"
-            VALUE "FileVersion", "1.1.1.0\0"
+            VALUE "FileVersion", TIMOX_FILE_VERSION_STRING
             VALUE "OriginalFilename", "TimoxVasio.dll\0"
             VALUE "ProductName", "TimoxVasio\0"
-            VALUE "ProductVersion", "1.1.1\0"
+            VALUE "ProductVersion", TIMOX_PRODUCT_VERSION_STRING
         END
     END
     BLOCK "VarFileInfo"

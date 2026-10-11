@@ -56,6 +56,9 @@ int wmain() {
     passed = require(initialState && initialState->status == 200 &&
         nlohmann::json::parse(initialState->body).contains("configuredRoutes"),
         "GET state exposes saved routes separately from active routes") && passed;
+    passed = require(initialState && initialState->status == 200 &&
+        nlohmann::json::parse(initialState->body).at("bufferHealth").is_null(),
+        "GET state reports no physical buffer observation before callbacks") && passed;
     const auto diagnosticState = client.Get("/api/v1/diagnostics?limit=10");
     passed = require(diagnosticState && diagnosticState->status == 200 &&
         nlohmann::json::parse(diagnosticState->body)["level"] == "info",

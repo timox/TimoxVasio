@@ -1,4 +1,6 @@
 #include "audio_transport.h"
+#include "audio_transport_layout.h"
+#include "driver_version.h"
 
 #include <algorithm>
 #include <cstring>
@@ -7,42 +9,32 @@
 
 namespace {
 constexpr std::uint32_t kMagic = 0x56534154; // VSAT
-constexpr std::uint32_t kVersion = 6;
+constexpr std::uint32_t kVersion = 7;
+constexpr std::uint32_t kLegacyVersion = 6;
+constexpr std::uint32_t kStatusMagic = 0x54535356; // VSST
 constexpr std::uint64_t kCapacity = AudioClientMapping::kRingCapacityFrames;
 constexpr std::size_t kSamples = kCapacity * AudioClientMapping::kChannelCount;
 
-std::wstring objectName(const wchar_t* kind, std::uint32_t pid, std::uint32_t driver) {
-    return L"Local\\VASIO-" + std::wstring(kind) + L"-" + std::to_wstring(pid) + L"-" + std::to_wstring(driver);
-}
+std::wstring objectName(const wchar_t* kind, std::uint32_t pid, std::uint32_t driver,
+    bool versioned) {
+    return L"Local\\VASIO-" + std::wstring(kind) +
+        (versioned ? L"-v7-" : L"-") + std::to_wstring(pid) + L"-" +
+        std::to_wstring(driver);
 }
 
-struct alignas(64) AudioClientMapping::Shared {
-    std::uint32_t magic;
-    std::uint32_t version;
-    std::uint32_t driverId;
-    std::uint32_t processId;
-    volatile LONG sampleRate;
-    std::uint32_t channelCount;
-    std::uint32_t capacityFrames;
-    volatile LONG blockFrames;
-    volatile LONG preferredBufferFrames;
-    alignas(8) volatile LONG64 generation;
-    alignas(8) volatile LONG64 activeChannelsGeneration;
-    volatile LONG64 activeInputs[AudioClientMapping::kChannelMaskWords];
-    volatile LONG64 activeOutputs[AudioClientMapping::kChannelMaskWords];
-    volatile LONG64 clientWriteFrame;
-    volatile LONG64 engineReadFrame;
-    volatile LONG64 engineWriteFrame;
-    volatile LONG64 clientReadFrame;
-    volatile LONG64 inputUnderruns;
-    volatile LONG64 outputOverruns;
-    volatile LONG64 inputOverruns;
-    volatile LONG64 outputUnderruns;
-    volatile LONG64 engineAttached;
-    volatile LONG engineProcessId;
-    alignas(64) float clientToEngine[kSamples];
-    alignas(64) float engineToClient[kSamples];
-};
+void moduleMarker() noexcept {}
+
+std::wstring ownModulePath() {
+    HMODULE module = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCWSTR>(&moduleMarker), &module)) return {};
+    wchar_t path[1024]{};
+    const DWORD length = GetModuleFileNameW(module, path, static_cast<DWORD>(std::size(path)));
+    if (!length || length >= std::size(path)) return {};
+    return std::wstring(path, length);
+}
+}
 
 AudioClientMapping::AudioClientMapping(HANDLE mapping, HANDLE eventHandle, Shared* shared, bool engineOwner) noexcept
     : mapping_(mapping), event_(eventHandle), shared_(shared), engineOwner_(engineOwner) {}
@@ -59,19 +51,20 @@ AudioClientMapping::~AudioClientMapping() {
 
 std::unique_ptr<AudioClientMapping> AudioClientMapping::CreateClient(std::uint32_t driver,
     std::uint32_t pid, std::uint32_t rate, std::uint32_t block) {
-    return Open(true, driver, pid, rate, block);
+    return Open(true, driver, pid, rate, block, true);
 }
 
 std::unique_ptr<AudioClientMapping> AudioClientMapping::OpenEngine(std::uint32_t driver,
     std::uint32_t pid, std::uint32_t rate) {
-    return Open(false, driver, pid, rate, 0);
+    auto mapping = Open(false, driver, pid, rate, 0, true);
+    return mapping ? std::move(mapping) : Open(false, driver, pid, rate, 0, false);
 }
 
 std::unique_ptr<AudioClientMapping> AudioClientMapping::Open(bool create, std::uint32_t driver,
-    std::uint32_t pid, std::uint32_t rate, std::uint32_t block) {
+    std::uint32_t pid, std::uint32_t rate, std::uint32_t block, bool versioned) {
     if (!pid || (create && (!rate || !block || block > kRingCapacityFrames))) return {};
-    const auto mapName = objectName(L"Map", pid, driver);
-    const auto eventName = objectName(L"Event", pid, driver);
+    const auto mapName = objectName(L"Map", pid, driver, versioned);
+    const auto eventName = objectName(L"Event", pid, driver, versioned);
     HANDLE map = create
         ? CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(Shared), mapName.c_str())
         : OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, mapName.c_str());
@@ -81,7 +74,7 @@ std::unique_ptr<AudioClientMapping> AudioClientMapping::Open(bool create, std::u
     HANDLE eventHandle = create ? CreateEventW(nullptr, FALSE, FALSE, eventName.c_str())
                                 : OpenEventW(EVENT_MODIFY_STATE | SYNCHRONIZE, FALSE, eventName.c_str());
     if (!eventHandle) { CloseHandle(map); return {}; }
-    void* view = MapViewOfFile(map, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Shared));
+    void* view = MapViewOfFile(map, FILE_MAP_ALL_ACCESS, 0, 0, 0);
     if (!view) { CloseHandle(eventHandle); CloseHandle(map); return {}; }
     auto* shared = static_cast<Shared*>(view);
     if (create && !reusingClientMapping) {
@@ -96,7 +89,26 @@ std::unique_ptr<AudioClientMapping> AudioClientMapping::Open(bool create, std::u
         InterlockedExchange(&shared->blockFrames, static_cast<LONG>(block));
         InterlockedExchange(&shared->preferredBufferFrames, static_cast<LONG>(block));
         InterlockedExchange64(&shared->generation, 1);
-    } else if (shared->magic != kMagic || shared->version != kVersion ||
+        auto& status = shared->status;
+        status.magic = kStatusMagic;
+        status.schemaVersion = 2;
+        status.size = sizeof(ClientStatusV2);
+        status.dllVersion[0] = TIMOX_VERSION_MAJOR;
+        status.dllVersion[1] = TIMOX_VERSION_MINOR;
+        status.dllVersion[2] = TIMOX_VERSION_PATCH;
+        status.dllVersion[3] = TIMOX_VERSION_BUILD;
+        const auto path = ownModulePath();
+        const auto count = (std::min)(path.size(), std::size(status.dllPath) - 1);
+        std::copy_n(path.data(), count, status.dllPath);
+        LARGE_INTEGER frequency{};
+        if (QueryPerformanceFrequency(&frequency))
+            InterlockedExchange64(&status.qpcFrequency, frequency.QuadPart);
+        InterlockedExchange(&status.state, static_cast<LONG>(ClientState::Initialized));
+        InterlockedExchange(&status.requestedSampleRate, static_cast<LONG>(rate));
+        InterlockedExchange(&status.requestedBufferFrames, static_cast<LONG>(block));
+        InterlockedExchange(&status.ready, 1);
+    } else if (shared->magic != kMagic || shared->version !=
+        (versioned ? kVersion : kLegacyVersion) ||
         shared->driverId != driver || shared->processId != pid ||
         (rate && !reusingClientMapping &&
             static_cast<std::uint32_t>(InterlockedCompareExchange(&shared->sampleRate, 0, 0)) != rate) ||
@@ -281,4 +293,53 @@ std::uint64_t AudioClientMapping::ClientInputOverruns() const noexcept {
 }
 std::uint64_t AudioClientMapping::ClientOutputUnderruns() const noexcept {
     return static_cast<std::uint64_t>(InterlockedCompareExchange64(&shared_->outputUnderruns, 0, 0));
+}
+
+void AudioClientMapping::PublishClientState(ClientState state) noexcept {
+    if (!shared_ || engineOwner_ || shared_->version != kVersion) return;
+    if (state == ClientState::Running) {
+        InterlockedIncrement64(&shared_->status.exchangeGeneration);
+        InterlockedExchange64(&shared_->status.firstCallbackQpc, 0);
+        InterlockedExchange64(&shared_->status.lastCallbackQpc, 0);
+        InterlockedExchange64(&shared_->status.lastSuccessfulExchangeQpc, 0);
+        InterlockedExchange64(&shared_->status.lastIntervalQpc, 0);
+        InterlockedExchange64(&shared_->status.callbackCount, 0);
+        InterlockedExchange64(&shared_->status.successfulExchangeCount, 0);
+        InterlockedExchange64(&shared_->status.exchangedFrames, 0);
+        InterlockedIncrement64(&shared_->status.exchangeGeneration);
+    }
+    InterlockedExchange(&shared_->status.state, static_cast<LONG>(state));
+}
+
+void AudioClientMapping::PublishClientRequestedFormat(std::uint32_t sampleRate,
+    std::uint32_t bufferFrames) noexcept {
+    if (!shared_ || engineOwner_ || shared_->version != kVersion) return;
+    if (sampleRate)
+        InterlockedExchange(&shared_->status.requestedSampleRate, static_cast<LONG>(sampleRate));
+    if (bufferFrames)
+        InterlockedExchange(&shared_->status.requestedBufferFrames, static_cast<LONG>(bufferFrames));
+}
+
+void AudioClientMapping::PublishResetRequest() noexcept {
+    if (!shared_ || engineOwner_ || shared_->version != kVersion) return;
+    InterlockedIncrement64(&shared_->status.resetRequests);
+}
+
+void AudioClientMapping::PublishClientExchange(std::uint32_t frames) noexcept {
+    if (!shared_ || engineOwner_ || shared_->version != kVersion) return;
+    LARGE_INTEGER now{};
+    if (!QueryPerformanceCounter(&now)) return;
+    auto& status = shared_->status;
+    InterlockedIncrement64(&status.exchangeGeneration);
+    InterlockedCompareExchange64(&status.firstCallbackQpc, now.QuadPart, 0);
+    const auto previous = InterlockedExchange64(&status.lastCallbackQpc, now.QuadPart);
+    if (previous > 0 && now.QuadPart >= previous)
+        InterlockedExchange64(&status.lastIntervalQpc, now.QuadPart - previous);
+    InterlockedIncrement64(&status.callbackCount);
+    if (frames) {
+        InterlockedExchange64(&status.lastSuccessfulExchangeQpc, now.QuadPart);
+        InterlockedIncrement64(&status.successfulExchangeCount);
+    }
+    InterlockedExchangeAdd64(&status.exchangedFrames, static_cast<LONG64>(frames));
+    InterlockedIncrement64(&status.exchangeGeneration);
 }

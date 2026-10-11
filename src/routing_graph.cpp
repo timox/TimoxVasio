@@ -6,6 +6,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#if defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(__SSE2__)
+#include <emmintrin.h>
+#define TIMOX_ROUTING_SSE2 1
+#endif
+
 bool RoutingGraph::SupportsLink(RoutingEndpointType source, RoutingEndpointType destination) noexcept {
     return (source == RoutingEndpointType::VirtualOutput && destination == RoutingEndpointType::VirtualInput) ||
            (source == RoutingEndpointType::VirtualOutput && destination == RoutingEndpointType::PhysicalOutput) ||
@@ -73,7 +78,16 @@ void RoutingGraph::Process(const float* const* sourceBlocks, float* const* desti
         const float* source = sourceBlocks[route.sourceIndex];
         float* destination = destinationBlocks[route.destinationIndex];
         if (!source || !destination) continue;
-        for (std::uint32_t frame = 0; frame < frames; ++frame)
+        std::uint32_t frame = 0;
+#if defined(TIMOX_ROUTING_SSE2)
+        const __m128 gain = _mm_set1_ps(route.linearGain);
+        for (; frame + 4 <= frames; frame += 4) {
+            const __m128 mixed = _mm_add_ps(_mm_loadu_ps(destination + frame),
+                _mm_mul_ps(_mm_loadu_ps(source + frame), gain));
+            _mm_storeu_ps(destination + frame, mixed);
+        }
+#endif
+        for (; frame < frames; ++frame)
             destination[frame] += source[frame] * route.linearGain;
     }
 }

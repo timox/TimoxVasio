@@ -64,6 +64,7 @@ target_link_libraries(DriverProbe PRIVATE ole32)
 add_executable(DriverAudioProbe
     ${CMAKE_SOURCE_DIR}/tests/driver_audio_probe.cpp
     ${SRC_DIR}/audio_transport.cpp
+    ${SRC_DIR}/audio_transport_status_reader.cpp
     ${SRC_DIR}/vasio_compatibility_profile.cpp
     ${SRC_DIR}/application_profile_store.cpp
 )

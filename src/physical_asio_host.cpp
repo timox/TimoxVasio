@@ -123,9 +123,23 @@ struct PhysicalAsioHost::Session {
     std::vector<const float*> inputPointers;
     std::vector<float*> outputPointers;
     std::atomic<bool> sampleRateChanged{false};
+    std::uint64_t timingFrequency = 0;
+    std::uint64_t timingPeriodTicks = 0;
+    std::uint64_t previousCallbackStart = 0; // Physical callback thread only.
+    std::atomic<std::uint64_t> timingCallbacks{0};
+    std::atomic<std::uint64_t> timingDelayedStarts{0};
+    std::atomic<std::uint64_t> timingOverruns{0};
+    std::atomic<std::uint64_t> timingWorstTicks{0};
 
     void Process(long bufferIndex) noexcept {
         if (bufferIndex < 0 || bufferIndex > 1 || !process) return;
+        LARGE_INTEGER callbackStart{};
+        QueryPerformanceCounter(&callbackStart);
+        const auto startTick = static_cast<std::uint64_t>(callbackStart.QuadPart);
+        if (previousCallbackStart && startTick >= previousCallbackStart && timingPeriodTicks &&
+            startTick - previousCallbackStart > timingPeriodTicks + timingPeriodTicks / 2)
+            timingDelayedStarts.fetch_add(1, std::memory_order_relaxed);
+        previousCallbackStart = startTick;
         const auto index = static_cast<std::size_t>(bufferIndex);
         const auto frames = bufferFrames;
         const auto inputCount = inputChannels.size();
@@ -160,6 +174,18 @@ struct PhysicalAsioHost::Session {
             auto* destination = static_cast<std::uint8_t*>(buffers[clockOnlyBufferIndex].buffers[index]);
             std::memset(destination, 0, static_cast<std::size_t>(frames) * clockOnlyBytesPerSample);
         }
+        LARGE_INTEGER callbackEnd{};
+        QueryPerformanceCounter(&callbackEnd);
+        const auto endTick = static_cast<std::uint64_t>(callbackEnd.QuadPart);
+        if (endTick >= startTick) {
+            const auto elapsed = endTick - startTick;
+            if (timingPeriodTicks && elapsed > timingPeriodTicks)
+                timingOverruns.fetch_add(1, std::memory_order_relaxed);
+            auto worst = timingWorstTicks.load(std::memory_order_relaxed);
+            if (elapsed > worst) timingWorstTicks.compare_exchange_strong(worst, elapsed,
+                std::memory_order_relaxed, std::memory_order_relaxed);
+        }
+        timingCallbacks.fetch_add(1, std::memory_order_relaxed);
     }
 
     ~Session() {
@@ -342,6 +368,20 @@ bool PhysicalAsioHost::consumeSampleRateChange() noexcept {
     return session_ && session_->sampleRateChanged.exchange(false, std::memory_order_acq_rel);
 }
 
+PhysicalAsioTimingCounters PhysicalAsioHost::consumeTimingCounters() noexcept {
+    if (!session_ || !session_->started) return {};
+    auto& session = *session_;
+    PhysicalAsioTimingCounters counters;
+    counters.callbacks = session.timingCallbacks.exchange(0, std::memory_order_relaxed);
+    counters.delayedStarts = session.timingDelayedStarts.exchange(0, std::memory_order_relaxed);
+    counters.processingOverruns = session.timingOverruns.exchange(0, std::memory_order_relaxed);
+    const auto worstTicks = session.timingWorstTicks.exchange(0, std::memory_order_relaxed);
+    if (session.timingFrequency)
+        counters.worstProcessingNs = static_cast<std::uint64_t>(
+            static_cast<long double>(worstTicks) * 1000000000.0L / session.timingFrequency);
+    return counters;
+}
+
 bool PhysicalAsioHost::start(std::uint32_t bufferFrames,
                              const std::vector<std::uint32_t>& routedInputChannels,
                              const std::vector<std::uint32_t>& routedOutputChannels,
@@ -436,6 +476,18 @@ bool PhysicalAsioHost::start(std::uint32_t bufferFrames,
     }
 
     session.bufferFrames = bufferFrames;
+    LARGE_INTEGER frequency{};
+    ASIOSampleRate currentRate = 0.0;
+    if (!QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0 ||
+        session.driver->getSampleRate(&currentRate) != ASE_OK || !std::isfinite(currentRate) ||
+        currentRate <= 0.0) {
+        error = "Unable to initialize physical ASIO callback timing";
+        return false;
+    }
+    session.timingFrequency = static_cast<std::uint64_t>(frequency.QuadPart);
+    session.timingPeriodTicks = static_cast<std::uint64_t>(
+        static_cast<long double>(session.timingFrequency) * bufferFrames / currentRate);
+    session.previousCallbackStart = 0;
     session.process = callback;
     session.processContext = context;
     session.inputSamples.assign(routedInputChannels.size() * bufferFrames, 0.0f);

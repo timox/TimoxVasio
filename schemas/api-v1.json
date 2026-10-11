@@ -117,7 +117,7 @@
     },
     "state": {
       "type": "object",
-      "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes", "configuredRoutes", "stereoPairs"],
+      "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes", "configuredRoutes", "stereoPairs", "bufferHealth"],
       "properties": {
         "apiVersion": { "const": "1.0" },
         "engine": { "$ref": "#/definitions/engine" },
@@ -125,7 +125,26 @@
         "virtualDrivers": { "type": "array", "items": { "$ref": "#/definitions/virtualDriver" } },
         "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } },
         "configuredRoutes": { "type": "array", "description": "All saved routes, including application routes waiting for a client with an active channel.", "items": { "$ref": "#/definitions/route" } },
+        "bufferHealth": { "oneOf": [{ "$ref": "#/definitions/bufferHealth" }, { "type": "null" }] },
         "stereoPairs": { "type": "array", "items": { "$ref": "#/definitions/stereoPair" } }
+      },
+      "additionalProperties": false
+    },
+    "bufferHealth": {
+      "type": "object",
+      "description": "A completed observation window of the physical ASIO callback. Null when no window has been observed in the current running session. Delayed starts are scheduling observations, not proof of audible dropouts.",
+      "required": ["state", "sampleRate", "bufferFrames", "windowDurationMs", "callbackCount", "delayedStartCount", "processingOverrunCount", "blockPeriodNs", "worstProcessingNs", "worstMarginNs"],
+      "properties": {
+        "state": { "enum": ["insufficient", "healthy", "warning"] },
+        "sampleRate": { "type": "integer", "minimum": 1 },
+        "bufferFrames": { "type": "integer", "minimum": 1 },
+        "windowDurationMs": { "type": "integer", "minimum": 1 },
+        "callbackCount": { "type": "integer", "minimum": 0 },
+        "delayedStartCount": { "type": "integer", "minimum": 0 },
+        "processingOverrunCount": { "type": "integer", "minimum": 0 },
+        "blockPeriodNs": { "type": "integer", "minimum": 1 },
+        "worstProcessingNs": { "type": "integer", "minimum": 0 },
+        "worstMarginNs": { "type": "integer" }
       },
       "additionalProperties": false
     },

@@ -61,7 +61,8 @@ foreach ($schema in 'State', 'Drivers', 'StereoPair', 'ApplicationProfiles', 'Re
 }
 
 $fixtures = @(
-    @{ name = 'state'; value = @{ apiVersion = '1.0'; engine = @{ state = 'stopped'; physicalDriverId = $null; sampleRate = $null; bufferFrames = $null; lastError = $null }; physicalDrivers = @(); virtualDrivers = @(); routes = @(); stereoPairs = @() } },
+    @{ name = 'state'; value = @{ apiVersion = '1.0'; engine = @{ state = 'stopped'; physicalDriverId = $null; sampleRate = $null; bufferFrames = $null; lastError = $null }; physicalDrivers = @(); virtualDrivers = @(); routes = @(); configuredRoutes = @(); stereoPairs = @(); bufferHealth = $null } },
+    @{ name = 'measured buffer state'; value = @{ apiVersion = '1.0'; engine = @{ state = 'running'; physicalDriverId = 'physical-1'; sampleRate = 44100; bufferFrames = 512; lastError = $null }; physicalDrivers = @(); virtualDrivers = @(); routes = @(); configuredRoutes = @(); stereoPairs = @(); bufferHealth = @{ state = 'warning'; sampleRate = 44100; bufferFrames = 512; windowDurationMs = 5000; callbackCount = 430; delayedStartCount = 7; processingOverrunCount = 6; blockPeriodNs = 11609977; worstProcessingNs = 12500000; worstMarginNs = -890023 } } },
     @{ name = 'drivers'; value = @{ physicalDrivers = @(); virtualDrivers = @(); stereoPairs = @(@{ id = 'stereo:TimoxVasio:42:output:1-2'; leftEndpointId = 'virtual:TimoxVasio:42:output:1'; rightEndpointId = 'virtual:TimoxVasio:42:output:2'; label = 'AudioApp.exe · Sorties 1–2' }) } },
     @{ name = 'application profiles'; value = @{ profiles = @(@{ processName = 'mixxx.exe'; inputChannels = 255; outputChannels = 255 }) } },
     @{ name = 'replace application profiles'; value = @{ profiles = @(@{ processName = 'mixxx.exe'; inputChannels = 255; outputChannels = 255 }) } },

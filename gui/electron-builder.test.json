@@ -1,0 +1,47 @@
+{
+  "appId": "com.vasio.control.test",
+  "productName": "Timox VASIO Control Test",
+  "extraMetadata": {
+    "main": "electron/main.js",
+    "version": "1.1.1-test.1"
+  },
+  "files": [
+    "build/**/*",
+    "electron/**/*",
+    "node_modules/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "../build_status_v7/Release/TimoxVirtualAsioEngine.exe",
+      "to": "backend/TimoxVirtualAsioEngine.exe"
+    },
+    {
+      "from": "../build_status_v7/Release/config",
+      "to": "backend/config"
+    },
+    {
+      "from": "../openapi-v1.json",
+      "to": "backend/openapi-v1.json"
+    },
+    {
+      "from": "../schemas",
+      "to": "backend/schemas"
+    },
+    {
+      "from": "../LICENSE",
+      "to": "legal/LICENSE.txt"
+    },
+    {
+      "from": "../LICENSING.md",
+      "to": "legal/LICENSING.md"
+    },
+    {
+      "from": "../asiosdk/LICENSE.txt",
+      "to": "legal/ASIO-SDK-LICENSE.txt"
+    }
+  ],
+  "directories": {
+    "buildResources": "assets",
+    "output": "../tests/results/test-electron"
+  }
+}

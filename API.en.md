@@ -136,6 +136,8 @@ An effective change stops audio before destroying or rebuilding buffers and the 
 
 Even an identical active configuration may rebuild the stream. An invalid command is rejected before interruption. Control disables mutations while `reconfiguring` and displays the engine-confirmed state. `stopped` can mean a configured driver with no routes or a stream stopped by `engine.stop` with saved routes ready for `engine.start`. The HTTP/WebSocket server remains available while the engine process lives; closing the Electron window leaves the engine available to clients that depend on its API.
 
+`GET /api/v1/state` also returns `bufferHealth`. It is `null` until the physical ASIO callback completes an observation window in the current running session, and becomes `null` again on stop or reconfiguration. A measured window reports `sampleRate`, `bufferFrames`, `windowDurationMs`, `callbackCount`, `delayedStartCount`, `processingOverrunCount`, `blockPeriodNs`, `worstProcessingNs`, `worstMarginNs`, and `state` (`insufficient`, `healthy`, or `warning`). Durations and margins use nanoseconds; a negative margin means the longest observed processing call exceeded one block period. The warning requires three consecutive windows with at least 1% delayed starts or processing overruns (and at least three incidents), and clears after three incident-free windows. Fewer than 100 callbacks or less than one second of observation is `insufficient`. Delayed callback arrival is a scheduling observation, not proof of an audible dropout. Virtual client transport underruns and overruns remain separate `audio.meter` counters.
+
 ## Events
 
 Events have `{ "event": "<name>", "payload": { ... } }` and no `id`.

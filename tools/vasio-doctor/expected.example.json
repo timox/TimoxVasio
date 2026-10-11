@@ -1,0 +1,11 @@
+{
+  "sampleRate": 48000,
+  "maxExchangeAgeMs": 5000,
+  "audioDevices": ["USB Audio"],
+  "midiPorts": [
+    {"flow": "input", "name": "XONE:K3 TimoXone MIDI IN"},
+    {"flow": "output", "name": "XONE:K3 TimoXone MIDI OUT"},
+    {"flow": "input", "name": "SSL 12 MIDI"},
+    {"flow": "output", "name": "SSL 12 MIDI"}
+  ]
+}

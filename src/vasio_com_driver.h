@@ -54,6 +54,7 @@ private:
     };
 
     void callbackLoop() noexcept;
+    static DWORD WINAPI deliverResetRequest(void* context) noexcept;
 
     int driverId_;
     long announcedInputChannels_ = static_cast<long>(AudioClientMapping::kChannelCount);
@@ -70,4 +71,5 @@ private:
     std::unique_ptr<AudioClientMapping> transport_;
     std::thread callbackThread_;
     std::atomic<std::uint64_t> samplePosition_{0};
+    std::atomic<decltype(ASIOCallbacks::asioMessage)> resetMessage_{nullptr};
 };

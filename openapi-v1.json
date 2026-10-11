@@ -19,7 +19,7 @@
         "summary": "Read the confirmed engine state and complete routing configuration",
         "responses": {
           "200": {
-            "description": "Current engine state, inventory and routes",
+            "description": "Current engine state, inventory, routes, and the latest physical ASIO buffer observation window (null until observed)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/State" } } }
           },
           "500": { "$ref": "#/components/responses/ServerError" }

@@ -63,8 +63,60 @@ bool sameRoutes(const std::vector<AudioRoute>& left, const std::vector<AudioRout
 AudioController::AudioController(VasioClientManager& clients, std::wstring configurationPath,
                                  std::wstring applicationProfilesPath)
     : clients_(clients), configurationStore_(std::move(configurationPath)),
-      applicationProfileStore_(std::move(applicationProfilesPath)) {}
+      applicationProfileStore_(std::move(applicationProfilesPath)),
+      callbackSlot_(&AudioRoutingRuntime::PhysicalCallback) {}
 AudioController::~AudioController() { Stop(); }
+
+void AudioController::StopPhysicalRuntime() noexcept {
+    callbackSlot_.Publish(nullptr);
+    if (physicalHost_) physicalHost_->stop();
+    callbackSlot_.WaitForQuiescence();
+    runtime_.reset();
+    hostPhysicalInputs_.clear();
+    hostPhysicalOutputs_.clear();
+    if (physicalHost_) physicalHost_->close();
+}
+
+bool AudioController::TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
+    const std::vector<VasioClientSnapshot>& clients) {
+    const auto current = Snapshot();
+    if (current.state != "running" || !runtime_ || !physicalHost_ || routes.empty() ||
+        !current.physicalDriverId || !current.sampleRate || !current.bufferFrames ||
+        current.physicalDriverId != desiredConfiguration_.physicalDriverId ||
+        (desiredConfiguration_.sampleRate && current.sampleRate != desiredConfiguration_.sampleRate) ||
+        (desiredConfiguration_.bufferFrames && current.bufferFrames != desiredConfiguration_.bufferFrames))
+        return false;
+
+    AudioRoutingLayout layout;
+    layout.physicalDriverId = *current.physicalDriverId;
+    layout.sampleRate = *current.sampleRate;
+    layout.bufferFrames = *current.bufferFrames;
+    layout.physicalInputChannels = current.physicalCapabilities.inputChannels;
+    layout.physicalOutputChannels = current.physicalCapabilities.outputChannels;
+    layout.clients = clients;
+    layout.routes = routes;
+    std::string error;
+    auto replacement = AudioRoutingRuntime::Create(std::move(layout), error);
+    if (!replacement ||
+        !std::includes(hostPhysicalInputs_.begin(), hostPhysicalInputs_.end(),
+            replacement->RoutedPhysicalInputChannels().begin(),
+            replacement->RoutedPhysicalInputChannels().end()) ||
+        !std::includes(hostPhysicalOutputs_.begin(), hostPhysicalOutputs_.end(),
+            replacement->RoutedPhysicalOutputChannels().begin(),
+            replacement->RoutedPhysicalOutputChannels().end()))
+        return false;
+
+    auto retired = std::move(runtime_);
+    runtime_ = std::move(replacement);
+    callbackSlot_.Publish(runtime_.get());
+    callbackSlot_.WaitForQuiescence();
+    retired.reset();
+    auto updated = current;
+    updated.routes = routes;
+    updated.configuredRoutes = desiredConfiguration_.routes;
+    SetStatus(updated);
+    return true;
+}
 
 bool AudioController::Start() {
     bool expected = false;
@@ -188,6 +240,11 @@ std::vector<AudioMeterSnapshot> AudioController::ReadMeters() {
     });
 }
 
+AudioBufferHealthSnapshot AudioController::ReadBufferHealth() const {
+    std::lock_guard<std::mutex> lock(bufferHealthMutex_);
+    return bufferHealth_;
+}
+
 AudioControllerResult AudioController::ApplyConfiguration(
     const AudioControllerConfiguration& configuration) {
     try {
@@ -219,9 +276,10 @@ AudioControllerResult AudioController::StopAudio() {
             status.state = "reconfiguring";
             SetStatus(status);
             if (runtime_) runtime_->StopCorrelation();
-            if (physicalHost_) physicalHost_->stop();
-            runtime_.reset();
-            if (physicalHost_) physicalHost_->close();
+            StopPhysicalRuntime();
+            ++bufferHealthGeneration_;
+            bufferHealthPolicy_.Reset();
+            { std::lock_guard<std::mutex> lock(bufferHealthMutex_); bufferHealth_ = {}; }
             status.state = "stopped";
             status.lastError.clear();
             SetStatus(status);
@@ -282,6 +340,8 @@ void AudioController::Run() noexcept {
         RestoreConfigurationOnWorker();
         if (startupEvent_) SetEvent(startupEvent_);
         auto nextRouteReconcile = std::chrono::steady_clock::time_point{};
+        auto bufferWindowStart = std::chrono::steady_clock::time_point{};
+        auto observedBufferHealthGeneration = bufferHealthGeneration_;
         for (;;) {
             const DWORD waitResult = MsgWaitForMultipleObjectsEx(1, &queueEvent_, 20,
                 QS_ALLINPUT, MWMO_INPUTAVAILABLE);
@@ -307,9 +367,7 @@ void AudioController::Run() noexcept {
             }
             if (physicalHost_ && physicalHost_->consumeSampleRateChange()) {
                 const auto previous = Snapshot();
-                physicalHost_->stop();
-                runtime_.reset();
-                physicalHost_->close();
+                StopPhysicalRuntime();
                 AudioControllerSnapshot failed = previous;
                 failed.state = "error";
                 failed.physicalCapabilities = {};
@@ -323,7 +381,9 @@ void AudioController::Run() noexcept {
                 if (!sameRoutes(resolved, Snapshot().routes)) {
                     const auto now = std::chrono::steady_clock::now();
                     if (now >= nextRouteReconcile) {
-                        const auto applied = ApplyConfigurationCore(desiredConfiguration_);
+                        const bool swapped = TryHotSwapRoutes(resolved, clients);
+                        const auto applied = swapped ? AudioControllerResult{true, {}} :
+                            ApplyConfigurationCore(desiredConfiguration_);
                         nextRouteReconcile = now + (applied.success
                             ? std::chrono::milliseconds(250) : std::chrono::seconds(2));
                     }
@@ -347,6 +407,34 @@ void AudioController::Run() noexcept {
                     }
                 }
             }
+            if (observedBufferHealthGeneration != bufferHealthGeneration_) {
+                observedBufferHealthGeneration = bufferHealthGeneration_;
+                bufferWindowStart = {};
+            }
+            const auto currentStatus = Snapshot();
+            if (currentStatus.state == "running" && currentStatus.sampleRate &&
+                currentStatus.bufferFrames && physicalHost_) {
+                const auto now = std::chrono::steady_clock::now();
+                if (bufferWindowStart == std::chrono::steady_clock::time_point{})
+                    bufferWindowStart = now;
+                const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - bufferWindowStart).count();
+                if (durationMs >= 5000) {
+                    const auto counters = physicalHost_->consumeTimingCounters();
+                    AsioBufferWindow window{*currentStatus.sampleRate, *currentStatus.bufferFrames,
+                        static_cast<std::uint64_t>(durationMs), counters.callbacks,
+                        counters.delayedStarts, counters.processingOverruns,
+                        counters.worstProcessingNs};
+                    const auto assessment = bufferHealthPolicy_.Assess(window);
+                    { std::lock_guard<std::mutex> lock(bufferHealthMutex_);
+                      bufferHealth_ = {true, window, assessment}; }
+                    bufferWindowStart = now;
+                }
+            } else {
+                bufferWindowStart = {};
+                bufferHealthPolicy_.Reset();
+                { std::lock_guard<std::mutex> lock(bufferHealthMutex_); bufferHealth_ = {}; }
+            }
             bool shouldStop = false;
             {
                 std::lock_guard<std::mutex> lock(queueMutex_);
@@ -354,16 +442,12 @@ void AudioController::Run() noexcept {
             }
             if (shouldStop) break;
         }
-        physicalHost_->stop();
-        runtime_.reset();
-        physicalHost_->close();
+        StopPhysicalRuntime();
         physicalHost_.reset();
         if (hostWindow_) DestroyWindow(hostWindow_);
         hostWindow_ = nullptr;
     } catch (...) {
-        if (physicalHost_) physicalHost_->stop();
-        runtime_.reset();
-        if (physicalHost_) physicalHost_->close();
+        StopPhysicalRuntime();
         physicalHost_.reset();
         if (hostWindow_) DestroyWindow(hostWindow_);
         hostWindow_ = nullptr;
@@ -405,9 +489,7 @@ AudioControllerResult AudioController::ApplyOnWorker(
         if (!applied.success || !persist) return applied;
         std::string error;
         if (!configurationStore_.Save(durable, error)) {
-            physicalHost_->stop();
-            runtime_.reset();
-            physicalHost_->close();
+            StopPhysicalRuntime();
             auto failed = Snapshot();
             failed.state = "error";
             failed.physicalCapabilities = {};
@@ -422,18 +504,14 @@ AudioControllerResult AudioController::ApplyOnWorker(
         audioStoppedByCommand_ = false;
         return applied;
     } catch (const std::exception& exception) {
-        if (physicalHost_) physicalHost_->stop();
-        runtime_.reset();
-        if (physicalHost_) physicalHost_->close();
+        StopPhysicalRuntime();
         AudioControllerSnapshot failed;
         failed.state = "error";
         failed.lastError = exception.what();
         SetStatus(failed);
         return {false, failed.lastError};
     } catch (...) {
-        if (physicalHost_) physicalHost_->stop();
-        runtime_.reset();
-        if (physicalHost_) physicalHost_->close();
+        StopPhysicalRuntime();
         AudioControllerSnapshot failed;
         failed.state = "error";
         failed.lastError = "Unknown audio controller failure";
@@ -457,9 +535,7 @@ void AudioController::RestoreConfigurationOnWorker() {
     desiredConfiguration_ = configuration;
     const auto restored = ApplyConfigurationCore(configuration);
     if (!restored.success) {
-        physicalHost_->stop();
-        runtime_.reset();
-        physicalHost_->close();
+        StopPhysicalRuntime();
         auto failed = Snapshot();
         failed.state = "stopped";
         failed.physicalCapabilities = {};
@@ -470,15 +546,16 @@ void AudioController::RestoreConfigurationOnWorker() {
 
 AudioControllerResult AudioController::ApplyConfigurationCore(
     const AudioControllerConfiguration& configuration) {
+    ++bufferHealthGeneration_;
+    bufferHealthPolicy_.Reset();
+    { std::lock_guard<std::mutex> lock(bufferHealthMutex_); bufferHealth_ = {}; }
     const auto activeRoutes = PersistentRoutes::Resolve(configuration.routes,
         clients_.GetClientSnapshots());
     AudioControllerSnapshot next;
     next.state = "reconfiguring";
     next.configuredRoutes = configuration.routes;
     SetStatus(next);
-    physicalHost_->stop();
-    runtime_.reset();
-    physicalHost_->close();
+    StopPhysicalRuntime();
     if (!configuration.physicalDriverId) {
         if (!configuration.routes.empty() || configuration.sampleRate || configuration.bufferFrames) {
             next.state = "error";
@@ -561,11 +638,11 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
         return {true, {}};
     }
 
+    callbackSlot_.Publish(runtime_.get());
     if (!physicalHost_->start(physicalBufferFrames, runtime_->RoutedPhysicalInputChannels(),
-                              runtime_->RoutedPhysicalOutputChannels(),
-                              &AudioRoutingRuntime::PhysicalCallback, runtime_.get(), error)) {
-        runtime_.reset();
-        physicalHost_->close();
+                               runtime_->RoutedPhysicalOutputChannels(),
+                               &RealtimeCallbackSlot::Dispatch, &callbackSlot_, error)) {
+        StopPhysicalRuntime();
         next.state = "error";
         next.physicalDriverId = configuration.physicalDriverId;
         next.sampleRate = sampleRate;
@@ -574,6 +651,8 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
         SetStatus(next);
         return {false, next.lastError};
     }
+    hostPhysicalInputs_ = runtime_->RoutedPhysicalInputChannels();
+    hostPhysicalOutputs_ = runtime_->RoutedPhysicalOutputChannels();
     next.state = "running";
     next.physicalDriverId = configuration.physicalDriverId;
     next.sampleRate = sampleRate;
