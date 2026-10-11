@@ -238,9 +238,15 @@ bool AudioClientMapping::Write(const float* src, std::uint32_t frames, volatile 
     const auto w = static_cast<std::uint64_t>(InterlockedCompareExchange64(write, 0, 0));
     const auto r = static_cast<std::uint64_t>(InterlockedCompareExchange64(read, 0, 0));
     if (w - r + frames > kCapacity) { InterlockedIncrement64(overruns); return false; }
-    for (std::uint32_t f = 0; f < frames; ++f) {
-        const auto slot = ((w + f) % kCapacity) * kChannelCount;
-        std::memcpy(ring + slot, src + static_cast<std::size_t>(f) * kChannelCount, kChannelCount * sizeof(float));
+    const auto firstFrames = (std::min)(static_cast<std::uint64_t>(frames),
+        kCapacity - w % kCapacity);
+    if (firstFrames) {
+        std::memcpy(ring + (w % kCapacity) * kChannelCount, src,
+            static_cast<std::size_t>(firstFrames) * kChannelCount * sizeof(float));
+    }
+    if (firstFrames < frames) {
+        std::memcpy(ring, src + static_cast<std::size_t>(firstFrames) * kChannelCount,
+            static_cast<std::size_t>(frames - firstFrames) * kChannelCount * sizeof(float));
     }
     InterlockedExchange64(write, static_cast<LONG64>(w + frames));
     return true;
@@ -252,9 +258,15 @@ std::uint32_t AudioClientMapping::Read(float* dst, std::uint32_t frames, volatil
     const auto r = static_cast<std::uint64_t>(InterlockedCompareExchange64(read, 0, 0));
     const auto w = static_cast<std::uint64_t>(InterlockedCompareExchange64(write, 0, 0));
     const auto count = static_cast<std::uint32_t>(std::min<std::uint64_t>(frames, w - r));
-    for (std::uint32_t f = 0; f < count; ++f) {
-        const auto slot = ((r + f) % kCapacity) * kChannelCount;
-        std::memcpy(dst + static_cast<std::size_t>(f) * kChannelCount, ring + slot, kChannelCount * sizeof(float));
+    const auto firstFrames = (std::min)(static_cast<std::uint64_t>(count),
+        kCapacity - r % kCapacity);
+    if (firstFrames) {
+        std::memcpy(dst, ring + (r % kCapacity) * kChannelCount,
+            static_cast<std::size_t>(firstFrames) * kChannelCount * sizeof(float));
+    }
+    if (firstFrames < count) {
+        std::memcpy(dst + static_cast<std::size_t>(firstFrames) * kChannelCount, ring,
+            static_cast<std::size_t>(count - firstFrames) * kChannelCount * sizeof(float));
     }
     if (count < frames) {
         std::fill(dst + static_cast<std::size_t>(count) * kChannelCount,
