@@ -9,6 +9,7 @@
 # GUI dependencies and generated bundles
 /gui/node_modules/
 /gui/dist/
+/tests/results/
 /.release-worktree/
 /gui/.env*
 !/gui/.env.development
