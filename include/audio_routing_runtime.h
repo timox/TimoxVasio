@@ -39,6 +39,7 @@ public:
                             const std::string& rightEndpointId) noexcept;
     void StopCorrelation() noexcept;
     AudioCorrelationSnapshot ReadCorrelation() const noexcept;
+    bool MatchesClientGenerations(const std::vector<VasioClientSnapshot>& clients) const noexcept;
     const std::vector<std::uint32_t>& RoutedPhysicalInputChannels() const noexcept {
         return routedPhysicalInputChannels_;
     }
@@ -51,8 +52,10 @@ public:
 private:
     struct ClientBuffers {
         VasioClientSnapshot client;
-        std::array<std::size_t, AudioClientMapping::kChannelCount> inputEndpointIndices{};
-        std::array<std::size_t, AudioClientMapping::kChannelCount> outputEndpointIndices{};
+        std::uint32_t inputStride = 0;
+        std::uint32_t outputStride = 0;
+        std::vector<std::size_t> inputEndpointIndices;
+        std::vector<std::size_t> outputEndpointIndices;
         std::vector<float> clientOutput;
         std::vector<float> clientInput;
     };

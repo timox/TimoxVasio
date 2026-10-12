@@ -58,6 +58,20 @@ bool sameRoutes(const std::vector<AudioRoute>& left, const std::vector<AudioRout
     }
     return true;
 }
+
+bool hasAttachedClient(const std::vector<VasioClientSnapshot>& clients) noexcept {
+    return std::any_of(clients.begin(), clients.end(), [](const VasioClientSnapshot& client) {
+        return client.info.driverId == 1 && client.mapping && client.mapping->EngineAttached();
+    });
+}
+
+void acknowledgePublishedGenerations(const std::vector<VasioClientSnapshot>& clients,
+    std::uint32_t sampleRate, std::uint32_t bufferFrames) noexcept {
+    for (const auto& client : clients) {
+        if (client.mapping && client.mapping->AudioEpoch())
+            client.mapping->AckAudioGeneration(sampleRate, bufferFrames);
+    }
+}
 }
 
 AudioController::AudioController(VasioClientManager& clients, std::wstring configurationPath,
@@ -80,7 +94,8 @@ void AudioController::StopPhysicalRuntime() noexcept {
 bool AudioController::TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
     const std::vector<VasioClientSnapshot>& clients) {
     const auto current = Snapshot();
-    if (current.state != "running" || !runtime_ || !physicalHost_ || routes.empty() ||
+    if (current.state != "running" || !runtime_ || !physicalHost_ ||
+        (routes.empty() && !hasAttachedClient(clients)) ||
         !current.physicalDriverId || !current.sampleRate || !current.bufferFrames ||
         current.physicalDriverId != desiredConfiguration_.physicalDriverId ||
         (desiredConfiguration_.sampleRate && current.sampleRate != desiredConfiguration_.sampleRate) ||
@@ -111,6 +126,7 @@ bool AudioController::TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
     callbackSlot_.Publish(runtime_.get());
     callbackSlot_.WaitForQuiescence();
     retired.reset();
+    acknowledgePublishedGenerations(clients, *current.sampleRate, *current.bufferFrames);
     auto updated = current;
     updated.routes = routes;
     updated.configuredRoutes = desiredConfiguration_.routes;
@@ -374,11 +390,16 @@ void AudioController::Run() noexcept {
                 failed.lastError = "Physical ASIO driver reported a sample-rate change; reapply the configuration to resynchronize TimoxVasio";
                 SetStatus(failed);
             }
-            if (!audioStoppedByCommand_ && desiredConfiguration_.physicalDriverId &&
-                !desiredConfiguration_.routes.empty()) {
+            if (!audioStoppedByCommand_ && desiredConfiguration_.physicalDriverId) {
                 const auto clients = clients_.GetClientSnapshots();
                 const auto resolved = PersistentRoutes::Resolve(desiredConfiguration_.routes, clients);
-                if (!sameRoutes(resolved, Snapshot().routes)) {
+                const auto current = Snapshot();
+                const bool attachedClient = hasAttachedClient(clients);
+                const bool routesChanged = !sameRoutes(resolved, current.routes);
+                const bool generationChanged = runtime_ &&
+                    !runtime_->MatchesClientGenerations(clients);
+                const bool callbackNeeded = attachedClient && current.state != "running";
+                if (routesChanged || generationChanged || callbackNeeded) {
                     const auto now = std::chrono::steady_clock::now();
                     if (now >= nextRouteReconcile) {
                         const bool swapped = TryHotSwapRoutes(resolved, clients);
@@ -613,6 +634,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     layout.physicalInputChannels = capabilities.inputChannels;
     layout.physicalOutputChannels = capabilities.outputChannels;
     layout.clients = clients_.GetClientSnapshots();
+    const auto generationClients = layout.clients;
     layout.routes = activeRoutes;
     runtime_ = AudioRoutingRuntime::Create(std::move(layout), error);
     if (!runtime_) {
@@ -624,10 +646,10 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
         return {false, next.lastError};
     }
 
-    // Keep the physical driver configured while the user discovers endpoints.
-    // Starting a callback with no routed channels serves no audio purpose and
-    // some ASIO drivers do not tolerate the hidden clock-only buffer path.
-    if (activeRoutes.empty()) {
+    // Without an attached client the physical driver remains configured for
+    // endpoint discovery. An attached client needs the clock-only callback to
+    // exchange compact frames and receive its signal even without routes.
+    if (activeRoutes.empty() && !hasAttachedClient(generationClients)) {
         next.state = "stopped";
         next.physicalDriverId = configuration.physicalDriverId;
         next.sampleRate = sampleRate;
@@ -653,6 +675,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     }
     hostPhysicalInputs_ = runtime_->RoutedPhysicalInputChannels();
     hostPhysicalOutputs_ = runtime_->RoutedPhysicalOutputChannels();
+    acknowledgePublishedGenerations(generationClients, sampleRate, physicalBufferFrames);
     next.state = "running";
     next.physicalDriverId = configuration.physicalDriverId;
     next.sampleRate = sampleRate;

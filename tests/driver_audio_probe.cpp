@@ -15,7 +15,6 @@
 
 namespace {
 constexpr long kFrames = 256;
-constexpr long kTransportChannels = 256;
 constexpr long kChannelsPerDirection = 3;
 volatile LONG gFrames = kFrames;
 std::array<long, kChannelsPerDirection> gSelectedChannels{};
@@ -24,6 +23,12 @@ HANDLE gCallbackEvent = nullptr;
 HANDLE gResetEvent = nullptr;
 volatile LONG gCallbackErrors = 0;
 volatile LONG gResetRequests = 0;
+IASIO* gDriver = nullptr;
+bool gSelfStop = false;
+bool gSelfStopReleases = false;
+volatile LONG gSelfStopResult = 0;
+bool gResetStops = false;
+volatile LONG gResetStopResult = 0;
 
 void bufferSwitch(long index, ASIOBool) {
     const auto frames = InterlockedCompareExchange(&gFrames, 0, 0);
@@ -39,6 +44,16 @@ void bufferSwitch(long index, ASIOBool) {
             for (long frame = 0; frame < frames; ++frame) samples[frame] = output;
         }
     }
+    if (gSelfStop && InterlockedCompareExchange(&gSelfStopResult, 1, 0) == 0) {
+        const auto stopped = gDriver->stop();
+        const auto disposed = gDriver->disposeBuffers();
+        InterlockedExchange(&gSelfStopResult,
+            stopped == ASE_InvalidMode && disposed == ASE_InvalidMode ? 2 : -1);
+        if (gSelfStopReleases) {
+            gDriver->Release();
+            gDriver = nullptr;
+        }
+    }
     SetEvent(gCallbackEvent);
 }
 
@@ -47,6 +62,12 @@ long asioMessages(long selector, long value, void*, double*) {
     if (selector == kAsioSelectorSupported) return value == kAsioResetRequest ? 1 : 0;
     if (selector == kAsioResetRequest) {
         InterlockedIncrement(&gResetRequests);
+        if (gResetStops) {
+            const auto stopped = gDriver->stop();
+            const auto disposed = gDriver->disposeBuffers();
+            InterlockedExchange(&gResetStopResult,
+                stopped == ASE_OK && disposed == ASE_OK ? 1 : -1);
+        }
         if (gResetEvent) SetEvent(gResetEvent);
         return 1;
     }
@@ -64,6 +85,23 @@ bool waitOutput(AudioClientMapping& mapping) {
         Sleep(1);
     }
     return false;
+}
+
+// Simulate the engine publishing a runtime for the new generation before acking it.
+std::future<std::unique_ptr<AudioClientMapping>> acknowledgeNextGeneration(
+    std::uint64_t previousEpoch, int driverId) {
+    return std::async(std::launch::async, [previousEpoch, driverId]() {
+        const ULONGLONG deadline = GetTickCount64() + 3000;
+        while (GetTickCount64() < deadline) {
+            auto next = AudioClientMapping::OpenEngine(
+                static_cast<std::uint32_t>(driverId), GetCurrentProcessId(), 0);
+            if (next && next->AudioEpoch() > previousEpoch &&
+                next->AckAudioGeneration(next->SampleRate(), next->BlockFrames()))
+                return next;
+            Sleep(2);
+        }
+        return std::unique_ptr<AudioClientMapping>{};
+    });
 }
 
 bool verifyBufferLimits(IASIO* driver, ASIOCallbacks* callbacks) {
@@ -101,7 +139,14 @@ bool verifyBufferLimits(IASIO* driver, ASIOCallbacks* callbacks) {
 int wmain(int argc, wchar_t** argv) {
     const bool expectUnavailable = argc == 6 && std::wstring(argv[5]) == L"--expect-unavailable";
     const bool expectReset = argc == 6 && std::wstring(argv[5]) == L"--expect-reset";
-    if ((argc != 5 && !expectUnavailable && !expectReset) || std::wstring(argv[1]) != L"--dll" || std::wstring(argv[3]) != L"--id") {
+    const bool selfStop = argc == 6 && std::wstring(argv[5]) == L"--self-stop";
+    const bool selfStopReleases = argc == 6 && std::wstring(argv[5]) == L"--self-stop-release";
+    const bool releaseBeforeReset = argc == 6 && std::wstring(argv[5]) == L"--release-before-reset";
+    const bool resetStops = argc == 6 && std::wstring(argv[5]) == L"--reset-stops";
+    const bool reinitAfterDetach = argc == 6 && std::wstring(argv[5]) == L"--reinit-after-detach";
+    if ((argc != 5 && !expectUnavailable && !expectReset && !selfStop && !selfStopReleases &&
+         !releaseBeforeReset && !resetStops && !reinitAfterDetach) ||
+        std::wstring(argv[1]) != L"--dll" || std::wstring(argv[3]) != L"--id") {
         std::fwprintf(stderr, L"Usage: DriverAudioProbe --dll <path> --id 1 [--expect-unavailable|--expect-reset]\n");
         return 2;
     }
@@ -124,6 +169,10 @@ int wmain(int argc, wchar_t** argv) {
     const HRESULT created = factory->CreateInstance(nullptr, clsid, reinterpret_cast<void**>(&driver));
     factory->Release();
     if (FAILED(created) || !driver) { FreeLibrary(module); return 7; }
+    gDriver = driver;
+    gSelfStop = selfStop || selfStopReleases;
+    gSelfStopReleases = selfStopReleases;
+    gResetStops = resetStops;
 
     long inputChannels = 0;
     long outputChannels = 0;
@@ -207,36 +256,99 @@ int wmain(int argc, wchar_t** argv) {
     if (passed) passed = verifyBufferLimits(driver, &callbacks);
     if (passed) passed = driver->createBuffers(gBuffers.data(), static_cast<long>(gBuffers.size()), kFrames, &callbacks) == ASE_OK;
     gCallbackEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (expectReset) gResetEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (expectReset || resetStops) gResetEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     if (!gCallbackEvent) passed = false;
-    if (expectReset && !gResetEvent) passed = false;
+    if ((expectReset || resetStops) && !gResetEvent) passed = false;
+    auto acknowledged = acknowledgeNextGeneration(engine ? engine->AudioEpoch() : 0, driverId);
     if (passed) passed = driver->start() == ASE_OK;
+    auto activeEngine = acknowledged.get();
+    passed = passed && activeEngine != nullptr;
+    if (activeEngine) engine = std::move(activeEngine);
+
+    if (passed && reinitAfterDetach) {
+        passed = engine->SetEngineAttached(false) &&
+            driver->init(GetConsoleWindow()) == ASIOTrue &&
+            driver->stop() == ASE_OK && driver->disposeBuffers() == ASE_OK;
+        if (gCallbackEvent) CloseHandle(gCallbackEvent);
+        driver->Release();
+        engine.reset();
+        FreeLibrary(module);
+        if (!passed) {
+            std::fprintf(stderr, "init replaced transport before the old worker joined.\n");
+            return 8;
+        }
+        std::printf("PASS: init joined the old worker before replacing its transport.\n");
+        return 0;
+    }
+
+    if (passed && releaseBeforeReset) {
+        using CanUnload = HRESULT (WINAPI*)();
+        const auto canUnload = reinterpret_cast<CanUnload>(GetProcAddress(module, "DllCanUnloadNow"));
+        driver->Release();
+        driver = nullptr;
+        gDriver = nullptr;
+        passed = canUnload && engine->SetSampleRate(44100) && engine->SignalClient();
+        const ULONGLONG deadline = GetTickCount64() + 3000;
+        while (passed && canUnload() != S_OK && GetTickCount64() < deadline) Sleep(2);
+        passed = passed && canUnload() == S_OK;
+        if (gCallbackEvent) CloseHandle(gCallbackEvent);
+        engine.reset();
+        FreeLibrary(module);
+        if (!passed) {
+            std::fprintf(stderr, "callback worker retained the COM object after its spontaneous stop.\n");
+            return 8;
+        }
+        std::printf("PASS: callback worker joined after the host released its last reference.\n");
+        return 0;
+    }
 
     if (passed) {
-        std::vector<float> input(kFrames * kTransportChannels);
+        std::vector<float> input(kFrames * engine->InputStride());
         for (long frame = 0; frame < kFrames; ++frame)
             for (long channelIndex = 0; channelIndex < kChannelsPerDirection; ++channelIndex) {
                 const auto channel = gSelectedChannels[channelIndex];
-                input[frame * kTransportChannels + channel] = static_cast<float>(channel + 1) * 0.01f;
+                input[frame * engine->InputStride() + engine->InputSlot(channel)] =
+                    static_cast<float>(channel + 1) * 0.01f;
             }
         passed = engine->WriteEngineInput(input.data(), kFrames) && engine->SignalClient();
         passed = passed && WaitForSingleObject(gCallbackEvent, 3000) == WAIT_OBJECT_0;
         passed = passed && waitOutput(*engine);
-        std::vector<float> output(kFrames * kTransportChannels);
+        std::vector<float> output(kFrames * engine->OutputStride());
         passed = passed && engine->ReadClientOutput(output.data(), kFrames) == kFrames;
         for (long frame = 0; frame < kFrames && passed; ++frame)
             for (long channelIndex = 0; channelIndex < kChannelsPerDirection; ++channelIndex) {
                 const auto channel = gSelectedChannels[channelIndex];
-                if (output[frame * kTransportChannels + channel] != static_cast<float>(channel + 1) * 0.1f)
+                if (output[frame * engine->OutputStride() + engine->OutputSlot(channel)] !=
+                    static_cast<float>(channel + 1) * 0.1f)
                     passed = false;
             }
         passed = passed && InterlockedCompareExchange(&gCallbackErrors, 0, 0) == 0;
+        if (gSelfStop) passed = passed && InterlockedCompareExchange(&gSelfStopResult, 0, 0) == 2;
     }
 
-    if (passed && expectReset) {
+    if (selfStopReleases) {
+        using CanUnload = HRESULT (WINAPI*)();
+        const auto canUnload = reinterpret_cast<CanUnload>(GetProcAddress(module, "DllCanUnloadNow"));
+        passed = passed && canUnload;
+        const ULONGLONG deadline = GetTickCount64() + 3000;
+        while (passed && canUnload() != S_OK && GetTickCount64() < deadline) Sleep(2);
+        passed = passed && canUnload() == S_OK;
+        if (gCallbackEvent) CloseHandle(gCallbackEvent);
+        engine.reset();
+        if (!passed) {
+            std::fprintf(stderr, "callback self-stop retained the COM object.\n");
+            return 8;
+        }
+        FreeLibrary(module);
+        std::printf("PASS: host callback stopped and released its driver; worker was joined.\n");
+        return 0;
+    }
+
+    if (passed && (expectReset || resetStops)) {
         passed = engine->SetSampleRate(44100) && engine->SetBlockFrames(512) &&
             engine->SignalClient();
         passed = passed && WaitForSingleObject(gResetEvent, 3000) == WAIT_OBJECT_0;
+        if (resetStops) passed = passed && InterlockedCompareExchange(&gResetStopResult, 0, 0) == 1;
         AudioClientMapping::StatusSnapshot status{};
         passed = passed && AudioClientMapping::ReadStatusReadOnly(1, GetCurrentProcessId(), status) &&
             status.resetRequests == 1 && InterlockedCompareExchange(&gResetRequests, 0, 0) == 1;
@@ -244,13 +356,19 @@ int wmain(int argc, wchar_t** argv) {
         passed = passed && driver->setSampleRate(44100.0) == ASE_OK;
         InterlockedExchange(&gFrames, 512);
         passed = passed && driver->createBuffers(gBuffers.data(), static_cast<long>(gBuffers.size()),
-            512, &callbacks) == ASE_OK && driver->start() == ASE_OK;
+            512, &callbacks) == ASE_OK;
+        auto nextAcknowledged = acknowledgeNextGeneration(engine->AudioEpoch(), driverId);
+        if (passed) passed = driver->start() == ASE_OK;
+        auto nextEngine = nextAcknowledged.get();
+        passed = passed && nextEngine != nullptr;
+        if (nextEngine) engine = std::move(nextEngine);
         if (passed) {
-            std::vector<float> input(512 * kTransportChannels);
+            std::vector<float> input(512 * engine->InputStride());
             for (long frame = 0; frame < 512; ++frame)
                 for (long channelIndex = 0; channelIndex < kChannelsPerDirection; ++channelIndex) {
                     const auto channel = gSelectedChannels[channelIndex];
-                    input[frame * kTransportChannels + channel] = static_cast<float>(channel + 1) * 0.01f;
+                    input[frame * engine->InputStride() + engine->InputSlot(channel)] =
+                        static_cast<float>(channel + 1) * 0.01f;
                 }
             passed = engine->WriteEngineInput(input.data(), 512) && engine->SignalClient() &&
                 WaitForSingleObject(gCallbackEvent, 3000) == WAIT_OBJECT_0;
@@ -268,7 +386,7 @@ int wmain(int argc, wchar_t** argv) {
         std::fprintf(stderr, "TimoxVasio callback transport probe failed.\n");
         return 8;
     }
-    std::printf(expectReset
+    std::printf((expectReset || resetStops)
         ? "PASS: TimoxVasio requested reset and reopened buffers at 44.1 kHz / 512 frames.\n"
         : "PASS: TimoxVasio ASIO callbacks exchange sparse channels through shared memory.\n");
     return 0;

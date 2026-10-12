@@ -14,6 +14,18 @@ constexpr DWORD kScanPeriodMs = 250;
 int driverIdFromModule(const wchar_t* name) {
     return _wcsicmp(name, L"TimoxVasio.dll") == 0 ? 1 : 0;
 }
+
+std::uint64_t processCreationTime(std::uint32_t pid) noexcept {
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return 0;
+    FILETIME created{}, exited{}, kernel{}, user{};
+    const bool valid = GetProcessTimes(process, &created, &exited, &kernel, &user) != FALSE;
+    CloseHandle(process);
+    ULARGE_INTEGER time{};
+    time.LowPart = created.dwLowDateTime;
+    time.HighPart = created.dwHighDateTime;
+    return valid ? time.QuadPart : 0;
+}
 }
 
 VasioClientManager::~VasioClientManager() { Stop(); }
@@ -38,8 +50,8 @@ void VasioClientManager::Stop() {
     }
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& client : clients_) {
-        client.mapping->SetEngineAttached(false);
-        client.mapping->SignalClient();
+        client.control->SetEngineAttached(false);
+        client.control->SignalClient();
     }
     clients_.clear();
 }
@@ -65,9 +77,9 @@ void VasioClientManager::SetDriverConfiguration(
     preferredBufferFrames_ = preferredBufferFrames;
     sampleRate_ = sampleRate;
     for (auto& client : clients_) {
-        client.mapping->SetPreferredBufferFrames(preferredBufferFrames_);
-        client.mapping->SetBlockFrames(preferredBufferFrames_);
-        if (sampleRate_) client.mapping->SetSampleRate(sampleRate_);
+        client.control->SetPreferredBufferFrames(preferredBufferFrames_);
+        client.control->SetBlockFrames(preferredBufferFrames_);
+        if (sampleRate_) client.control->SetSampleRate(sampleRate_);
     }
 }
 
@@ -97,6 +109,26 @@ void VasioClientManager::Scan() {
         while (Process32NextW(processSnapshot, &process));
     }
     CloseHandle(processSnapshot);
+
+    // A recycled PID must not inherit the previous process's control attachment.
+    // Query only known clients; discovery runs off the audio callback thread.
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (shutdownReserved_) return;
+        clients_.erase(std::remove_if(clients_.begin(), clients_.end(), [&](Client& client) {
+            const auto present = std::find_if(processes.begin(), processes.end(), [&](const auto& entry) {
+                return entry.th32ProcessID == client.info.processId;
+            });
+            if (present == processes.end()) return false;
+            const auto creation = processCreationTime(client.info.processId);
+            if (!creation || creation == client.control->ProcessCreationTime()) return false;
+            const auto key = std::make_pair(client.info.driverId, client.info.processId);
+            existingClients.erase(key);
+            client.control->SetEngineAttached(false);
+            client.control->SignalClient();
+            return true;
+        }), clients_.end());
+    }
 
     // Client-created mappings are the fastest authoritative signal of an initialized
     // TimoxVasio instance. Discover and attach it before the slower per-process module scan,
@@ -132,8 +164,23 @@ void VasioClientManager::Scan() {
                 return item.th32ProcessID == key.second;
             });
             if (processEntry != processes.end()) processName = processEntry->szExeFile;
+            auto control = std::shared_ptr<AudioClientMapping>(std::move(mapping));
             clients_.push_back({{key.first, key.second, std::move(processName)},
-                std::shared_ptr<AudioClientMapping>(std::move(mapping))});
+                control, control});
+        }
+        // Refresh known clients before the slower module inventory. OpenEngine
+        // returns an independent view of the newly published immutable epoch.
+        for (auto& client : clients_) {
+            const auto present = std::find_if(processes.begin(), processes.end(), [&](const auto& entry) {
+                return entry.th32ProcessID == client.info.processId;
+            });
+            if (present == processes.end()) continue;
+            const auto published = client.control->PublishedAudioEpoch();
+            if (published == client.mapping->AudioEpoch()) continue;
+            auto next = AudioClientMapping::OpenEngine(
+                client.info.driverId, client.info.processId, 0);
+            if (!next || next->AudioEpoch() != published) continue;
+            client.mapping = std::shared_ptr<AudioClientMapping>(std::move(next));
         }
     }
 
@@ -164,8 +211,8 @@ void VasioClientManager::Scan() {
     clients_.erase(std::remove_if(clients_.begin(), clients_.end(), [&](Client& client) {
         const auto key = std::make_pair(client.info.driverId, client.info.processId);
         if (found.find(key) != found.end()) return false;
-        client.mapping->SetEngineAttached(false);
-        client.mapping->SignalClient();
+        client.control->SetEngineAttached(false);
+        client.control->SignalClient();
         return true;
     }), clients_.end());
 
@@ -180,7 +227,8 @@ void VasioClientManager::Scan() {
         mapping->SetBlockFrames(preferredBufferFrames_);
         if (sampleRate_) mapping->SetSampleRate(sampleRate_);
         mapping->SetEngineAttached(true);
-        clients_.push_back({{key.first, key.second, L""}, std::shared_ptr<AudioClientMapping>(std::move(mapping))});
+        auto control = std::shared_ptr<AudioClientMapping>(std::move(mapping));
+        clients_.push_back({{key.first, key.second, L""}, control, control});
         HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, key.second);
         if (process) {
             wchar_t path[MAX_PATH]{};

@@ -70,11 +70,12 @@ int main() {
         return 7;
     }
 
-    float clientOutput[frames * AudioClientMapping::kChannelCount]{};
-    clientOutput[0] = 0.25f; clientOutput[AudioClientMapping::kChannelCount] = -0.5f;
-    clientOutput[1] = -0.5f; clientOutput[AudioClientMapping::kChannelCount + 1] = 1.0f;
-    clientOutput[255] = 0.375f;
-    clientOutput[2 * AudioClientMapping::kChannelCount - 1] = -0.625f;
+    if (pinned->InputStride() != 3 || pinned->OutputStride() != 3 ||
+        pinned->InputChannelAt(2) != 255 || pinned->OutputChannelAt(2) != 255) return 14;
+    float clientOutput[frames * 3]{};
+    clientOutput[0] = 0.25f; clientOutput[3] = -0.5f;
+    clientOutput[1] = -0.5f; clientOutput[4] = 1.0f;
+    clientOutput[2] = 0.375f; clientOutput[5] = -0.625f;
     if (!pinned->WriteClientOutput(clientOutput, frames)) return 3;
     const float physicalInputData[frames]{0.75f, 0.125f};
     const float physicalInputTenData[frames]{0.5f, -0.25f};
@@ -88,18 +89,16 @@ int main() {
     physicalOutputs[9] = physicalOutputTenData;
     runtime->Process(physicalInputs, physicalOutputs, frames);
 
-    float clientInput[frames * AudioClientMapping::kChannelCount]{};
+    float clientInput[frames * 3]{};
     if (pinned->ReadClientInput(clientInput, frames) != frames) return 4;
     if (!closeTo(physicalOutputData[0], 0.625f) || !closeTo(physicalOutputData[1], -1.125f) ||
-        !closeTo(clientInput[0], 0.25f) || !closeTo(clientInput[AudioClientMapping::kChannelCount], -0.5f) ||
-        !closeTo(clientInput[1], 1.25f) || !closeTo(clientInput[AudioClientMapping::kChannelCount + 1], -0.125f) ||
+        !closeTo(clientInput[0], 0.25f) || !closeTo(clientInput[3], -0.5f) ||
+        !closeTo(clientInput[1], 1.25f) || !closeTo(clientInput[4], -0.125f) ||
         !closeTo(physicalOutputTenData[0], 0.25f) || !closeTo(physicalOutputTenData[1], -0.5f) ||
-        !closeTo(clientInput[255], 0.75f) ||
-        !closeTo(clientInput[2 * AudioClientMapping::kChannelCount - 1], 0.125f)) {
+        !closeTo(clientInput[2], 0.75f) || !closeTo(clientInput[5], 0.125f)) {
         std::fprintf(stderr, "Runtime sample mismatch: physical=%f,%f input0=%f,%f input1=%f,%f input255=%f,%f\n",
-            physicalOutputData[0], physicalOutputData[1], clientInput[0], clientInput[AudioClientMapping::kChannelCount],
-            clientInput[1], clientInput[AudioClientMapping::kChannelCount + 1], clientInput[255],
-            clientInput[2 * AudioClientMapping::kChannelCount - 1]);
+            physicalOutputData[0], physicalOutputData[1], clientInput[0], clientInput[3],
+            clientInput[1], clientInput[4], clientInput[2], clientInput[5]);
         return 5;
     }
 
@@ -117,8 +116,8 @@ int main() {
         return 10;
     }
 
-    clientOutput[0] = clientOutput[AudioClientMapping::kChannelCount] = 0.0f;
-    clientOutput[1] = clientOutput[AudioClientMapping::kChannelCount + 1] = 0.0f;
+    clientOutput[0] = clientOutput[3] = 0.0f;
+    clientOutput[1] = clientOutput[4] = 0.0f;
     for (std::uint32_t block = 0; block < 2400; ++block) {
         if (!pinned->WriteClientOutput(clientOutput, frames)) return 11;
         runtime->Process(physicalInputs, physicalOutputs, frames);
@@ -130,6 +129,37 @@ int main() {
     }
     runtime->StopCorrelation();
     if (runtime->ReadCorrelation().active) return 13;
+    // A client without a route still advances on each physical clock cycle.
+    // Its virtual inputs are silent and physical outputs stay silent.
+    AudioRoutingLayout noRouteLayout;
+    noRouteLayout.physicalDriverId = "{driver-1}";
+    noRouteLayout.sampleRate = 48000;
+    noRouteLayout.bufferFrames = frames;
+    noRouteLayout.physicalInputChannels = 1;
+    noRouteLayout.physicalOutputChannels = 1;
+    noRouteLayout.clients.push_back(client);
+    auto noRouteRuntime = AudioRoutingRuntime::Create(std::move(noRouteLayout), error);
+    if (!noRouteRuntime || !noRouteRuntime->RoutedPhysicalInputChannels().empty() ||
+        !noRouteRuntime->RoutedPhysicalOutputChannels().empty()) return 15;
+    while (pinned->WaitForClientSignal(0)) {}
+    float staleInput[frames * 3]{};
+    while (pinned->ClientInputAvailable() >= frames)
+        pinned->ReadClientInput(staleInput, frames);
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        if (!pinned->WriteClientOutput(clientOutput, frames)) return 16;
+        float output[frames]{1.0f, 1.0f};
+        float* outputs[]{output};
+        noRouteRuntime->Process(nullptr, outputs, frames);
+        float input[frames * 3]{};
+        if (!pinned->WaitForClientSignal(0) ||
+            pinned->ClientOutputAvailable() != 0 ||
+            pinned->ReadClientInput(input, frames) != frames ||
+            !closeTo(output[0], 0.0f) || !closeTo(output[1], 0.0f)) return 17;
+        for (float sample : input) if (!closeTo(sample, 0.0f)) {
+            std::fprintf(stderr, "No-route input not silent: cycle=%d sample=%f\n", cycle, sample);
+            return 18;
+        }
+    }
     std::puts("PASS: physical/virtual routes transfer samples through the preallocated runtime.");
     return 0;
 }

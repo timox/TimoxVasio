@@ -2,56 +2,42 @@
 
 #include "audio_transport.h"
 
-#include <cstdint>
-
-// Private v7 shared-memory layout. Keep the v6 prefix unchanged.
 struct alignas(64) ClientStatusV2 {
-    std::uint32_t magic;
-    std::uint32_t schemaVersion;
-    std::uint32_t size;
+    std::uint32_t magic, schemaVersion, size;
     volatile LONG ready;
     std::uint32_t dllVersion[4];
     wchar_t dllPath[1024];
     alignas(8) volatile LONG64 qpcFrequency;
-    volatile LONG state;
-    volatile LONG requestedSampleRate;
-    volatile LONG requestedBufferFrames;
+    volatile LONG state, requestedSampleRate, requestedBufferFrames;
     alignas(8) volatile LONG64 exchangeGeneration;
-    alignas(8) volatile LONG64 firstCallbackQpc;
-    volatile LONG64 lastCallbackQpc;
-    volatile LONG64 lastSuccessfulExchangeQpc;
-    volatile LONG64 lastIntervalQpc;
-    volatile LONG64 callbackCount;
-    volatile LONG64 successfulExchangeCount;
-    volatile LONG64 exchangedFrames;
-    volatile LONG64 resetRequests;
+    volatile LONG64 firstCallbackQpc, lastCallbackQpc, lastSuccessfulExchangeQpc;
+    volatile LONG64 lastIntervalQpc, callbackCount, successfulExchangeCount;
+    volatile LONG64 exchangedFrames, resetRequests;
 };
 
 struct alignas(64) AudioClientMapping::Shared {
-    std::uint32_t magic;
-    std::uint32_t version;
-    std::uint32_t driverId;
-    std::uint32_t processId;
-    volatile LONG sampleRate;
-    std::uint32_t channelCount;
-    std::uint32_t capacityFrames;
-    volatile LONG blockFrames;
-    volatile LONG preferredBufferFrames;
-    alignas(8) volatile LONG64 generation;
-    alignas(8) volatile LONG64 activeChannelsGeneration;
-    volatile LONG64 activeInputs[AudioClientMapping::kChannelMaskWords];
-    volatile LONG64 activeOutputs[AudioClientMapping::kChannelMaskWords];
-    volatile LONG64 clientWriteFrame;
-    volatile LONG64 engineReadFrame;
-    volatile LONG64 engineWriteFrame;
-    volatile LONG64 clientReadFrame;
-    volatile LONG64 inputUnderruns;
-    volatile LONG64 outputOverruns;
-    volatile LONG64 inputOverruns;
-    volatile LONG64 outputUnderruns;
+    std::uint32_t magic, version, size, driverId, processId;
+    alignas(8) std::uint64_t processCreationTime;
+    volatile LONG sampleRate, blockFrames, preferredBufferFrames;
+    alignas(8) volatile LONG64 generation, nextAudioEpoch, publishedAudioEpoch, acknowledgedAudioEpoch;
+    volatile LONG acknowledgedSampleRate, acknowledgedBlockFrames;
+    volatile LONG64 activeChannelsGeneration;
+    volatile LONG64 activeInputs[kChannelMaskWords], activeOutputs[kChannelMaskWords];
+    volatile LONG64 inputUnderruns, outputOverruns, inputOverruns, outputUnderruns;
     volatile LONG64 engineAttached;
     volatile LONG engineProcessId;
-    alignas(64) float clientToEngine[AudioClientMapping::kRingCapacityFrames * AudioClientMapping::kChannelCount];
-    alignas(64) float engineToClient[AudioClientMapping::kRingCapacityFrames * AudioClientMapping::kChannelCount];
-    alignas(64) ClientStatusV2 status;
+    ClientStatusV2 status;
 };
+
+struct alignas(64) AudioClientMapping::Audio {
+    std::uint32_t magic, version, size, driverId, processId;
+    alignas(8) std::uint64_t processCreationTime, epoch;
+    std::uint32_t capacityFrames, inputStride, outputStride;
+    std::uint16_t inputChannels[kChannelCount], outputChannels[kChannelCount];
+    alignas(8) volatile LONG64 clientWriteFrame, engineReadFrame;
+    volatile LONG64 engineWriteFrame, clientReadFrame;
+    alignas(64) float clientToEngine[kRingCapacityFrames * kChannelCount];
+    alignas(64) float engineToClient[kRingCapacityFrames * kChannelCount];
+};
+
+static_assert(sizeof(void*) == 8, "v8 transport requires x64");

@@ -72,7 +72,20 @@ public:
     bool SetBlockFrames(std::uint32_t blockFrames) noexcept;
     bool SetPreferredBufferFrames(std::uint32_t frames) noexcept;
     bool SetActiveChannels(const ChannelMask& inputs, const ChannelMask& outputs) noexcept;
+    bool RetireAudioGeneration() noexcept;
     bool GetActiveChannels(ChannelMask& inputs, ChannelMask& outputs) const noexcept;
+    bool RefreshAudioGeneration() noexcept;
+    std::uint64_t PublishedAudioEpoch() const noexcept;
+    std::uint64_t AudioEpoch() const noexcept;
+    std::uint64_t ProcessCreationTime() const noexcept;
+    bool AckAudioGeneration(std::uint32_t expectedRate, std::uint32_t expectedFrames) noexcept;
+    bool AudioGenerationAcknowledged() const noexcept;
+    std::uint32_t InputStride() const noexcept;
+    std::uint32_t OutputStride() const noexcept;
+    int InputChannelAt(std::uint32_t slot) const noexcept;
+    int OutputChannelAt(std::uint32_t slot) const noexcept;
+    int InputSlot(std::uint32_t channel) const noexcept;
+    int OutputSlot(std::uint32_t channel) const noexcept;
     bool WaitForClientSignal(DWORD timeoutMs) noexcept;
     std::uint32_t ClientOutputAvailable() const noexcept;
     std::uint32_t ClientInputAvailable() const noexcept;
@@ -93,19 +106,24 @@ public:
 
 private:
     struct Shared;
+    struct Audio;
     AudioClientMapping(HANDLE mapping, HANDLE eventHandle, Shared* shared, bool engineOwner) noexcept;
     static std::unique_ptr<AudioClientMapping> Open(bool create, std::uint32_t driverId,
-        std::uint32_t processId, std::uint32_t sampleRate, std::uint32_t blockFrames,
-        bool versioned);
+        std::uint32_t processId, std::uint32_t sampleRate, std::uint32_t blockFrames);
     std::uint32_t Available(volatile LONG64* write, volatile LONG64* read) const noexcept;
     bool Write(const float* src, std::uint32_t frames, volatile LONG64* write,
-        volatile LONG64* read, float* ring, volatile LONG64* overruns) noexcept;
+        volatile LONG64* read, float* ring, volatile LONG64* overruns, std::uint32_t stride) noexcept;
     std::uint32_t Read(float* dst, std::uint32_t frames, volatile LONG64* read,
-        volatile LONG64* write, const float* ring, volatile LONG64* underruns) noexcept;
+        volatile LONG64* write, const float* ring, volatile LONG64* underruns,
+        std::uint32_t stride) noexcept;
 
     HANDLE mapping_ = nullptr;
     HANDLE event_ = nullptr;
     Shared* shared_ = nullptr;
+    HANDLE audioMapping_ = nullptr;
+    Audio* audio_ = nullptr;
+    std::array<std::int16_t, kChannelCount> inputSlots_{};
+    std::array<std::int16_t, kChannelCount> outputSlots_{};
     bool engineOwner_ = false;
     bool ownsEngineAttachment_ = false;
 };

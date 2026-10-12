@@ -39,6 +39,8 @@ public:
 private:
     struct Client {
         VasioClientInfo info;
+        // Owns the stable control attachment across audio epoch replacements.
+        std::shared_ptr<AudioClientMapping> control;
         std::shared_ptr<AudioClientMapping> mapping;
     };
 

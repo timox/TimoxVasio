@@ -137,11 +137,29 @@ std::unique_ptr<AudioRoutingRuntime> AudioRoutingRuntime::Create(AudioRoutingLay
     for (std::size_t index = 0; index < activeClients.size(); ++index) {
         ClientBuffers buffers;
         buffers.client = std::move(activeClients[index]);
-        buffers.inputEndpointIndices = clientIndices[index].inputs;
-        buffers.outputEndpointIndices = clientIndices[index].outputs;
-        const auto samples = static_cast<std::size_t>(AudioClientMapping::kChannelCount) * layout.bufferFrames;
-        buffers.clientOutput.resize(samples);
-        buffers.clientInput.resize(samples);
+        const auto& mapping = *buffers.client.mapping;
+        buffers.inputStride = mapping.InputStride();
+        buffers.outputStride = mapping.OutputStride();
+        buffers.inputEndpointIndices.reserve(buffers.inputStride);
+        buffers.outputEndpointIndices.reserve(buffers.outputStride);
+        for (std::uint32_t slot = 0; slot < buffers.inputStride; ++slot) {
+            const int channel = mapping.InputChannelAt(slot);
+            if (channel < 0 || channel >= static_cast<int>(AudioClientMapping::kChannelCount)) {
+                error = "Invalid compact input channel in TimoxVasio transport";
+                return {};
+            }
+            buffers.inputEndpointIndices.push_back(clientIndices[index].inputs[static_cast<std::size_t>(channel)]);
+        }
+        for (std::uint32_t slot = 0; slot < buffers.outputStride; ++slot) {
+            const int channel = mapping.OutputChannelAt(slot);
+            if (channel < 0 || channel >= static_cast<int>(AudioClientMapping::kChannelCount)) {
+                error = "Invalid compact output channel in TimoxVasio transport";
+                return {};
+            }
+            buffers.outputEndpointIndices.push_back(clientIndices[index].outputs[static_cast<std::size_t>(channel)]);
+        }
+        buffers.clientOutput.resize(static_cast<std::size_t>(buffers.outputStride) * layout.bufferFrames);
+        buffers.clientInput.resize(static_cast<std::size_t>(buffers.inputStride) * layout.bufferFrames);
         runtime->clients_.push_back(std::move(buffers));
     }
 
@@ -252,19 +270,23 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
     for (auto& client : clients_) {
         auto& mapping = *client.client.mapping;
         const bool attached = mapping.EngineAttached();
-        if (attached) mapping.ReadClientOutput(client.clientOutput.data(), frames);
+        const bool currentGeneration = mapping.AudioEpoch() &&
+            mapping.AudioEpoch() == mapping.PublishedAudioEpoch();
+        if (attached && currentGeneration)
+            mapping.ReadClientOutput(client.clientOutput.data(), frames);
         else std::fill(client.clientOutput.begin(), client.clientOutput.end(), 0.0f);
-        for (std::uint32_t channel = 0; channel < AudioClientMapping::kChannelCount; ++channel) {
-            const auto sourceIndex = client.outputEndpointIndices[channel];
+        for (std::uint32_t slot = 0; slot < client.outputStride; ++slot) {
+            const auto sourceIndex = client.outputEndpointIndices[slot];
             if (sourceIndex != static_cast<std::size_t>(-1)) {
                 auto* plane = sourceSamples_.data() + sourceIndex * bufferFrames_;
                 for (std::uint32_t frame = 0; frame < frames; ++frame)
                     plane[frame] = client.clientOutput[static_cast<std::size_t>(frame) *
-                        AudioClientMapping::kChannelCount + channel];
+                        client.outputStride + slot];
                 sourceBlocks_[sourceIndex] = plane;
             }
-
-            const auto destinationIndex = client.inputEndpointIndices[channel];
+        }
+        for (std::uint32_t slot = 0; slot < client.inputStride; ++slot) {
+            const auto destinationIndex = client.inputEndpointIndices[slot];
             if (destinationIndex == static_cast<std::size_t>(-1)) continue;
             auto* destination = destinationSamples_.data() + destinationIndex * bufferFrames_;
             destinationBlocks_[destinationIndex] = destination;
@@ -362,20 +384,41 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
     for (auto& client : clients_) {
         auto& mapping = *client.client.mapping;
         if (!mapping.EngineAttached()) continue;
+        const bool currentGeneration = mapping.AudioEpoch() &&
+            mapping.AudioEpoch() == mapping.PublishedAudioEpoch();
         std::fill(client.clientInput.begin(), client.clientInput.end(), 0.0f);
-        for (std::uint32_t channel = 0; channel < AudioClientMapping::kChannelCount; ++channel) {
-            const auto sourceIndex = client.inputEndpointIndices[channel];
+        for (std::uint32_t slot = 0; slot < client.inputStride; ++slot) {
+            const auto sourceIndex = client.inputEndpointIndices[slot];
             if (sourceIndex == static_cast<std::size_t>(-1)) continue;
             const auto* source = destinationSamples_.data() + sourceIndex * bufferFrames_;
             for (std::uint32_t frame = 0; frame < frames; ++frame) {
                 client.clientInput[static_cast<std::size_t>(frame) *
-                    AudioClientMapping::kChannelCount + channel] =
+                    client.inputStride + slot] =
                     source[frame];
             }
         }
-        mapping.WriteEngineInput(client.clientInput.data(), frames);
+        if (currentGeneration) mapping.WriteEngineInput(client.clientInput.data(), frames);
         mapping.SignalClient();
     }
+}
+
+bool AudioRoutingRuntime::MatchesClientGenerations(
+    const std::vector<VasioClientSnapshot>& clients) const noexcept {
+    std::size_t eligibleCount = 0;
+    for (const auto& client : clients) {
+        if (client.info.driverId != 1 || !client.mapping) continue;
+        ++eligibleCount;
+        const auto existing = std::find_if(clients_.begin(), clients_.end(),
+            [&client](const ClientBuffers& current) {
+                return current.client.info.driverId == client.info.driverId &&
+                    current.client.info.processId == client.info.processId;
+            });
+        if (existing == clients_.end() ||
+            existing->client.mapping.get() != client.mapping.get() ||
+            existing->client.mapping->AudioEpoch() != client.mapping->AudioEpoch())
+            return false;
+    }
+    return eligibleCount == clients_.size();
 }
 
 void AudioRoutingRuntime::PhysicalCallback(const float* const* inputs, float* const* outputs,

@@ -76,7 +76,7 @@ processus ; elles restent enregistrées pour correction explicite.
 }
 ```
 
-Le nom doit être un nom de fichier exécutable Windows, sans chemin. La comparaison ne distingue pas les majuscules. Une application absente de la liste reçoit 256 entrées et 256 sorties. Le profil initial de Mixxx est fixé à 255 dans les deux directions pour éviter que sa version stable interprète la capacité 256 comme zéro. La limite s’applique à `getChannels`, `getChannelInfo` et `createBuffers`; elle n’altère pas les 256 slots du transport partagé. Les applications peuvent donc échanger par les canaux communs réellement alloués et les routes de l’API.
+Le nom doit être un nom de fichier exécutable Windows, sans chemin. La comparaison ne distingue pas les majuscules. Une application absente de la liste reçoit 256 entrées et 256 sorties. Le profil initial de Mixxx est fixé à 255 dans les deux directions pour éviter que sa version stable interprète la capacité 256 comme zéro. La limite s’applique à `getChannels`, `getChannelInfo` et `createBuffers`; elle ne change pas la capacité maximale de 256 voies par sens. Le transport privé échange uniquement les voies effectivement créées par l’hôte ASIO, indépendamment des routes. Les applications peuvent donc échanger par les canaux communs réellement alloués et les routes de l’API.
 
 `PUT /api/v1/application-profiles` remplace la liste entière :
 
@@ -205,7 +205,7 @@ Chaque événement a la forme `{ "event": "<nom>", "payload": { ... } }` et n’
 | `audio.stereoPairs.changed` | `{ "stereoPairs": [...] }`, liste complète des paires L/R ouvertes et routées |
 | `audio.correlation` | `stereoPairId`, identifiants L/R, coefficient borné à `[-1, 1]` ou `null`, et `state` (`measuring`, `no_signal` ou `stopped`) |
 
-Les événements de mesure sont émis pour les extrémités présentes dans une route, à la cadence de lecture de l'API (environ deux fois par seconde). `peakDbfs` décrit le bloc audio le plus récent observé à cette extrémité. Les compteurs des endpoints virtuels sont les compteurs cumulatifs du sens correspondant dans l'anneau du client; ceux des endpoints physiques valent zéro. Ces événements ne servent pas de transport audio. La mesure est publiée par le serveur hors du callback temps réel.
+Les événements de mesure sont émis pour les extrémités présentes dans une route, à la cadence de lecture de l'API (environ deux fois par seconde). `peakDbfs` décrit le bloc audio le plus récent observé à cette extrémité. Les compteurs des endpoints virtuels sont cumulatifs par sens pendant la vie du client, y compris lors du remplacement d'une génération du transport audio; ils sont remis à zéro à la création d'un nouveau contrôle client. Ceux des endpoints physiques valent zéro. Ces événements ne servent pas de transport audio. La mesure est publiée par le serveur hors du callback temps réel.
 
 La corrélation compare les échantillons synchrones des deux sorties du client
 sur des fenêtres de 100 ms. Le calcul est un coefficient de corrélation

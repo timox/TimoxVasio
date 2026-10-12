@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <ole2.h>
 #include <memory>
+#include <mutex>
 #include <vector>
 #include <utility>
 #include <atomic>
@@ -50,10 +51,13 @@ private:
     struct ChannelBuffer {
         bool isInput;
         long channel;
+        std::uint32_t slot;
         float* buffers[2];
     };
 
     void callbackLoop() noexcept;
+    bool joinCallbackWorker(bool onlyIfStopped = false) noexcept;
+    static DWORD WINAPI reapCallbackWorker(void* context) noexcept;
     static DWORD WINAPI deliverResetRequest(void* context) noexcept;
 
     int driverId_;
@@ -68,8 +72,12 @@ private:
     std::vector<std::unique_ptr<float[]>> buffers_;
     std::vector<ChannelBuffer> channelBuffers_;
     std::vector<float> transportBlock_;
+    std::uint32_t inputStride_ = 0;
+    std::uint32_t outputStride_ = 0;
     std::unique_ptr<AudioClientMapping> transport_;
     std::thread callbackThread_;
+    std::mutex callbackThreadMutex_;
+    bool callbackWorkerReferenceHeld_ = false;
     std::atomic<std::uint64_t> samplePosition_{0};
     std::atomic<decltype(ASIOCallbacks::asioMessage)> resetMessage_{nullptr};
 };

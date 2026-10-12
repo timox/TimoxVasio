@@ -3,6 +3,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -29,7 +30,7 @@ int main() {
         layout.bufferFrames = frames;
         layout.physicalOutputChannels = 1;
         layout.clients.push_back({{1, pid, L"hot-swap-test.exe"}, pinned});
-        layout.routes.push_back({"test-route", prefix + std::to_string(channel),
+        if (channel) layout.routes.push_back({"test-route", prefix + std::to_string(channel),
             "physical:{test}:output:1", 0.0, false});
         std::string error;
         auto runtime = AudioRoutingRuntime::Create(std::move(layout), error);
@@ -38,11 +39,12 @@ int main() {
     };
     auto first = makeRuntime(1);
     auto second = makeRuntime(2);
-    if (!first || !second) return 3;
+    auto withoutRoute = makeRuntime(0);
+    if (!first || !second || !withoutRoute) return 3;
     if (first->RoutedPhysicalOutputChannels() != second->RoutedPhysicalOutputChannels()) return 4;
 
     RealtimeCallbackSlot slot(&AudioRoutingRuntime::PhysicalCallback);
-    std::vector<float> block(static_cast<std::size_t>(frames) * AudioClientMapping::kChannelCount);
+    std::vector<float> block(static_cast<std::size_t>(frames) * pinned->OutputStride());
     block[0] = 0.25f;
     block[1] = -0.5f;
     float physicalOutput[frames]{};
@@ -57,12 +59,23 @@ int main() {
     slot.WaitForQuiescence();
     first.reset();
     if (!pinned->WriteClientOutput(block.data(), frames)) return 7;
+    std::fill_n(physicalOutput, frames, 0.0f);
     RealtimeCallbackSlot::Dispatch(nullptr, physicalOutputs, frames, &slot);
     if (std::fabs(physicalOutput[0] + 0.5f) > 1.0e-6f) return 8;
 
-    slot.Publish(nullptr);
+    slot.Publish(withoutRoute.get());
     slot.WaitForQuiescence();
     second.reset();
-    std::puts("PASS: routing graph changed at the callback boundary without reopening a host.");
+    // The physical host owns this buffer and clears it before each callback.
+    std::fill_n(physicalOutput, frames, 0.0f);
+    if (!pinned->WriteClientOutput(block.data(), frames)) return 9;
+    RealtimeCallbackSlot::Dispatch(nullptr, physicalOutputs, frames, &slot);
+    if (pinned->ClientOutputAvailable() != 0 || physicalOutput[0] != 0.0f ||
+        !pinned->WaitForClientSignal(0)) return 10;
+
+    slot.Publish(nullptr);
+    slot.WaitForQuiescence();
+    withoutRoute.reset();
+    std::puts("PASS: routing graph changed and its last route was removed at the callback boundary.");
     return 0;
 }

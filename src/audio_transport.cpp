@@ -9,17 +9,31 @@
 
 namespace {
 constexpr std::uint32_t kMagic = 0x56534154; // VSAT
-constexpr std::uint32_t kVersion = 7;
-constexpr std::uint32_t kLegacyVersion = 6;
+constexpr std::uint32_t kVersion = 8;
 constexpr std::uint32_t kStatusMagic = 0x54535356; // VSST
 constexpr std::uint64_t kCapacity = AudioClientMapping::kRingCapacityFrames;
-constexpr std::size_t kSamples = kCapacity * AudioClientMapping::kChannelCount;
+
+std::uint64_t processCreationTime(std::uint32_t pid) noexcept {
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return 0;
+    FILETIME created{}, exited{}, kernel{}, user{};
+    const bool ok = GetProcessTimes(process, &created, &exited, &kernel, &user) != FALSE;
+    CloseHandle(process);
+    ULARGE_INTEGER value{};
+    value.LowPart = created.dwLowDateTime;
+    value.HighPart = created.dwHighDateTime;
+    return ok ? value.QuadPart : 0;
+}
 
 std::wstring objectName(const wchar_t* kind, std::uint32_t pid, std::uint32_t driver,
-    bool versioned) {
-    return L"Local\\VASIO-" + std::wstring(kind) +
-        (versioned ? L"-v7-" : L"-") + std::to_wstring(pid) + L"-" +
-        std::to_wstring(driver);
+    std::uint64_t creation) {
+    return L"Local\\VASIO-" + std::wstring(kind) + L"-v8-" + std::to_wstring(pid) + L"-" +
+        std::to_wstring(driver) + L"-" + std::to_wstring(creation);
+}
+
+std::wstring audioName(std::uint32_t pid, std::uint32_t driver,
+    std::uint64_t creation, std::uint64_t epoch) {
+    return objectName(L"Audio", pid, driver, creation) + L"-" + std::to_wstring(epoch);
 }
 
 void moduleMarker() noexcept {}
@@ -40,31 +54,30 @@ AudioClientMapping::AudioClientMapping(HANDLE mapping, HANDLE eventHandle, Share
     : mapping_(mapping), event_(eventHandle), shared_(shared), engineOwner_(engineOwner) {}
 
 AudioClientMapping::~AudioClientMapping() {
-    if (ownsEngineAttachment_ && EngineAttached()) {
-        SetEngineAttached(false);
-        SignalClient();
-    }
     if (shared_) UnmapViewOfFile(shared_);
+    if (audio_) UnmapViewOfFile(audio_);
+    if (audioMapping_) CloseHandle(audioMapping_);
     if (event_) CloseHandle(event_);
     if (mapping_) CloseHandle(mapping_);
 }
 
 std::unique_ptr<AudioClientMapping> AudioClientMapping::CreateClient(std::uint32_t driver,
     std::uint32_t pid, std::uint32_t rate, std::uint32_t block) {
-    return Open(true, driver, pid, rate, block, true);
+    return Open(true, driver, pid, rate, block);
 }
 
 std::unique_ptr<AudioClientMapping> AudioClientMapping::OpenEngine(std::uint32_t driver,
     std::uint32_t pid, std::uint32_t rate) {
-    auto mapping = Open(false, driver, pid, rate, 0, true);
-    return mapping ? std::move(mapping) : Open(false, driver, pid, rate, 0, false);
+    return Open(false, driver, pid, rate, 0);
 }
 
 std::unique_ptr<AudioClientMapping> AudioClientMapping::Open(bool create, std::uint32_t driver,
-    std::uint32_t pid, std::uint32_t rate, std::uint32_t block, bool versioned) {
+    std::uint32_t pid, std::uint32_t rate, std::uint32_t block) {
     if (!pid || (create && (!rate || !block || block > kRingCapacityFrames))) return {};
-    const auto mapName = objectName(L"Map", pid, driver, versioned);
-    const auto eventName = objectName(L"Event", pid, driver, versioned);
+    const auto creation = processCreationTime(pid);
+    if (!creation) return {};
+    const auto mapName = objectName(L"Map", pid, driver, creation);
+    const auto eventName = objectName(L"Event", pid, driver, creation);
     HANDLE map = create
         ? CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(Shared), mapName.c_str())
         : OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, mapName.c_str());
@@ -81,11 +94,11 @@ std::unique_ptr<AudioClientMapping> AudioClientMapping::Open(bool create, std::u
         std::memset(shared, 0, sizeof(Shared));
         shared->magic = kMagic;
         shared->version = kVersion;
+        shared->size = sizeof(Shared);
         shared->driverId = driver;
         shared->processId = pid;
+        shared->processCreationTime = creation;
         InterlockedExchange(&shared->sampleRate, static_cast<LONG>(rate));
-        shared->channelCount = kChannelCount;
-        shared->capacityFrames = kRingCapacityFrames;
         InterlockedExchange(&shared->blockFrames, static_cast<LONG>(block));
         InterlockedExchange(&shared->preferredBufferFrames, static_cast<LONG>(block));
         InterlockedExchange64(&shared->generation, 1);
@@ -108,14 +121,17 @@ std::unique_ptr<AudioClientMapping> AudioClientMapping::Open(bool create, std::u
         InterlockedExchange(&status.requestedBufferFrames, static_cast<LONG>(block));
         InterlockedExchange(&status.ready, 1);
     } else if (shared->magic != kMagic || shared->version !=
-        (versioned ? kVersion : kLegacyVersion) ||
+        kVersion || shared->size != sizeof(Shared) ||
         shared->driverId != driver || shared->processId != pid ||
+        shared->processCreationTime != creation ||
         (rate && !reusingClientMapping &&
             static_cast<std::uint32_t>(InterlockedCompareExchange(&shared->sampleRate, 0, 0)) != rate) ||
-        shared->channelCount != kChannelCount || shared->capacityFrames != kRingCapacityFrames) {
+        shared->status.magic != kStatusMagic || shared->status.size != sizeof(ClientStatusV2)) {
         UnmapViewOfFile(view); CloseHandle(eventHandle); CloseHandle(map); return {};
     }
-    return std::unique_ptr<AudioClientMapping>(new AudioClientMapping(map, eventHandle, shared, !create));
+    auto result = std::unique_ptr<AudioClientMapping>(new AudioClientMapping(map, eventHandle, shared, !create));
+    if (!create && result->PublishedAudioEpoch() && !result->RefreshAudioGeneration()) return {};
+    return result;
 }
 
 bool AudioClientMapping::SetEngineAttached(bool attached) noexcept {
@@ -181,17 +197,150 @@ bool AudioClientMapping::SetPreferredBufferFrames(std::uint32_t frames) noexcept
 }
 
 bool AudioClientMapping::SetActiveChannels(const ChannelMask& inputs, const ChannelMask& outputs) noexcept {
+    if (engineOwner_ || !shared_ ||
+        InterlockedCompareExchange(&shared_->status.state, 0, 0) ==
+            static_cast<LONG>(ClientState::Running)) return false;
+    const auto epoch = static_cast<std::uint64_t>(InterlockedIncrement64(&shared_->nextAudioEpoch));
+    const auto name = audioName(shared_->processId, shared_->driverId,
+        shared_->processCreationTime, epoch);
+    HANDLE map = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
+        0, sizeof(Audio), name.c_str());
+    if (!map) return false;
+    if (GetLastError() == ERROR_ALREADY_EXISTS) { CloseHandle(map); return false; }
+    auto* next = static_cast<Audio*>(MapViewOfFile(map, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Audio)));
+    if (!next) { CloseHandle(map); return false; }
+    std::memset(next, 0, sizeof(Audio));
+    next->magic = kMagic;
+    next->version = kVersion;
+    next->size = sizeof(Audio);
+    next->driverId = shared_->driverId;
+    next->processId = shared_->processId;
+    next->processCreationTime = shared_->processCreationTime;
+    next->epoch = epoch;
+    next->capacityFrames = kRingCapacityFrames;
+    for (std::uint32_t channel = 0; channel < kChannelCount; ++channel) {
+        const auto bit = std::uint64_t{1} << (channel % 64);
+        if (inputs[channel / 64] & bit) next->inputChannels[next->inputStride++] = static_cast<std::uint16_t>(channel);
+        if (outputs[channel / 64] & bit) next->outputChannels[next->outputStride++] = static_cast<std::uint16_t>(channel);
+    }
     InterlockedIncrement64(&shared_->activeChannelsGeneration);
     for (std::size_t word = 0; word < kChannelMaskWords; ++word) {
         InterlockedExchange64(&shared_->activeInputs[word], static_cast<LONG64>(inputs[word]));
         InterlockedExchange64(&shared_->activeOutputs[word], static_cast<LONG64>(outputs[word]));
     }
     InterlockedIncrement64(&shared_->activeChannelsGeneration);
+    // Release publication: all immutable audio header, lists and zero indices precede this store.
+    InterlockedExchange64(&shared_->publishedAudioEpoch, static_cast<LONG64>(epoch));
+    if (audio_) UnmapViewOfFile(audio_);
+    if (audioMapping_) CloseHandle(audioMapping_);
+    audioMapping_ = map;
+    audio_ = next;
+    inputSlots_.fill(-1);
+    outputSlots_.fill(-1);
+    for (std::uint32_t i = 0; i < next->inputStride; ++i) inputSlots_[next->inputChannels[i]] = static_cast<std::int16_t>(i);
+    for (std::uint32_t i = 0; i < next->outputStride; ++i) outputSlots_[next->outputChannels[i]] = static_cast<std::int16_t>(i);
     InterlockedIncrement64(&shared_->generation);
     return true;
 }
 
+bool AudioClientMapping::RetireAudioGeneration() noexcept {
+    if (engineOwner_ || !shared_ ||
+        InterlockedCompareExchange(&shared_->status.state, 0, 0) ==
+            static_cast<LONG>(ClientState::Running)) return false;
+    InterlockedIncrement64(&shared_->activeChannelsGeneration);
+    for (std::size_t word = 0; word < kChannelMaskWords; ++word) {
+        InterlockedExchange64(&shared_->activeInputs[word], 0);
+        InterlockedExchange64(&shared_->activeOutputs[word], 0);
+    }
+    InterlockedIncrement64(&shared_->activeChannelsGeneration);
+    // Existing views retain their mapping until their owners retire.
+    InterlockedExchange64(&shared_->publishedAudioEpoch, 0);
+    InterlockedExchange64(&shared_->acknowledgedAudioEpoch, 0);
+    InterlockedIncrement64(&shared_->generation);
+    return true;
+}
+
+std::uint64_t AudioClientMapping::PublishedAudioEpoch() const noexcept {
+    return static_cast<std::uint64_t>(InterlockedCompareExchange64(
+        const_cast<volatile LONG64*>(&shared_->publishedAudioEpoch), 0, 0));
+}
+std::uint64_t AudioClientMapping::AudioEpoch() const noexcept { return audio_ ? audio_->epoch : 0; }
+std::uint64_t AudioClientMapping::ProcessCreationTime() const noexcept {
+    return shared_ ? shared_->processCreationTime : 0;
+}
+bool AudioClientMapping::RefreshAudioGeneration() noexcept {
+    const auto epoch = PublishedAudioEpoch();
+    if (!epoch) return audio_ == nullptr;
+    if (audio_) return audio_->epoch == epoch;
+    if (!engineOwner_) return false;
+    const auto name = audioName(shared_->processId, shared_->driverId,
+        shared_->processCreationTime, epoch);
+    HANDLE map = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, name.c_str());
+    if (!map) return false;
+    auto* next = static_cast<Audio*>(MapViewOfFile(map, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Audio)));
+    if (!next) { CloseHandle(map); return false; }
+    bool valid = next->magic == kMagic && next->version == kVersion &&
+        next->size == sizeof(Audio) && next->driverId == shared_->driverId &&
+        next->processId == shared_->processId &&
+        next->processCreationTime == shared_->processCreationTime &&
+        next->epoch == epoch && next->capacityFrames == kRingCapacityFrames &&
+        next->inputStride <= kChannelCount && next->outputStride <= kChannelCount;
+    for (std::uint32_t i = 0; valid && i < next->inputStride; ++i)
+        valid = next->inputChannels[i] < kChannelCount &&
+            (i == 0 || next->inputChannels[i - 1] < next->inputChannels[i]);
+    for (std::uint32_t i = 0; valid && i < next->outputStride; ++i)
+        valid = next->outputChannels[i] < kChannelCount &&
+            (i == 0 || next->outputChannels[i - 1] < next->outputChannels[i]);
+    if (!valid || PublishedAudioEpoch() != epoch) {
+        UnmapViewOfFile(next); CloseHandle(map); return false;
+    }
+    audioMapping_ = map;
+    audio_ = next;
+    inputSlots_.fill(-1);
+    outputSlots_.fill(-1);
+    for (std::uint32_t i = 0; i < next->inputStride; ++i) inputSlots_[next->inputChannels[i]] = static_cast<std::int16_t>(i);
+    for (std::uint32_t i = 0; i < next->outputStride; ++i) outputSlots_[next->outputChannels[i]] = static_cast<std::int16_t>(i);
+    return true;
+}
+bool AudioClientMapping::AckAudioGeneration(std::uint32_t expectedRate,
+    std::uint32_t expectedFrames) noexcept {
+    if (!engineOwner_ || !audio_ || PublishedAudioEpoch() != audio_->epoch ||
+        !expectedRate || !expectedFrames || SampleRate() != expectedRate ||
+        BlockFrames() != expectedFrames) return false;
+    InterlockedExchange(&shared_->acknowledgedSampleRate, static_cast<LONG>(expectedRate));
+    InterlockedExchange(&shared_->acknowledgedBlockFrames, static_cast<LONG>(expectedFrames));
+    if (PublishedAudioEpoch() != audio_->epoch || SampleRate() != expectedRate ||
+        BlockFrames() != expectedFrames) return false;
+    InterlockedExchange64(&shared_->acknowledgedAudioEpoch, static_cast<LONG64>(audio_->epoch));
+    return true;
+}
+bool AudioClientMapping::AudioGenerationAcknowledged() const noexcept {
+    return audio_ && PublishedAudioEpoch() == audio_->epoch &&
+        static_cast<std::uint64_t>(InterlockedCompareExchange64(
+            const_cast<volatile LONG64*>(&shared_->acknowledgedAudioEpoch), 0, 0)) == audio_->epoch &&
+        InterlockedCompareExchange(const_cast<volatile LONG*>(&shared_->acknowledgedSampleRate), 0, 0) == static_cast<LONG>(SampleRate()) &&
+        InterlockedCompareExchange(const_cast<volatile LONG*>(&shared_->acknowledgedBlockFrames), 0, 0) == static_cast<LONG>(BlockFrames());
+}
+std::uint32_t AudioClientMapping::InputStride() const noexcept { return audio_ ? audio_->inputStride : 0; }
+std::uint32_t AudioClientMapping::OutputStride() const noexcept { return audio_ ? audio_->outputStride : 0; }
+int AudioClientMapping::InputChannelAt(std::uint32_t slot) const noexcept { return audio_ && slot < audio_->inputStride ? audio_->inputChannels[slot] : -1; }
+int AudioClientMapping::OutputChannelAt(std::uint32_t slot) const noexcept { return audio_ && slot < audio_->outputStride ? audio_->outputChannels[slot] : -1; }
+int AudioClientMapping::InputSlot(std::uint32_t channel) const noexcept { return audio_ && channel < kChannelCount ? inputSlots_[channel] : -1; }
+int AudioClientMapping::OutputSlot(std::uint32_t channel) const noexcept { return audio_ && channel < kChannelCount ? outputSlots_[channel] : -1; }
+
 bool AudioClientMapping::GetActiveChannels(ChannelMask& inputs, ChannelMask& outputs) const noexcept {
+    if (audio_) {
+        inputs = {}; outputs = {};
+        for (std::uint32_t i = 0; i < audio_->inputStride; ++i) {
+            const auto channel = audio_->inputChannels[i];
+            inputs[channel / 64] |= std::uint64_t{1} << (channel % 64);
+        }
+        for (std::uint32_t i = 0; i < audio_->outputStride; ++i) {
+            const auto channel = audio_->outputChannels[i];
+            outputs[channel / 64] |= std::uint64_t{1} << (channel % 64);
+        }
+        return true;
+    }
     for (int attempt = 0; attempt < 16; ++attempt) {
         const auto before = InterlockedCompareExchange64(
             const_cast<volatile LONG64*>(&shared_->activeChannelsGeneration), 0, 0);
@@ -226,51 +375,52 @@ std::uint32_t AudioClientMapping::Available(volatile LONG64* write, volatile LON
 }
 
 std::uint32_t AudioClientMapping::ClientOutputAvailable() const noexcept {
-    return Available(&shared_->clientWriteFrame, &shared_->engineReadFrame);
+    return audio_ ? Available(&audio_->clientWriteFrame, &audio_->engineReadFrame) : 0;
 }
 std::uint32_t AudioClientMapping::ClientInputAvailable() const noexcept {
-    return Available(&shared_->engineWriteFrame, &shared_->clientReadFrame);
+    return audio_ ? Available(&audio_->engineWriteFrame, &audio_->clientReadFrame) : 0;
 }
 
 bool AudioClientMapping::Write(const float* src, std::uint32_t frames, volatile LONG64* write,
-    volatile LONG64* read, float* ring, volatile LONG64* overruns) noexcept {
-    if (!src || frames > kCapacity) return false;
+    volatile LONG64* read, float* ring, volatile LONG64* overruns, std::uint32_t stride) noexcept {
+    if ((!src && stride) || frames > kCapacity) return false;
     const auto w = static_cast<std::uint64_t>(InterlockedCompareExchange64(write, 0, 0));
     const auto r = static_cast<std::uint64_t>(InterlockedCompareExchange64(read, 0, 0));
     if (w - r + frames > kCapacity) { InterlockedIncrement64(overruns); return false; }
     const auto firstFrames = (std::min)(static_cast<std::uint64_t>(frames),
         kCapacity - w % kCapacity);
-    if (firstFrames) {
-        std::memcpy(ring + (w % kCapacity) * kChannelCount, src,
-            static_cast<std::size_t>(firstFrames) * kChannelCount * sizeof(float));
+    if (firstFrames && stride) {
+        std::memcpy(ring + (w % kCapacity) * stride, src,
+            static_cast<std::size_t>(firstFrames) * stride * sizeof(float));
     }
-    if (firstFrames < frames) {
-        std::memcpy(ring, src + static_cast<std::size_t>(firstFrames) * kChannelCount,
-            static_cast<std::size_t>(frames - firstFrames) * kChannelCount * sizeof(float));
+    if (firstFrames < frames && stride) {
+        std::memcpy(ring, src + static_cast<std::size_t>(firstFrames) * stride,
+            static_cast<std::size_t>(frames - firstFrames) * stride * sizeof(float));
     }
     InterlockedExchange64(write, static_cast<LONG64>(w + frames));
     return true;
 }
 
 std::uint32_t AudioClientMapping::Read(float* dst, std::uint32_t frames, volatile LONG64* read,
-    volatile LONG64* write, const float* ring, volatile LONG64* underruns) noexcept {
-    if (!dst) return 0;
+    volatile LONG64* write, const float* ring, volatile LONG64* underruns,
+    std::uint32_t stride) noexcept {
+    if (!dst && stride) return 0;
     const auto r = static_cast<std::uint64_t>(InterlockedCompareExchange64(read, 0, 0));
     const auto w = static_cast<std::uint64_t>(InterlockedCompareExchange64(write, 0, 0));
     const auto count = static_cast<std::uint32_t>(std::min<std::uint64_t>(frames, w - r));
     const auto firstFrames = (std::min)(static_cast<std::uint64_t>(count),
         kCapacity - r % kCapacity);
-    if (firstFrames) {
-        std::memcpy(dst, ring + (r % kCapacity) * kChannelCount,
-            static_cast<std::size_t>(firstFrames) * kChannelCount * sizeof(float));
+    if (firstFrames && stride) {
+        std::memcpy(dst, ring + (r % kCapacity) * stride,
+            static_cast<std::size_t>(firstFrames) * stride * sizeof(float));
     }
-    if (firstFrames < count) {
-        std::memcpy(dst + static_cast<std::size_t>(firstFrames) * kChannelCount, ring,
-            static_cast<std::size_t>(count - firstFrames) * kChannelCount * sizeof(float));
+    if (firstFrames < count && stride) {
+        std::memcpy(dst + static_cast<std::size_t>(firstFrames) * stride, ring,
+            static_cast<std::size_t>(count - firstFrames) * stride * sizeof(float));
     }
     if (count < frames) {
-        std::fill(dst + static_cast<std::size_t>(count) * kChannelCount,
-                  dst + static_cast<std::size_t>(frames) * kChannelCount, 0.0f);
+        if (stride) std::fill(dst + static_cast<std::size_t>(count) * stride,
+                  dst + static_cast<std::size_t>(frames) * stride, 0.0f);
         if (underruns) InterlockedIncrement64(underruns);
     }
     InterlockedExchange64(read, static_cast<LONG64>(r + count));
@@ -278,20 +428,20 @@ std::uint32_t AudioClientMapping::Read(float* dst, std::uint32_t frames, volatil
 }
 
 bool AudioClientMapping::WriteClientOutput(const float* data, std::uint32_t frames) noexcept {
-    return Write(data, frames, &shared_->clientWriteFrame, &shared_->engineReadFrame,
-        shared_->clientToEngine, &shared_->outputOverruns);
+    return audio_ && Write(data, frames, &audio_->clientWriteFrame, &audio_->engineReadFrame,
+        audio_->clientToEngine, &shared_->outputOverruns, audio_->outputStride);
 }
 std::uint32_t AudioClientMapping::ReadClientOutput(float* data, std::uint32_t frames) noexcept {
-    return Read(data, frames, &shared_->engineReadFrame, &shared_->clientWriteFrame,
-        shared_->clientToEngine, &shared_->outputUnderruns);
+    return audio_ ? Read(data, frames, &audio_->engineReadFrame, &audio_->clientWriteFrame,
+        audio_->clientToEngine, &shared_->outputUnderruns, audio_->outputStride) : 0;
 }
 bool AudioClientMapping::WriteEngineInput(const float* data, std::uint32_t frames) noexcept {
-    return Write(data, frames, &shared_->engineWriteFrame, &shared_->clientReadFrame,
-        shared_->engineToClient, &shared_->inputOverruns);
+    return audio_ && Write(data, frames, &audio_->engineWriteFrame, &audio_->clientReadFrame,
+        audio_->engineToClient, &shared_->inputOverruns, audio_->inputStride);
 }
 std::uint32_t AudioClientMapping::ReadClientInput(float* data, std::uint32_t frames) noexcept {
-    return Read(data, frames, &shared_->clientReadFrame, &shared_->engineWriteFrame,
-        shared_->engineToClient, &shared_->inputUnderruns);
+    return audio_ ? Read(data, frames, &audio_->clientReadFrame, &audio_->engineWriteFrame,
+        audio_->engineToClient, &shared_->inputUnderruns, audio_->inputStride) : 0;
 }
 bool AudioClientMapping::SignalClient() noexcept { return SetEvent(event_) != FALSE; }
 std::uint64_t AudioClientMapping::ClientOutputOverruns() const noexcept {

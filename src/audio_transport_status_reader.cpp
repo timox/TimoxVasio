@@ -8,9 +8,23 @@ namespace {
 constexpr std::uint32_t kMagic = 0x56534154; // VSAT
 constexpr std::uint32_t kStatusMagic = 0x54535356; // VSST
 
-std::wstring mapName(std::uint32_t pid, std::uint32_t driver, bool versioned) {
-    return L"Local\\VASIO-Map" + std::wstring(versioned ? L"-v7-" : L"-") +
-        std::to_wstring(pid) + L"-" + std::to_wstring(driver);
+std::wstring mapName(std::uint32_t pid, std::uint32_t driver,
+    std::uint64_t creation) {
+    return L"Local\\VASIO-Map-v8-" +
+        std::to_wstring(pid) + L"-" + std::to_wstring(driver) + L"-" +
+        std::to_wstring(creation);
+}
+
+std::uint64_t processCreationTime(std::uint32_t pid) noexcept {
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return 0;
+    FILETIME created{}, exited{}, kernel{}, user{};
+    const bool ok = GetProcessTimes(process, &created, &exited, &kernel, &user) != FALSE;
+    CloseHandle(process);
+    ULARGE_INTEGER value{};
+    value.LowPart = created.dwLowDateTime;
+    value.HighPart = created.dwHighDateTime;
+    return ok ? value.QuadPart : 0;
 }
 }
 
@@ -18,26 +32,16 @@ bool AudioClientMapping::ReadStatusReadOnly(std::uint32_t driver, std::uint32_t 
     StatusSnapshot& snapshot) {
     snapshot = {};
     if (!pid) return false;
-    bool versioned = true;
-    HANDLE map = OpenFileMappingW(FILE_MAP_READ, FALSE, mapName(pid, driver, true).c_str());
-    if (!map) {
-        versioned = false;
-        map = OpenFileMappingW(FILE_MAP_READ, FALSE, mapName(pid, driver, false).c_str());
-    }
+    const auto creation = processCreationTime(pid);
+    if (!creation) return false;
+    HANDLE map = OpenFileMappingW(FILE_MAP_READ, FALSE, mapName(pid, driver, creation).c_str());
     if (!map) return false;
-    void* view = MapViewOfFile(map, FILE_MAP_READ, 0, 0, 0);
+    void* view = MapViewOfFile(map, FILE_MAP_READ, 0, 0, sizeof(Shared));
     if (!view) { CloseHandle(map); return false; }
-    MEMORY_BASIC_INFORMATION region{};
-    const auto requiredBytes = versioned ? sizeof(Shared) : offsetof(Shared, status);
-    if (!VirtualQuery(view, &region, sizeof(region)) || region.RegionSize < requiredBytes) {
-        UnmapViewOfFile(view);
-        CloseHandle(map);
-        return false;
-    }
     const auto* shared = static_cast<const Shared*>(view);
     const bool valid = shared->magic == kMagic && shared->driverId == driver &&
-        shared->processId == pid && shared->version == (versioned ? 7u : 6u) &&
-        shared->channelCount == kChannelCount && shared->capacityFrames == kRingCapacityFrames;
+        shared->processId == pid && shared->version == 8 &&
+        shared->size == sizeof(Shared) && shared->processCreationTime == creation;
     if (valid) {
         snapshot.layoutVersion = shared->version;
         snapshot.processId = shared->processId;
@@ -62,7 +66,7 @@ bool AudioClientMapping::ReadStatusReadOnly(std::uint32_t driver, std::uint32_t 
                 break;
             }
         }
-        if (versioned) {
+        {
             const auto& status = shared->status;
             if (status.magic == kStatusMagic && status.schemaVersion == 2 &&
                 status.size == sizeof(ClientStatusV2) && status.ready == 1) {
