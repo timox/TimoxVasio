@@ -2,7 +2,7 @@
 
 **Français** | [English](README.en.md)
 
-**Current release: [1.1.1](https://github.com/timox/TimoxVasio/releases/tag/v1.1.1).** See the [English release notes](docs/RELEASE_NOTES_v1.1.1.en.md) and the [1.1.0 feature guide](docs/FONCTIONS_1.1.0.en.md) for previously available features.
+**Current release: [1.2.0](https://github.com/timox/TimoxVasio/releases/tag/v1.2.0).** Voir les [notes de version](docs/RELEASE_NOTES_v1.2.0.md) et le [guide des téléchargements Windows](docs/RELEASE_WINDOWS_1.2.0.md).
 
 ## Objectif
 
@@ -24,8 +24,7 @@ Fournir un pilote ASIO virtuel Windows x64 unique, `TimoxVasio`, qui expose jusq
 
 Les séquences ASIO, les profils API et le chemin Mixxx sont illustrés dans [DRIVER_SEQUENCES.md](docs/DRIVER_SEQUENCES.md). L’architecture est résumée dans [ARCHITECTURE.md](ARCHITECTURE.md). Les preuves et limites du contrôle de protocole sont résumées dans [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md). La [revue UX/UI historique](docs/UX_UI_REVIEW.md) documente les captures antérieures à l’interface 1.1.0.
 
-Release details are in the [English 1.1.1 notes](docs/RELEASE_NOTES_v1.1.1.en.md). The [Windows downloads guide](docs/RELEASE_WINDOWS_1.1.1.en.md) explains the three files.
-Les travaux prévus après la release 1.1.1 figurent dans la [feuille de route](docs/ROADMAP.md).
+Les changements de la version 1.2.0 figurent dans les [notes de version](docs/RELEASE_NOTES_v1.2.0.md). Les travaux futurs figurent dans la [feuille de route](docs/ROADMAP.md).
 
 ## Utiliser l’API et soutenir le projet
 
