@@ -37,6 +37,8 @@ std::unique_ptr<RoutingGraph> RoutingGraph::Create(const std::vector<RoutingEndp
     }
 
     auto graph = std::unique_ptr<RoutingGraph>(new RoutingGraph(endpoints.size()));
+    graph->endpointTypes_.reserve(endpoints.size());
+    for (const auto& endpoint : endpoints) graph->endpointTypes_.push_back(endpoint.type);
     graph->routes_.reserve(routes.size());
     std::unordered_set<std::string> routeIds;
     routeIds.reserve(routes.size());
@@ -66,10 +68,11 @@ std::unique_ptr<RoutingGraph> RoutingGraph::Create(const std::vector<RoutingEndp
 }
 
 void RoutingGraph::Process(const float* const* sourceBlocks, float* const* destinationBlocks,
-                           std::uint32_t frames) const noexcept {
+                           std::uint32_t frames, bool physicalOutputsPrecleared) const noexcept {
     if (!destinationBlocks) return;
     for (std::size_t endpoint = 0; endpoint < endpointCount_; ++endpoint) {
-        if (destinationBlocks[endpoint])
+        if (destinationBlocks[endpoint] &&
+            !(physicalOutputsPrecleared && endpointTypes_[endpoint] == RoutingEndpointType::PhysicalOutput))
             std::fill_n(destinationBlocks[endpoint], frames, 0.0f);
     }
     if (!sourceBlocks || frames == 0) return;

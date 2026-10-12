@@ -232,7 +232,7 @@ AudioCorrelationSnapshot AudioRoutingRuntime::ReadCorrelation() const noexcept {
 }
 
 void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* const* physicalOutputs,
-                                  std::uint32_t frames) noexcept {
+                                  std::uint32_t frames, bool physicalOutputsPrecleared) noexcept {
     if (frames != bufferFrames_ || !graph_) {
         if (physicalOutputs) {
             for (long channel = 0; channel < physicalOutputChannels_; ++channel)
@@ -271,7 +271,8 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
         }
     }
 
-    graph_->Process(sourceBlocks_.data(), destinationBlocks_.data(), frames);
+    graph_->Process(sourceBlocks_.data(), destinationBlocks_.data(), frames,
+        physicalOutputsPrecleared);
 
     const auto correlationGeneration = correlationGeneration_.load(std::memory_order_acquire);
     if ((correlationGeneration & 1u) != 0) {
@@ -379,5 +380,6 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
 
 void AudioRoutingRuntime::PhysicalCallback(const float* const* inputs, float* const* outputs,
     std::uint32_t frames, void* context) noexcept {
-    if (context) static_cast<AudioRoutingRuntime*>(context)->Process(inputs, outputs, frames);
+    // PhysicalAsioHost cleared every selected physical output before dispatch.
+    if (context) static_cast<AudioRoutingRuntime*>(context)->Process(inputs, outputs, frames, true);
 }

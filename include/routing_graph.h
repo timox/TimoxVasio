@@ -37,8 +37,9 @@ public:
     RoutingGraph(const RoutingGraph&) = delete;
     RoutingGraph& operator=(const RoutingGraph&) = delete;
 
+    // Precleared physical outputs are supplied only by the physical ASIO callback.
     void Process(const float* const* sourceBlocks, float* const* destinationBlocks,
-                 std::uint32_t frames) const noexcept;
+                 std::uint32_t frames, bool physicalOutputsPrecleared = false) const noexcept;
     std::size_t EndpointCount() const noexcept { return endpointCount_; }
 
 private:
@@ -51,5 +52,6 @@ private:
 
     explicit RoutingGraph(std::size_t endpointCount) : endpointCount_(endpointCount) {}
     std::size_t endpointCount_;
+    std::vector<RoutingEndpointType> endpointTypes_;
     std::vector<CompiledRoute> routes_;
 };

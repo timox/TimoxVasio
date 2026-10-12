@@ -1,5 +1,6 @@
 #include "routing_graph.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -98,6 +99,27 @@ bool testVectorAndTailMix() {
     return true;
 }
 
+bool testNoRouteClearsDestinations() {
+    Fixture fixture;
+    std::string error;
+    auto graph = RoutingGraph::Create(fixture.endpoints, {}, 48000, error);
+    if (!graph) return false;
+    std::vector<float> physicalOut(2, 0.0f);
+    std::vector<float> virtualIn(2, 1.0f);
+    std::vector<float*> destination(fixture.endpoints.size(), nullptr);
+    destination[1] = physicalOut.data();
+    destination[3] = virtualIn.data();
+    graph->Process(nullptr, destination.data(), 2, true);
+    if (!near(physicalOut[0], 0.0f) || !near(physicalOut[1], 0.0f) ||
+        !near(virtualIn[0], 0.0f) || !near(virtualIn[1], 0.0f)) return false;
+
+    std::fill(physicalOut.begin(), physicalOut.end(), 1.0f);
+    std::fill(virtualIn.begin(), virtualIn.end(), 1.0f);
+    graph->Process(nullptr, destination.data(), 2);
+    return near(physicalOut[0], 0.0f) && near(physicalOut[1], 0.0f) &&
+        near(virtualIn[0], 0.0f) && near(virtualIn[1], 0.0f);
+}
+
 bool testInvalidRoutesAreRejected() {
     Fixture fixture;
     std::string error;
@@ -119,6 +141,7 @@ int main() {
     if (!testSupportedRouteDirectionsAndSamples()) return 1;
     if (!testGainMixAndMute()) return 1;
     if (!testVectorAndTailMix()) return 1;
+    if (!testNoRouteClearsDestinations()) return 1;
     if (!testInvalidRoutesAreRejected()) return 1;
     std::puts("PASS: supported route directions, float mixing, gain, mute and invalid-route rejection.");
     return 0;

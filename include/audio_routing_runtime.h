@@ -33,7 +33,7 @@ public:
     AudioRoutingRuntime& operator=(const AudioRoutingRuntime&) = delete;
 
     void Process(const float* const* physicalInputs, float* const* physicalOutputs,
-                 std::uint32_t frames) noexcept;
+                 std::uint32_t frames, bool physicalOutputsPrecleared = false) noexcept;
     std::vector<AudioMeterSnapshot> ReadMeters();
     bool SetCorrelationPair(const std::string& leftEndpointId,
                             const std::string& rightEndpointId) noexcept;
