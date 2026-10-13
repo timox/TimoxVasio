@@ -43,7 +43,7 @@ bool caseFor(unsigned driver, const Mask& inputs, const Mask& outputs,
     if (!client || client->AudioEpoch() != 0) return false;
     AudioClientMapping::StatusSnapshot status{};
     if (!AudioClientMapping::ReadStatusReadOnly(driver, pid, status) ||
-        !status.available || status.layoutVersion != 8 || status.processId != pid ||
+        !status.available || status.layoutVersion != 9 || status.processId != pid ||
         status.requestedSampleRate != kRate) return false;
     auto preAudioEngine = AudioClientMapping::OpenEngine(driver, pid, kRate);
     if (!preAudioEngine || preAudioEngine->AudioEpoch() != 0) return false;
@@ -100,9 +100,9 @@ bool caseFor(unsigned driver, const Mask& inputs, const Mask& outputs,
 
 bool oldFormatRejected() {
     const auto pid = GetCurrentProcessId();
-    for (unsigned version : {6u, 7u}) {
+    for (unsigned version : {6u, 7u, 8u}) {
         const unsigned driver = 0xFF80 + version;
-        const auto name = L"Local\\VASIO-Map" + std::wstring(version == 7 ? L"-v7-" : L"-") +
+        const auto name = L"Local\\VASIO-Map" + std::wstring(version == 8 ? L"-v8-" : version == 7 ? L"-v7-" : L"-") +
             std::to_wstring(pid) + L"-" + std::to_wstring(driver);
         HANDLE map = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
             0, 4096, name.c_str());
@@ -126,7 +126,7 @@ bool invalidAudioRejected() {
     constexpr unsigned driver = 0xFF30;
     auto client = AudioClientMapping::CreateClient(driver, pid, kRate, kFrames);
     if (!client || !client->SetActiveChannels(mask({0, 255}), mask({3, 7}))) return false;
-    const auto name = L"Local\\VASIO-Audio-v8-" + std::to_wstring(pid) + L"-" +
+    const auto name = L"Local\\VASIO-Audio-v9-" + std::to_wstring(pid) + L"-" +
         std::to_wstring(driver) + L"-" + std::to_wstring(client->ProcessCreationTime()) +
         L"-" + std::to_wstring(client->AudioEpoch());
     HANDLE map = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, name.c_str());
@@ -150,6 +150,57 @@ bool invalidAudioRejected() {
     UnmapViewOfFile(header);
     CloseHandle(map);
     return okay;
+}
+
+bool sampledStages() {
+    constexpr unsigned driver = 0xFF32;
+    const auto pid = GetCurrentProcessId();
+    auto client = AudioClientMapping::CreateClient(driver, pid, kRate, kFrames);
+    if (!client || !client->SetActiveChannels({}, mask({0}))) return false;
+    auto engine = AudioClientMapping::OpenEngine(driver, pid, kRate);
+    if (!engine || !engine->AckAudioGeneration(kRate, kFrames)) return false;
+    float block[16]{};
+    float received[AudioClientMapping::kRingCapacityFrames]{};
+    if (client->StageMeasurementsEnabled() ||
+        !client->WriteClientOutputMeasured(block, 16, 10, 20, 1) ||
+        engine->ReadClientOutput(received, 16) != 16) return false;
+    auto counters = engine->ConsumeClientStageCounters();
+    if (counters.hostCallback.samples || counters.ringWrite.samples ||
+        counters.ringWait.samples || counters.ringWaitDiscardedBlocks) return false;
+    engine->SetStageMeasurementsEnabled(true);
+    if (!client->StageMeasurementsEnabled() ||
+        !client->WriteClientOutputMeasured(block, 16, 10, 20, 1) ||
+        engine->ReadClientOutput(received, 16) != 16) return false;
+    counters = engine->ConsumeClientStageCounters();
+    if (counters.epoch != client->AudioEpoch() || counters.hostCallback.samples != 1 ||
+        counters.hostCallback.sumTicks != 10 || counters.ringWrite.samples != 1 ||
+        counters.ringWait.samples != 1 || counters.ringWaitDiscardedBlocks) return false;
+    constexpr auto capacity = AudioClientMapping::kRingCapacityFrames;
+    if (!client->WriteClientOutput(received, capacity - 40) ||
+        engine->ReadClientOutput(received, capacity - 40) != capacity - 40 ||
+        !client->WriteClientOutputMeasured(block, 16, 11, 21, 1) ||
+        engine->ReadClientOutput(received, 16) != 16) return false;
+    counters = engine->ConsumeClientStageCounters();
+    if (counters.ringWait.samples != 1 || counters.ringWaitDiscardedBlocks) return false;
+    if (!client->WriteClientOutputMeasured(block, 16, 12, 22, 1) ||
+        engine->ReadClientOutput(received, 8) != 8 ||
+        engine->ReadClientOutput(received, 8) != 8) return false;
+    counters = engine->ConsumeClientStageCounters();
+    if (counters.ringWait.samples || counters.ringWaitDiscardedBlocks != 1) return false;
+    if (!client->WriteClientOutput(received, capacity) ||
+        client->WriteClientOutputMeasured(block, 16, 13, 23, 1) ||
+        engine->ReadClientOutput(received, capacity) != capacity) return false;
+    counters = engine->ConsumeClientStageCounters();
+    if (counters.hostCallback.samples || counters.ringWrite.samples ||
+        counters.ringWait.samples || counters.ringWaitDiscardedBlocks) return false;
+    if (!client->WriteClientOutputMeasured(block, 16, 14, 24, 1) ||
+        !client->SetActiveChannels({}, mask({0})) ||
+        engine->ReadClientOutput(received, 16) != 16) return false;
+    counters = engine->ConsumeClientStageCounters();
+    if (counters.ringWait.samples || counters.ringWaitDiscardedBlocks != 1) return false;
+    engine->SetStageMeasurementsEnabled(false);
+    return !client->StageMeasurementsEnabled() &&
+        engine->ConsumeClientStageCounters().ringWaitDiscardedBlocks == 0;
 }
 
 int engineChild(std::uint32_t pid) {
@@ -212,8 +263,8 @@ int wmain(int argc, wchar_t** argv) {
         caseFor(0xFF22, mask({0, 3, 7, 63, 64, 127, 192, 255}), {}, 8, 0) &&
         caseFor(0xFF23, {}, mask({0, 3, 7, 63, 64, 127, 192, 255}), 0, 8) &&
         caseFor(0xFF24, all, all, 256, 256) &&
-        invalidAudioRejected() && oldFormatRejected() && crossProcess();
-    std::puts(passed ? "PASS: compact v8 0/2/8/256, asymmetric, sparse, wrap, silence, overflow, epoch, legacy rejection, cross-process exchange"
-                     : "FAIL: compact v8 transport");
+        invalidAudioRejected() && oldFormatRejected() && sampledStages() && crossProcess();
+    std::puts(passed ? "PASS: compact v9 0/2/8/256, asymmetric, sparse, wrap, silence, overflow, epoch, stage samples, legacy rejection, cross-process exchange"
+                     : "FAIL: compact v9 transport");
     return passed ? 0 : 1;
 }

@@ -10,7 +10,7 @@ constexpr std::uint32_t kStatusMagic = 0x54535356; // VSST
 
 std::wstring mapName(std::uint32_t pid, std::uint32_t driver,
     std::uint64_t creation) {
-    return L"Local\\VASIO-Map-v8-" +
+    return L"Local\\VASIO-Map-v9-" +
         std::to_wstring(pid) + L"-" + std::to_wstring(driver) + L"-" +
         std::to_wstring(creation);
 }
@@ -40,7 +40,7 @@ bool AudioClientMapping::ReadStatusReadOnly(std::uint32_t driver, std::uint32_t 
     if (!view) { CloseHandle(map); return false; }
     const auto* shared = static_cast<const Shared*>(view);
     const bool valid = shared->magic == kMagic && shared->driverId == driver &&
-        shared->processId == pid && shared->version == 8 &&
+        shared->processId == pid && shared->version == 9 &&
         shared->size == sizeof(Shared) && shared->processCreationTime == creation;
     if (valid) {
         snapshot.layoutVersion = shared->version;

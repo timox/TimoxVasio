@@ -14,6 +14,14 @@ public:
     static constexpr std::uint32_t kRingCapacityFrames = 16384;
     static constexpr std::size_t kChannelMaskWords = kChannelCount / 64;
     using ChannelMask = std::array<std::uint64_t, kChannelMaskWords>;
+    struct StageDurationCounters {
+        std::uint64_t samples = 0, sumTicks = 0, worstTicks = 0;
+    };
+    struct ClientStageCounters {
+        std::uint64_t epoch = 0;
+        StageDurationCounters hostCallback, ringWrite, ringWait;
+        std::uint64_t ringWaitDiscardedBlocks = 0;
+    };
 
     enum class ClientState : std::uint32_t {
         Initialized = 1, BuffersReady = 2, Running = 3,
@@ -64,6 +72,9 @@ public:
 
     bool SetEngineAttached(bool attached) noexcept;
     bool EngineAttached() const noexcept;
+    void SetStageMeasurementsEnabled(bool enabled) noexcept;
+    bool StageMeasurementsEnabled() const noexcept;
+    ClientStageCounters ConsumeClientStageCounters() noexcept;
     bool EngineProcessAlive() const noexcept;
     std::uint32_t SampleRate() const noexcept;
     std::uint32_t BlockFrames() const noexcept;
@@ -90,6 +101,8 @@ public:
     std::uint32_t ClientOutputAvailable() const noexcept;
     std::uint32_t ClientInputAvailable() const noexcept;
     bool WriteClientOutput(const float* interleaved, std::uint32_t frames) noexcept;
+    bool WriteClientOutputMeasured(const float* interleaved, std::uint32_t frames,
+        std::uint64_t callbackTicks, std::uint64_t copyTicks, std::uint64_t publishQpc) noexcept;
     std::uint32_t ReadClientOutput(float* interleaved, std::uint32_t frames) noexcept;
     bool WriteEngineInput(const float* interleaved, std::uint32_t frames) noexcept;
     std::uint32_t ReadClientInput(float* interleaved, std::uint32_t frames) noexcept;

@@ -9,7 +9,7 @@
 
 namespace {
 constexpr std::uint32_t kMagic = 0x56534154; // VSAT
-constexpr std::uint32_t kVersion = 8;
+constexpr std::uint32_t kVersion = 9;
 constexpr std::uint32_t kStatusMagic = 0x54535356; // VSST
 constexpr std::uint64_t kCapacity = AudioClientMapping::kRingCapacityFrames;
 
@@ -27,7 +27,7 @@ std::uint64_t processCreationTime(std::uint32_t pid) noexcept {
 
 std::wstring objectName(const wchar_t* kind, std::uint32_t pid, std::uint32_t driver,
     std::uint64_t creation) {
-    return L"Local\\VASIO-" + std::wstring(kind) + L"-v8-" + std::to_wstring(pid) + L"-" +
+    return L"Local\\VASIO-" + std::wstring(kind) + L"-v9-" + std::to_wstring(pid) + L"-" +
         std::to_wstring(driver) + L"-" + std::to_wstring(creation);
 }
 
@@ -37,6 +37,25 @@ std::wstring audioName(std::uint32_t pid, std::uint32_t driver,
 }
 
 void moduleMarker() noexcept {}
+
+void recordTicks(volatile LONG64* samples, volatile LONG64* sum,
+    volatile LONG64* worst, std::uint64_t ticks) noexcept {
+    InterlockedIncrement64(samples);
+    InterlockedExchangeAdd64(sum, static_cast<LONG64>(ticks));
+    auto previous = InterlockedCompareExchange64(worst, 0, 0);
+    while (ticks > static_cast<std::uint64_t>(previous)) {
+        const auto observed = InterlockedCompareExchange64(worst, static_cast<LONG64>(ticks), previous);
+        if (observed == previous) break;
+        previous = observed;
+    }
+}
+
+AudioClientMapping::StageDurationCounters takeTicks(volatile LONG64* samples,
+    volatile LONG64* sum, volatile LONG64* worst) noexcept {
+    return {static_cast<std::uint64_t>(InterlockedExchange64(samples, 0)),
+        static_cast<std::uint64_t>(InterlockedExchange64(sum, 0)),
+        static_cast<std::uint64_t>(InterlockedExchange64(worst, 0))};
+}
 
 std::wstring ownModulePath() {
     HMODULE module = nullptr;
@@ -145,6 +164,38 @@ bool AudioClientMapping::SetEngineAttached(bool attached) noexcept {
 
 bool AudioClientMapping::EngineAttached() const noexcept {
     return InterlockedCompareExchange64(const_cast<volatile LONG64*>(&shared_->engineAttached), 0, 0) != 0;
+}
+
+void AudioClientMapping::SetStageMeasurementsEnabled(bool enabled) noexcept {
+    if (!shared_ || !engineOwner_) return;
+    const LONG next = enabled ? 1 : 0;
+    if (InterlockedExchange(&shared_->stageMeasurementsEnabled, next) == next) return;
+    InterlockedIncrement64(&shared_->stageMeasurementGeneration);
+    if (!enabled && audio_) {
+        for (auto& sample : audio_->sampledOutput)
+            InterlockedExchange64(&sample.publishQpc, 0);
+    }
+    (void)ConsumeClientStageCounters();
+}
+
+bool AudioClientMapping::StageMeasurementsEnabled() const noexcept {
+    return shared_ && InterlockedCompareExchange(
+        const_cast<volatile LONG*>(&shared_->stageMeasurementsEnabled), 0, 0) != 0;
+}
+
+AudioClientMapping::ClientStageCounters AudioClientMapping::ConsumeClientStageCounters() noexcept {
+    ClientStageCounters result{};
+    if (!shared_) return result;
+    result.epoch = audio_ ? audio_->epoch : 0;
+    result.hostCallback = takeTicks(&shared_->hostCallbackSamples,
+        &shared_->hostCallbackSumTicks, &shared_->hostCallbackWorstTicks);
+    result.ringWrite = takeTicks(&shared_->ringWriteSamples,
+        &shared_->ringWriteSumTicks, &shared_->ringWriteWorstTicks);
+    result.ringWait = takeTicks(&shared_->ringWaitSamples,
+        &shared_->ringWaitSumTicks, &shared_->ringWaitWorstTicks);
+    result.ringWaitDiscardedBlocks = static_cast<std::uint64_t>(
+        InterlockedExchange64(&shared_->ringWaitDiscardedBlocks, 0));
+    return result;
 }
 
 bool AudioClientMapping::EngineProcessAlive() const noexcept {
@@ -431,9 +482,77 @@ bool AudioClientMapping::WriteClientOutput(const float* data, std::uint32_t fram
     return audio_ && Write(data, frames, &audio_->clientWriteFrame, &audio_->engineReadFrame,
         audio_->clientToEngine, &shared_->outputOverruns, audio_->outputStride);
 }
+bool AudioClientMapping::WriteClientOutputMeasured(const float* data, std::uint32_t frames,
+    std::uint64_t callbackTicks, std::uint64_t copyTicks, std::uint64_t publishQpc) noexcept {
+    if (!audio_ || !StageMeasurementsEnabled()) return WriteClientOutput(data, frames);
+    if ((!data && audio_->outputStride) || frames > kCapacity) return false;
+    const auto w = static_cast<std::uint64_t>(InterlockedCompareExchange64(&audio_->clientWriteFrame, 0, 0));
+    const auto r = static_cast<std::uint64_t>(InterlockedCompareExchange64(&audio_->engineReadFrame, 0, 0));
+    if (w - r + frames > kCapacity) { InterlockedIncrement64(&shared_->outputOverruns); return false; }
+    LARGE_INTEGER copyStart{}, published{};
+    QueryPerformanceCounter(&copyStart);
+    const auto first = (std::min)(static_cast<std::uint64_t>(frames), kCapacity - w % kCapacity);
+    if (first && audio_->outputStride)
+        std::memcpy(audio_->clientToEngine + (w % kCapacity) * audio_->outputStride, data,
+            static_cast<std::size_t>(first) * audio_->outputStride * sizeof(float));
+    if (first < frames && audio_->outputStride)
+        std::memcpy(audio_->clientToEngine, data + static_cast<std::size_t>(first) * audio_->outputStride,
+            static_cast<std::size_t>(frames - first) * audio_->outputStride * sizeof(float));
+    QueryPerformanceCounter(&published);
+    const auto generation = InterlockedCompareExchange64(&shared_->stageMeasurementGeneration, 0, 0);
+    auto& sample = audio_->sampledOutput[w % kCapacity];
+    InterlockedExchange64(&sample.firstFrame, static_cast<LONG64>(w));
+    InterlockedExchange64(&sample.epoch, static_cast<LONG64>(audio_->epoch));
+    InterlockedExchange64(&sample.generation, generation);
+    InterlockedExchange(&sample.frames, static_cast<LONG>(frames));
+    InterlockedExchange64(&sample.publishQpc,
+        static_cast<LONG64>(publishQpc ? publishQpc : published.QuadPart));
+    InterlockedExchange64(&audio_->clientWriteFrame, static_cast<LONG64>(w + frames));
+    if (StageMeasurementsEnabled() && generation ==
+        InterlockedCompareExchange64(&shared_->stageMeasurementGeneration, 0, 0)) {
+        recordTicks(&shared_->hostCallbackSamples, &shared_->hostCallbackSumTicks,
+            &shared_->hostCallbackWorstTicks, callbackTicks);
+        const auto ringTicks = copyTicks + static_cast<std::uint64_t>(published.QuadPart - copyStart.QuadPart);
+        recordTicks(&shared_->ringWriteSamples, &shared_->ringWriteSumTicks,
+            &shared_->ringWriteWorstTicks, ringTicks);
+    }
+    return true;
+}
 std::uint32_t AudioClientMapping::ReadClientOutput(float* data, std::uint32_t frames) noexcept {
-    return audio_ ? Read(data, frames, &audio_->engineReadFrame, &audio_->clientWriteFrame,
-        audio_->clientToEngine, &shared_->outputUnderruns, audio_->outputStride) : 0;
+    if (!audio_) return 0;
+    bool matched = false;
+    std::uint64_t published = 0;
+    if (StageMeasurementsEnabled() && (data || !audio_->outputStride)) {
+        const auto r = static_cast<std::uint64_t>(InterlockedCompareExchange64(&audio_->engineReadFrame, 0, 0));
+        const auto w = static_cast<std::uint64_t>(InterlockedCompareExchange64(&audio_->clientWriteFrame, 0, 0));
+        const auto count = (std::min)(static_cast<std::uint64_t>(frames), w - r);
+        const auto generation = InterlockedCompareExchange64(&shared_->stageMeasurementGeneration, 0, 0);
+        for (std::uint64_t offset = 0; offset < count; ++offset) {
+            auto& sample = audio_->sampledOutput[(r + offset) % kCapacity];
+            if (static_cast<std::uint64_t>(InterlockedCompareExchange64(&sample.firstFrame, 0, 0)) != r + offset)
+                continue;
+            const auto stamp = InterlockedExchange64(&sample.publishQpc, 0);
+            if (!stamp) continue;
+            const bool whole = offset == 0 && count == frames &&
+                InterlockedCompareExchange(&sample.frames, 0, 0) == static_cast<LONG>(frames) &&
+                static_cast<std::uint64_t>(InterlockedCompareExchange64(&sample.epoch, 0, 0)) == audio_->epoch &&
+                InterlockedCompareExchange64(&sample.generation, 0, 0) == generation &&
+                PublishedAudioEpoch() == audio_->epoch;
+            if (whole) { matched = true; published = static_cast<std::uint64_t>(stamp); }
+            else InterlockedIncrement64(&shared_->ringWaitDiscardedBlocks);
+        }
+    }
+    LARGE_INTEGER readQpc{};
+    if (matched) QueryPerformanceCounter(&readQpc);
+    const auto count = Read(data, frames, &audio_->engineReadFrame, &audio_->clientWriteFrame,
+        audio_->clientToEngine, &shared_->outputUnderruns, audio_->outputStride);
+    if (matched) {
+        if (count == frames && readQpc.QuadPart >= static_cast<LONG64>(published) && StageMeasurementsEnabled())
+            recordTicks(&shared_->ringWaitSamples, &shared_->ringWaitSumTicks,
+                &shared_->ringWaitWorstTicks, readQpc.QuadPart - published);
+        else InterlockedIncrement64(&shared_->ringWaitDiscardedBlocks);
+    }
+    return count;
 }
 bool AudioClientMapping::WriteEngineInput(const float* data, std::uint32_t frames) noexcept {
     return audio_ && Write(data, frames, &audio_->engineWriteFrame, &audio_->clientReadFrame,

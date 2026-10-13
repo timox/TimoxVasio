@@ -26,18 +26,29 @@ struct alignas(64) AudioClientMapping::Shared {
     volatile LONG64 inputUnderruns, outputOverruns, inputOverruns, outputUnderruns;
     volatile LONG64 engineAttached;
     volatile LONG engineProcessId;
+    volatile LONG stageMeasurementsEnabled;
+    alignas(8) volatile LONG64 stageMeasurementGeneration;
+    volatile LONG64 hostCallbackSamples, hostCallbackSumTicks, hostCallbackWorstTicks;
+    volatile LONG64 ringWriteSamples, ringWriteSumTicks, ringWriteWorstTicks;
+    volatile LONG64 ringWaitSamples, ringWaitSumTicks, ringWaitWorstTicks;
+    volatile LONG64 ringWaitDiscardedBlocks;
     ClientStatusV2 status;
 };
 
 struct alignas(64) AudioClientMapping::Audio {
+    struct SampledBlock {
+        alignas(8) volatile LONG64 firstFrame, epoch, generation, publishQpc;
+        volatile LONG frames;
+    };
     std::uint32_t magic, version, size, driverId, processId;
     alignas(8) std::uint64_t processCreationTime, epoch;
     std::uint32_t capacityFrames, inputStride, outputStride;
     std::uint16_t inputChannels[kChannelCount], outputChannels[kChannelCount];
     alignas(8) volatile LONG64 clientWriteFrame, engineReadFrame;
+    SampledBlock sampledOutput[kRingCapacityFrames];
     volatile LONG64 engineWriteFrame, clientReadFrame;
     alignas(64) float clientToEngine[kRingCapacityFrames * kChannelCount];
     alignas(64) float engineToClient[kRingCapacityFrames * kChannelCount];
 };
 
-static_assert(sizeof(void*) == 8, "v8 transport requires x64");
+static_assert(sizeof(void*) == 8, "v9 transport requires x64");

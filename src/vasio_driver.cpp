@@ -421,6 +421,7 @@ ASIOError VASIODriver::outputReady() { return ASE_NotPresent; }
 void VASIODriver::callbackLoop() noexcept {
     currentCallbackDriver = this;
     long bufferIndex = 0;
+    std::uint32_t stageCallbackNumber = 0;
     bool formatChanged = false;
     while (running_.load()) {
         if (!transport_->EngineAttached()) {
@@ -448,6 +449,10 @@ void VASIODriver::callbackLoop() noexcept {
                     channel.buffers[bufferIndex][frame] = transportBlock_[static_cast<size_t>(frame) * inputStride_ + channel.slot];
             }
 
+            const bool measureStage = transport_->StageMeasurementsEnabled() &&
+                (++stageCallbackNumber % 16u == 0u);
+            LARGE_INTEGER callbackStart{}, callbackEnd{}, copyStart{}, copyEnd{};
+            if (measureStage) QueryPerformanceCounter(&callbackStart);
             if (callbacks_->bufferSwitchTimeInfo) {
                 ASIOTime timeInfo{};
                 const auto position = samplePosition_.load(std::memory_order_relaxed);
@@ -458,6 +463,10 @@ void VASIODriver::callbackLoop() noexcept {
             } else if (callbacks_->bufferSwitch) {
                 callbacks_->bufferSwitch(bufferIndex, ASIOFalse);
             }
+            if (measureStage) {
+                QueryPerformanceCounter(&callbackEnd);
+                QueryPerformanceCounter(&copyStart);
+            }
 
             std::fill(transportBlock_.begin(), transportBlock_.end(), 0.0f);
             for (const auto& channel : channelBuffers_) {
@@ -465,8 +474,13 @@ void VASIODriver::callbackLoop() noexcept {
                 for (long frame = 0; frame < bufferFrames_; ++frame)
                     transportBlock_[static_cast<size_t>(frame) * outputStride_ + channel.slot] = channel.buffers[bufferIndex][frame];
             }
-            const bool exchanged = transport_->WriteClientOutput(transportBlock_.data(),
-                static_cast<std::uint32_t>(bufferFrames_));
+            if (measureStage) QueryPerformanceCounter(&copyEnd);
+            const auto frames = static_cast<std::uint32_t>(bufferFrames_);
+            const bool exchanged = measureStage
+                ? transport_->WriteClientOutputMeasured(transportBlock_.data(), frames,
+                    static_cast<std::uint64_t>(callbackEnd.QuadPart - callbackStart.QuadPart),
+                    static_cast<std::uint64_t>(copyEnd.QuadPart - copyStart.QuadPart), 0)
+                : transport_->WriteClientOutput(transportBlock_.data(), frames);
             transport_->PublishClientExchange(exchanged ? static_cast<std::uint32_t>(bufferFrames_) : 0);
             samplePosition_.fetch_add(static_cast<std::uint64_t>(bufferFrames_), std::memory_order_relaxed);
             bufferIndex ^= 1;
