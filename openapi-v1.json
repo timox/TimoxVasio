@@ -116,7 +116,7 @@
               { "$ref": "#/components/schemas/Event" }
             ]
           },
-          "commands": ["engine.start", "engine.stop", "configuration.apply", "audio.correlation.start", "audio.correlation.stop"],
+          "commands": ["engine.start", "engine.stop", "configuration.apply", "audio.correlation.start", "audio.correlation.stop", "performance.measurements.set"],
           "events": ["engine.status", "devices.changed", "routes.changed", "audio.meter", "audio.stereoPairs.changed", "audio.correlation", "engine.error"]
         }
       }
@@ -125,6 +125,7 @@
   "components": {
     "schemas": {
       "State": { "$ref": "./schemas/api-v1.json#/definitions/state" },
+      "PerformanceMeasurements": { "$ref": "./schemas/api-v1.json#/definitions/performanceMeasurements" },
       "Drivers": { "$ref": "./schemas/api-v1.json#/definitions/drivers" },
       "StereoPair": { "$ref": "./schemas/api-v1.json#/definitions/stereoPair" },
       "ApplicationProfiles": { "$ref": "./schemas/api-v1.json#/definitions/applicationProfiles" },
@@ -138,6 +139,7 @@
       "EngineStopCommand": { "$ref": "./schemas/api-v1.json#/definitions/engineStopCommand" },
       "CorrelationStartCommand": { "$ref": "./schemas/api-v1.json#/definitions/correlationStartCommand" },
       "CorrelationStopCommand": { "$ref": "./schemas/api-v1.json#/definitions/correlationStopCommand" },
+      "PerformanceMeasurementsSetCommand": { "$ref": "./schemas/api-v1.json#/definitions/performanceMeasurementsSetCommand" },
       "Response": { "$ref": "./schemas/api-v1.json#/definitions/response" },
       "Event": { "$ref": "./schemas/api-v1.json#/definitions/event" },
       "Error": { "$ref": "./schemas/api-v1.json#/definitions/error" }

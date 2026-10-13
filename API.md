@@ -132,6 +132,8 @@ est globale au moteur et une seule paire est mesurée à la fois.
 
 Les commandes `{ "id": "start-1", "command": "engine.start" }` et
 `{ "id": "stop-1", "command": "engine.stop" }` n’ont pas de payload.
+
+La commande `{ "id": "mesures-1", "command": "performance.measurements.set", "payload": { "enabled": true } }` active les mesures par étape ; `false` les arrête et efface la fenêtre précédente. Elle est idempotente. Les mesures sont désactivées à chaque démarrage du moteur. `GET /api/v1/state` expose toujours `performanceMeasurements` avec `enabled`, `sampleEveryCallbacks: 16` et `window`. La fenêtre vaut `null` avant cinq secondes complètes ou lorsque la collecte est désactivée. Une fenêtre complète porte `durationMs: 5000`, `clients` et `physical`. Chaque client identifié par `processId` et `driverId` expose `hostCallback`, `ringWrite`, `ringWait` et `ringWaitDiscardedBlocks` ; le moteur physique expose `clientRead`, `routing` et `outputCopy`. Chaque durée vaut `null` sans observation, ou contient `samples`, `meanNs`, `worstNs` en nanosecondes. L'attente de l'anneau mesure la publication jusqu'à la lecture d'un bloc entier correspondant ; les lectures partielles sont écartées. La remise au tampon physique ne mesure pas la latence matérielle ou acoustique. Cette collecte n'ajuste ni tampon ni phase.
 `engine.start` réapplique la dernière configuration confirmée; la commande est
 idempotente et laisse le moteur arrêté si aucune route n’est configurée.
 `engine.stop` arrête le flux audio, ferme le pilote matériel et conserve la

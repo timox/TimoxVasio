@@ -12,6 +12,7 @@
     { "$ref": "#/definitions/engineStopCommand" },
     { "$ref": "#/definitions/correlationStartCommand" },
     { "$ref": "#/definitions/correlationStopCommand" },
+    { "$ref": "#/definitions/performanceMeasurementsSetCommand" },
     { "$ref": "#/definitions/response" },
     { "$ref": "#/definitions/event" }
   ],
@@ -117,7 +118,7 @@
     },
     "state": {
       "type": "object",
-      "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes", "configuredRoutes", "stereoPairs", "bufferHealth"],
+      "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes", "configuredRoutes", "stereoPairs", "bufferHealth", "performanceMeasurements"],
       "properties": {
         "apiVersion": { "const": "1.0" },
         "engine": { "$ref": "#/definitions/engine" },
@@ -126,7 +127,61 @@
         "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } },
         "configuredRoutes": { "type": "array", "description": "All saved routes, including application routes waiting for a client with an active channel.", "items": { "$ref": "#/definitions/route" } },
         "bufferHealth": { "oneOf": [{ "$ref": "#/definitions/bufferHealth" }, { "type": "null" }] },
+        "performanceMeasurements": { "$ref": "#/definitions/performanceMeasurements" },
         "stereoPairs": { "type": "array", "items": { "$ref": "#/definitions/stereoPair" } }
+      },
+      "additionalProperties": false
+    },
+    "performanceDuration": {
+      "type": "object",
+      "required": ["samples", "meanNs", "worstNs"],
+      "properties": {
+        "samples": { "type": "integer", "minimum": 1 },
+        "meanNs": { "type": "integer", "minimum": 0 },
+        "worstNs": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "performanceMeasurements": {
+      "type": "object",
+      "required": ["enabled", "sampleEveryCallbacks", "window"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "sampleEveryCallbacks": { "const": 16 },
+        "window": { "oneOf": [{ "$ref": "#/definitions/performanceWindow" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    },
+    "performanceWindow": {
+      "type": "object",
+      "required": ["durationMs", "clients", "physical"],
+      "properties": {
+        "durationMs": { "const": 5000 },
+        "clients": { "type": "array", "items": { "$ref": "#/definitions/performanceClient" } },
+        "physical": { "$ref": "#/definitions/performancePhysical" }
+      },
+      "additionalProperties": false
+    },
+    "performanceClient": {
+      "type": "object",
+      "required": ["processId", "driverId", "hostCallback", "ringWrite", "ringWait", "ringWaitDiscardedBlocks"],
+      "properties": {
+        "processId": { "type": "integer", "minimum": 1 },
+        "driverId": { "type": "string", "minLength": 1 },
+        "hostCallback": { "oneOf": [{ "$ref": "#/definitions/performanceDuration" }, { "type": "null" }] },
+        "ringWrite": { "oneOf": [{ "$ref": "#/definitions/performanceDuration" }, { "type": "null" }] },
+        "ringWait": { "oneOf": [{ "$ref": "#/definitions/performanceDuration" }, { "type": "null" }] },
+        "ringWaitDiscardedBlocks": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "performancePhysical": {
+      "type": "object",
+      "required": ["clientRead", "routing", "outputCopy"],
+      "properties": {
+        "clientRead": { "oneOf": [{ "$ref": "#/definitions/performanceDuration" }, { "type": "null" }] },
+        "routing": { "oneOf": [{ "$ref": "#/definitions/performanceDuration" }, { "type": "null" }] },
+        "outputCopy": { "oneOf": [{ "$ref": "#/definitions/performanceDuration" }, { "type": "null" }] }
       },
       "additionalProperties": false
     },
@@ -299,13 +354,24 @@
       "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 128 }, "command": { "const": "audio.correlation.stop" } },
       "additionalProperties": false
     },
+    "performanceMeasurementsSetCommand": {
+      "type": "object",
+      "required": ["id", "command", "payload"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "command": { "const": "performance.measurements.set" },
+        "payload": { "type": "object", "required": ["enabled"], "properties": { "enabled": { "type": "boolean" } }, "additionalProperties": false }
+      },
+      "additionalProperties": false
+    },
     "clientCommand": {
       "oneOf": [
         { "$ref": "#/definitions/applyCommand" },
         { "$ref": "#/definitions/engineStartCommand" },
         { "$ref": "#/definitions/engineStopCommand" },
         { "$ref": "#/definitions/correlationStartCommand" },
-        { "$ref": "#/definitions/correlationStopCommand" }
+        { "$ref": "#/definitions/correlationStopCommand" },
+        { "$ref": "#/definitions/performanceMeasurementsSetCommand" }
       ]
     },
     "response": {

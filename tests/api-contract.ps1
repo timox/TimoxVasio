@@ -29,6 +29,8 @@ $required = @(
     'audio.stereoPairs.changed',
     'audio.correlation.start',
     'audio.correlation.stop',
+    'performance.measurements.set',
+    'performanceMeasurements',
     'audio.correlation',
     'engine.error',
     '127.0.0.1'
@@ -55,14 +57,14 @@ foreach ($method in 'get', 'put') {
     }
 }
 if (-not $openApi.paths['/api/v1/ws']['get'].ContainsKey('x-websocket')) { throw 'WebSocket operation is not declared in OpenAPI' }
-foreach ($schema in 'State', 'Drivers', 'StereoPair', 'ApplicationProfiles', 'ReplaceApplicationProfiles', 'ApplicationProfilesUpdate', 'ApplyCommand', 'ClientCommand', 'CorrelationStartCommand', 'CorrelationStopCommand', 'Response', 'Event') {
+foreach ($schema in 'State', 'PerformanceMeasurements', 'Drivers', 'StereoPair', 'ApplicationProfiles', 'ReplaceApplicationProfiles', 'ApplicationProfilesUpdate', 'ApplyCommand', 'ClientCommand', 'CorrelationStartCommand', 'CorrelationStopCommand', 'PerformanceMeasurementsSetCommand', 'Response', 'Event') {
     if (-not $openApi.components.schemas.ContainsKey($schema)) { throw "OpenAPI document lacks schema $schema" }
     if (-not $openApi.components.schemas[$schema]['$ref'].StartsWith('./schemas/api-v1.json#')) { throw "OpenAPI schema $schema does not reuse the normative JSON schema" }
 }
 
 $fixtures = @(
-    @{ name = 'state'; value = @{ apiVersion = '1.0'; engine = @{ state = 'stopped'; physicalDriverId = $null; sampleRate = $null; bufferFrames = $null; lastError = $null }; physicalDrivers = @(); virtualDrivers = @(); routes = @(); configuredRoutes = @(); stereoPairs = @(); bufferHealth = $null } },
-    @{ name = 'measured buffer state'; value = @{ apiVersion = '1.0'; engine = @{ state = 'running'; physicalDriverId = 'physical-1'; sampleRate = 44100; bufferFrames = 512; lastError = $null }; physicalDrivers = @(); virtualDrivers = @(); routes = @(); configuredRoutes = @(); stereoPairs = @(); bufferHealth = @{ state = 'warning'; sampleRate = 44100; bufferFrames = 512; windowDurationMs = 5000; callbackCount = 430; delayedStartCount = 7; processingOverrunCount = 6; blockPeriodNs = 11609977; worstProcessingNs = 12500000; worstMarginNs = -890023 } } },
+    @{ name = 'state'; value = @{ apiVersion = '1.0'; engine = @{ state = 'stopped'; physicalDriverId = $null; sampleRate = $null; bufferFrames = $null; lastError = $null }; physicalDrivers = @(); virtualDrivers = @(); routes = @(); configuredRoutes = @(); stereoPairs = @(); bufferHealth = $null; performanceMeasurements = @{ enabled = $false; sampleEveryCallbacks = 16; window = $null } } },
+    @{ name = 'measured buffer state'; value = @{ apiVersion = '1.0'; engine = @{ state = 'running'; physicalDriverId = 'physical-1'; sampleRate = 44100; bufferFrames = 512; lastError = $null }; physicalDrivers = @(); virtualDrivers = @(); routes = @(); configuredRoutes = @(); stereoPairs = @(); bufferHealth = @{ state = 'warning'; sampleRate = 44100; bufferFrames = 512; windowDurationMs = 5000; callbackCount = 430; delayedStartCount = 7; processingOverrunCount = 6; blockPeriodNs = 11609977; worstProcessingNs = 12500000; worstMarginNs = -890023 }; performanceMeasurements = @{ enabled = $true; sampleEveryCallbacks = 16; window = @{ durationMs = 5000; clients = @(@{ processId = 42; driverId = 'TimoxVasio'; hostCallback = @{ samples = 2; meanNs = 12000; worstNs = 15000 }; ringWrite = $null; ringWait = $null; ringWaitDiscardedBlocks = 1 }); physical = @{ clientRead = $null; routing = $null; outputCopy = $null } } } } },
     @{ name = 'drivers'; value = @{ physicalDrivers = @(); virtualDrivers = @(); stereoPairs = @(@{ id = 'stereo:TimoxVasio:42:output:1-2'; leftEndpointId = 'virtual:TimoxVasio:42:output:1'; rightEndpointId = 'virtual:TimoxVasio:42:output:2'; label = 'AudioApp.exe · Sorties 1–2' }) } },
     @{ name = 'application profiles'; value = @{ profiles = @(@{ processName = 'mixxx.exe'; inputChannels = 255; outputChannels = 255 }) } },
     @{ name = 'replace application profiles'; value = @{ profiles = @(@{ processName = 'mixxx.exe'; inputChannels = 255; outputChannels = 255 }) } },
@@ -72,6 +74,7 @@ $fixtures = @(
     @{ name = 'stop engine command'; value = @{ id = 'request-stop'; command = 'engine.stop' } },
     @{ name = 'start correlation command'; value = @{ id = 'request-correlation-start'; command = 'audio.correlation.start'; payload = @{ stereoPairId = 'stereo:TimoxVasio:42:output:1-2' } } },
     @{ name = 'stop correlation command'; value = @{ id = 'request-correlation-stop'; command = 'audio.correlation.stop' } },
+    @{ name = 'set performance measurements command'; value = @{ id = 'request-performance'; command = 'performance.measurements.set'; payload = @{ enabled = $true } } },
     @{ name = 'success response'; value = @{ id = 'request-1'; success = $true; result = @{ accepted = $true } } },
     @{ name = 'error response'; value = @{ id = 'request-1'; success = $false; error = @{ code = 'INVALID_CONFIGURATION'; message = 'Invalid route' } } },
     @{ name = 'engine status event'; value = @{ event = 'engine.status'; payload = @{ state = 'reconfiguring'; physicalDriverId = $null; sampleRate = $null; bufferFrames = $null; lastError = $null } } },
@@ -115,4 +118,12 @@ $invalidProfilePath = @{ profiles = @(@{ processName = '..\Mixxx.exe'; inputChan
 $invalidProfilePathAccepted = $false
 try { $invalidProfilePathAccepted = $invalidProfilePath | Test-Json -SchemaFile $schemaPath } catch { $invalidProfilePathAccepted = $false }
 if ($invalidProfilePathAccepted) { throw 'Schema accepts an application profile with a path instead of an executable basename' }
+$invalidMeasurement = @{ id = 'bad-measurement'; command = 'performance.measurements.set'; payload = @{ enabled = 'yes' } } | ConvertTo-Json -Compress
+$invalidMeasurementAccepted = $false
+try { $invalidMeasurementAccepted = $invalidMeasurement | Test-Json -SchemaFile $schemaPath } catch { $invalidMeasurementAccepted = $false }
+if ($invalidMeasurementAccepted) { throw 'Schema accepts a non-boolean measurement switch' }
+$missingMeasurement = @{ apiVersion = '1.0'; engine = @{ state = 'stopped'; physicalDriverId = $null; sampleRate = $null; bufferFrames = $null; lastError = $null }; physicalDrivers = @(); virtualDrivers = @(); routes = @(); configuredRoutes = @(); stereoPairs = @(); bufferHealth = $null } | ConvertTo-Json -Depth 8 -Compress
+$missingMeasurementAccepted = $false
+try { $missingMeasurementAccepted = $missingMeasurement | Test-Json -SchemaFile $schemaPath } catch { $missingMeasurementAccepted = $false }
+if ($missingMeasurementAccepted) { throw 'Schema accepts state without performanceMeasurements' }
 Write-Output 'PASS: documented HTTP/WebSocket contract and all schema fixtures.'
