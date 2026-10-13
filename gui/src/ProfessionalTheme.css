@@ -275,3 +275,12 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .transport-table { width: 100%; border-collapse: collapse; }
 .transport-table th, .transport-table td { padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); text-align: left; }
 .transport-table td { font-variant-numeric: tabular-nums; }
+.stage-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 14px 0; color: var(--text-secondary); font-size: 13px; }
+.stage-toggle { display: inline-flex; align-items: center; gap: 7px; color: var(--text-primary); font-weight: 600; }
+.stage-toggle input { width: 17px; height: 17px; accent-color: var(--accent); }
+.stage-measurements { display: grid; gap: 9px; margin-top: 12px; }
+.stage-client + .stage-client { padding-top: 9px; border-top: 1px solid var(--border-subtle); }
+.stage-client h3 { margin: 0 0 6px; font-size: 12px; overflow-wrap: anywhere; }
+.stage-measurement { padding-top: 5px; border-top: 1px solid var(--border-subtle); }
+.stage-measurement strong { font-size: 13px; font-variant-numeric: tabular-nums; }
+.stage-measurement small, .stage-client > small { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 11px; }

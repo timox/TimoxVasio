@@ -47,6 +47,8 @@ function App() {
     }, null, 2));
     const [consoleResult, setConsoleResult] = useState('');
     const [consoleBusy, setConsoleBusy] = useState(false);
+    const [measurementsBusy, setMeasurementsBusy] = useState(false);
+    const [measurementsError, setMeasurementsError] = useState('');
     const [consoleConfirmation, setConsoleConfirmation] = useState('');
     const confirmationDialog = useRef(null);
     const initialMatrixRouteShown = useRef(false);
@@ -444,6 +446,28 @@ function App() {
     })();
     const virtualDriver = apiState?.virtualDrivers.find(driver => driver.id === 'TimoxVasio');
     const bufferHealth = apiState?.bufferHealth;
+    const measurements = apiState?.performanceMeasurements;
+    const measurementWindow = measurements?.enabled ? measurements.window : null;
+    const hasStageSamples = measurementWindow && [
+        ...measurementWindow.clients.flatMap(client => [client.hostCallback, client.ringWrite, client.ringWait]),
+        measurementWindow.physical.clientRead, measurementWindow.physical.routing, measurementWindow.physical.outputCopy
+    ].some(duration => duration !== null);
+    const formatStageNs = ns => ns < 1000000 ? `${(ns / 1000).toFixed(1)} µs` : `${(ns / 1000000).toFixed(2)} ms`;
+    const stageDuration = (label, duration) => <div className="stage-measurement" key={label}>
+        <span>{label}</span>
+        <strong>{duration ? `Mean ${formatStageNs(duration.meanNs)} · Worst ${formatStageNs(duration.worstNs)}` : '—'}</strong>
+        <small>{duration ? `${duration.samples} samples · ${measurementWindow.durationMs / 1000} s window` : 'No samples'}</small>
+    </div>;
+    const setStageMeasurements = async enabled => {
+        setMeasurementsBusy(true);
+        setMeasurementsError('');
+        try {
+            await window.vasio.executeCommand({ id: `performance-measurements-${Date.now()}`,
+                command: 'performance.measurements.set', payload: { enabled } });
+            await refreshState();
+        } catch (error) { setMeasurementsError(error.message); }
+        finally { setMeasurementsBusy(false); }
+    };
     const activeClockDriver = physicalDrivers.find(driver => driver.id === engine?.physicalDriverId)?.name || 'Selected physical ASIO driver';
     const blockMs = bufferHealth ? (bufferHealth.blockPeriodNs / 1000000).toFixed(2) : null;
     const worstMs = bufferHealth ? (bufferHealth.worstProcessingNs / 1000000).toFixed(2) : null;
@@ -639,10 +663,38 @@ function App() {
                 </section>
                 <section className="section performance-flow" aria-label="Audio latency path">
                     <h2>From the ASIO application to the audio output</h2>
+                    <div className="stage-controls">
+                        <label className="stage-toggle"><input type="checkbox" checked={!!measurements?.enabled}
+                            disabled={measurementsBusy || !measurements}
+                            onChange={event => setStageMeasurements(event.target.checked)} />
+                            Measure stages
+                        </label>
+                        <span role="status">{!measurements?.enabled ? 'Measurements off' :
+                            !measurementWindow ? 'Collecting first 5 s window' :
+                            !hasStageSamples ? 'No stage samples' : 'Last complete 5 s window'}</span>
+                    </div>
+                    {measurementsError && <p className="error-panel" role="alert">{measurementsError}</p>}
                     <ol className="transport-steps">
-                        <li><strong>Application produces a block</strong><span>Its ASIO callback writes the output samples into a shared ring in TimoxVasio.</span></li>
-                        <li><strong>Engine reads the shared ring</strong><span>At the next physical callback, the engine reads the completed block and applies the configured routes.</span></li>
-                        <li><strong>Physical ASIO driver receives the block</strong><span>The routed output is handed to the selected card; hardware conversion adds its own delay.</span></li>
+                        <li><strong>Application produces a block</strong><span>Its ASIO callback writes the output samples into a shared ring in TimoxVasio.</span>
+                            <div className="stage-measurements">{measurementWindow?.clients.length ? measurementWindow.clients.map(client =>
+                                <div className="stage-client" key={client.processId}>
+                                    <h3>{client.driverId} · PID {client.processId}</h3>
+                                    {stageDuration('Host callback', client.hostCallback)}
+                                    {stageDuration('Virtual ring write', client.ringWrite)}
+                                </div>) : <span>—</span>}</div></li>
+                        <li><strong>Engine reads the shared ring</strong><span>At the next physical callback, the engine reads the completed block and applies the configured routes.</span>
+                            <div className="stage-measurements">{measurementWindow?.clients.length ? measurementWindow.clients.map(client =>
+                                <div className="stage-client" key={client.processId}>
+                                    <h3>{client.driverId} · PID {client.processId}</h3>
+                                    {stageDuration('Ring wait', client.ringWait)}
+                                    <small>Discarded blocks: {client.ringWaitDiscardedBlocks}</small>
+                                </div>) : <span>—</span>}</div></li>
+                        <li><strong>Physical ASIO driver receives the block</strong><span>The routed output is handed to the selected card; hardware conversion adds its own delay.</span>
+                            <div className="stage-measurements">
+                                {stageDuration('Client read', measurementWindow?.physical.clientRead)}
+                                {stageDuration('Routing', measurementWindow?.physical.routing)}
+                                {stageDuration('Physical output copy', measurementWindow?.physical.outputCopy)}
+                            </div></li>
                     </ol>
                     <p>If the route passes through SuperCollider, the engine first delivers a block to that application. SuperCollider then publishes its output for a following physical callback. A direct route skips this extra application stage.</p>
                     <p className="hint">At the selected rate and buffer size, one block represents {engine?.sampleRate && engine?.bufferFrames ? `${(engine.bufferFrames * 1000 / engine.sampleRate).toFixed(2)} ms` : 'an unknown duration'}. The complete application-to-speaker latency is not measured. The callback measurement above shows whether TimoxVasio finished routing each physical block within the time available.</p>

@@ -652,3 +652,127 @@ test('active channels show meters and the Analyse and API views call documented 
         container.remove(); delete window.vasio; delete window.electronAPI;
     }
 });
+const measurementWindow = {
+    durationMs: 5000,
+    clients: [{ processId: 42, driverId: 'TimoxVasio',
+        hostCallback: { samples: 4, meanNs: 43800, worstNs: 1120000 },
+        ringWrite: { samples: 4, meanNs: 1000, worstNs: 2000 },
+        ringWait: { samples: 3, meanNs: 2000000, worstNs: 3000000 },
+        ringWaitDiscardedBlocks: 1 }],
+    physical: { clientRead: { samples: 2, meanNs: 50000, worstNs: 70000 },
+        routing: { samples: 2, meanNs: 100000, worstNs: 120000 },
+        outputCopy: { samples: 2, meanNs: 30000, worstNs: 40000 } }
+};
+
+test.each([
+    ['off', { enabled: false, sampleEveryCallbacks: 16, window: null }, 'Measurements off'],
+    ['collecting', { enabled: true, sampleEveryCallbacks: 16, window: null }, 'Collecting first 5 s window'],
+    ['no samples', { enabled: true, sampleEveryCallbacks: 16, window: {
+        durationMs: 5000, clients: [{ processId: 42, driverId: 'TimoxVasio',
+            hostCallback: null, ringWrite: null, ringWait: null, ringWaitDiscardedBlocks: 0 }],
+        physical: { clientRead: null, routing: null, outputCopy: null } } }, 'No stage samples']
+])('performance measurements %s state', async (_name, measurements, message) => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    window.vasio = { getState: jest.fn().mockResolvedValue({ ...state, performanceMeasurements: measurements }),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}), onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Performance')));
+        expect(container.querySelector('.performance-flow').textContent).toContain(message);
+        expect(container.querySelector('.stage-measurements')?.textContent).toContain('—');
+    } finally {
+        await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('performance measurements show stages and send documented toggle command', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const executeCommand = jest.fn().mockResolvedValue({ accepted: true });
+    window.vasio = { getState: jest.fn().mockResolvedValue({ ...state, performanceMeasurements:
+            { enabled: true, sampleEveryCallbacks: 16, window: measurementWindow } }),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}),
+        executeCommand };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}), onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Performance')));
+        const flow = container.querySelector('.performance-flow').textContent;
+        expect(flow).toContain('43.8 µs');
+        expect(flow).toContain('1.12 ms');
+        expect(flow).toContain('4 samples');
+        expect(flow).toContain('5 s window');
+        expect(flow).toContain('Routing');
+        expect(flow).toContain('Discarded blocks: 1');
+        await act(async () => { Simulate.change(container.querySelector('.stage-toggle input'), { target: { checked: false } }); await Promise.resolve(); });
+        expect(executeCommand).toHaveBeenCalledWith({ id: expect.any(String),
+            command: 'performance.measurements.set', payload: { enabled: false } });
+    } finally {
+        await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+test('performance measurements keep separate client observations', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const second = { ...measurementWindow.clients[0], processId: 99,
+        hostCallback: { samples: 2, meanNs: 80000, worstNs: 90000 }, ringWaitDiscardedBlocks: 0 };
+    window.vasio = { getState: jest.fn().mockResolvedValue({ ...state, performanceMeasurements:
+            { enabled: true, sampleEveryCallbacks: 16, window: { ...measurementWindow,
+                clients: [...measurementWindow.clients, second] } } }),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}), onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Performance')));
+        expect(container.querySelectorAll('.transport-steps li:first-child .stage-client')).toHaveLength(2);
+        expect(container.querySelector('.transport-steps li:first-child').textContent).toContain('PID 99');
+        expect(container.querySelector('.transport-steps li:first-child').textContent).toContain('80.0 µs');
+    } finally {
+        await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('performance measurements report rejected command and retain API state', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    window.vasio = { getState: jest.fn().mockResolvedValue({ ...state, performanceMeasurements:
+            { enabled: false, sampleEveryCallbacks: 16, window: null } }),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}),
+        executeCommand: jest.fn().mockRejectedValue(new Error('Measurement command rejected')) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}), onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Performance')));
+        await act(async () => { Simulate.change(container.querySelector('.stage-toggle input'),
+            { target: { checked: true } }); await Promise.resolve(); });
+        expect(window.vasio.executeCommand).toHaveBeenCalledWith({ id: expect.any(String),
+            command: 'performance.measurements.set', payload: { enabled: true } });
+        expect(container.querySelector('.performance-flow [role="alert"]').textContent)
+            .toContain('Measurement command rejected');
+        expect(container.querySelector('.stage-toggle input').checked).toBe(false);
+    } finally {
+        await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
