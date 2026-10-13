@@ -2,9 +2,11 @@
 #include <windows.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -193,14 +195,64 @@ bool sampledStages() {
     counters = engine->ConsumeClientStageCounters();
     if (counters.hostCallback.samples || counters.ringWrite.samples ||
         counters.ringWait.samples || counters.ringWaitDiscardedBlocks != 1) return false;
+    if (!client->WriteClientOutputMeasured(block, 16, 15, 25, 1)) return false;
+    engine->SetStageMeasurementsEnabled(false);
+    engine->SetStageMeasurementsEnabled(true);
+    if (engine->ReadClientOutput(received, 16) != 16) return false;
+    counters = engine->ConsumeClientStageCounters();
+    if (counters.hostCallback.samples || counters.ringWrite.samples ||
+        counters.ringWait.samples || counters.ringWaitDiscardedBlocks) return false;
     if (!client->WriteClientOutputMeasured(block, 16, 14, 24, 1) ||
         !client->SetActiveChannels({}, mask({0})) ||
         engine->ReadClientOutput(received, 16) != 16) return false;
     counters = engine->ConsumeClientStageCounters();
-    if (counters.ringWait.samples || counters.ringWaitDiscardedBlocks != 1) return false;
+    if (counters.epoch != client->AudioEpoch() || counters.hostCallback.samples ||
+        counters.ringWrite.samples || counters.ringWait.samples ||
+        counters.ringWaitDiscardedBlocks) return false;
     engine->SetStageMeasurementsEnabled(false);
     return !client->StageMeasurementsEnabled() &&
         engine->ConsumeClientStageCounters().ringWaitDiscardedBlocks == 0;
+}
+
+bool concurrentStageSnapshots() {
+    constexpr unsigned driver = 0xFF33;
+    const auto pid = GetCurrentProcessId();
+    auto client = AudioClientMapping::CreateClient(driver, pid, kRate, kFrames);
+    if (!client || !client->SetActiveChannels({}, mask({0}))) return false;
+    auto engine = AudioClientMapping::OpenEngine(driver, pid, kRate);
+    if (!engine || !engine->AckAudioGeneration(kRate, kFrames)) return false;
+    engine->SetStageMeasurementsEnabled(true);
+    std::atomic<bool> done{false}, consistent{true};
+    std::atomic<std::uint64_t> samples{0};
+    const auto snapshot = [&] {
+        while (!done.load(std::memory_order_acquire)) {
+            const auto counters = engine->ConsumeClientStageCounters();
+            if (counters.hostCallback.sumTicks != 17 * counters.hostCallback.samples ||
+                counters.hostCallback.samples != counters.ringWrite.samples ||
+                (counters.hostCallback.samples && counters.hostCallback.worstTicks != 17))
+                consistent.store(false, std::memory_order_release);
+            samples.fetch_add(counters.hostCallback.samples, std::memory_order_relaxed);
+            std::this_thread::yield();
+        }
+    };
+    std::thread snapshotterA(snapshot), snapshotterB(snapshot);
+    float value = 0;
+    for (unsigned i = 0; i < 5000; ++i) {
+        if (!client->WriteClientOutputMeasured(&value, 1, 17, 19, 1) ||
+            engine->ReadClientOutput(&value, 1) != 1) {
+            consistent.store(false, std::memory_order_release);
+            break;
+        }
+    }
+    done.store(true, std::memory_order_release);
+    snapshotterA.join();
+    snapshotterB.join();
+    const auto remaining = engine->ConsumeClientStageCounters();
+    const auto total = samples.load(std::memory_order_relaxed) + remaining.hostCallback.samples;
+    return consistent.load(std::memory_order_acquire) &&
+        remaining.hostCallback.sumTicks == 17 * remaining.hostCallback.samples &&
+        remaining.hostCallback.samples == remaining.ringWrite.samples &&
+        total > 0 && total <= 5000;
 }
 
 int engineChild(std::uint32_t pid) {
@@ -263,7 +315,8 @@ int wmain(int argc, wchar_t** argv) {
         caseFor(0xFF22, mask({0, 3, 7, 63, 64, 127, 192, 255}), {}, 8, 0) &&
         caseFor(0xFF23, {}, mask({0, 3, 7, 63, 64, 127, 192, 255}), 0, 8) &&
         caseFor(0xFF24, all, all, 256, 256) &&
-        invalidAudioRejected() && oldFormatRejected() && sampledStages() && crossProcess();
+        invalidAudioRejected() && oldFormatRejected() && sampledStages() &&
+        concurrentStageSnapshots() && crossProcess();
     std::puts(passed ? "PASS: compact v9 0/2/8/256, asymmetric, sparse, wrap, silence, overflow, epoch, stage samples, legacy rejection, cross-process exchange"
                      : "FAIL: compact v9 transport");
     return passed ? 0 : 1;

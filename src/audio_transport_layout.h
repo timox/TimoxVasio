@@ -15,6 +15,14 @@ struct alignas(64) ClientStatusV2 {
     volatile LONG64 exchangedFrames, resetRequests;
 };
 
+struct StageCounterBank {
+    volatile LONG inFlight;
+    volatile LONG64 hostCallbackSamples, hostCallbackSumTicks, hostCallbackWorstTicks;
+    volatile LONG64 ringWriteSamples, ringWriteSumTicks, ringWriteWorstTicks;
+    volatile LONG64 ringWaitSamples, ringWaitSumTicks, ringWaitWorstTicks;
+    volatile LONG64 ringWaitDiscardedBlocks;
+};
+
 struct alignas(64) AudioClientMapping::Shared {
     std::uint32_t magic, version, size, driverId, processId;
     alignas(8) std::uint64_t processCreationTime;
@@ -28,10 +36,10 @@ struct alignas(64) AudioClientMapping::Shared {
     volatile LONG engineProcessId;
     volatile LONG stageMeasurementsEnabled;
     alignas(8) volatile LONG64 stageMeasurementGeneration;
-    volatile LONG64 hostCallbackSamples, hostCallbackSumTicks, hostCallbackWorstTicks;
-    volatile LONG64 ringWriteSamples, ringWriteSumTicks, ringWriteWorstTicks;
-    volatile LONG64 ringWaitSamples, ringWaitSumTicks, ringWaitWorstTicks;
-    volatile LONG64 ringWaitDiscardedBlocks;
+    alignas(8) volatile LONG64 stageCounterGeneration;
+    volatile LONG stageCounterConsumer;
+    alignas(8) volatile LONG64 stageCounterEpoch;
+    StageCounterBank stageCounterBanks[2];
     ClientStatusV2 status;
 };
 
@@ -45,6 +53,7 @@ struct alignas(64) AudioClientMapping::Audio {
     std::uint32_t capacityFrames, inputStride, outputStride;
     std::uint16_t inputChannels[kChannelCount], outputChannels[kChannelCount];
     alignas(8) volatile LONG64 clientWriteFrame, engineReadFrame;
+    volatile LONG64 sampledWriteIndex, sampledReadIndex;
     SampledBlock sampledOutput[kRingCapacityFrames];
     volatile LONG64 engineWriteFrame, clientReadFrame;
     alignas(64) float clientToEngine[kRingCapacityFrames * kChannelCount];
