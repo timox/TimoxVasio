@@ -198,9 +198,15 @@ test('performance view distinguishes measured ASIO buffer pressure from missing 
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
             .find(button => button.textContent === 'Performance')));
-        expect(container.querySelector('.buffer-health')?.textContent).toContain('Buffer may be too short');
+        expect(container.querySelector('main > section:first-child')).toBe(container.querySelector('.buffer-health'));
+        expect(container.querySelector('main > section:nth-child(2)')).toBe(container.querySelector('.transport-health'));
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('Slowest callback');
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('Time available');
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('Delayed starts');
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('Processing overruns');
+        expect(container.querySelector('.buffer-health')?.textContent).toContain('Callback timing incidents were observed.');
         expect(container.querySelector('.buffer-health')?.textContent).toContain('44100 Hz');
-        expect(container.querySelector('.buffer-health')?.textContent).toContain('6 processing overruns');
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('Processing overruns6');
         expect(container.querySelector('.buffer-health')?.textContent).toContain('7 starts were unusually late');
         expect(container.querySelector('.buffer-health')?.textContent).toContain('The slowest callback took 12.50 ms, exceeding the 11.61 ms available per block');
     } finally {
@@ -255,6 +261,37 @@ test('performance view explains physical buffer measurements without suggesting 
         expect(explanation).not.toMatch(/try|recommended|optimal/i);
     } finally {
         await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('performance view refreshes callback timing while it stays open', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    jest.useFakeTimers();
+    const first = { ...state, bufferHealth: null };
+    const updated = { ...state, bufferHealth: { state: 'healthy', sampleRate: 48000,
+        bufferFrames: 1024, windowDurationMs: 5000, callbackCount: 235,
+        delayedStartCount: 0, processingOverrunCount: 0, blockPeriodNs: 21333333,
+        worstProcessingNs: 43800, worstMarginNs: 21289533 } };
+    window.vasio = { getState: jest.fn().mockResolvedValueOnce(first).mockResolvedValue(updated),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Performance')));
+        expect(container.querySelector('.buffer-health')?.textContent).toContain('No callback observation yet');
+        await act(async () => { jest.advanceTimersByTime(2000); await Promise.resolve(); });
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('43.8 µs');
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('Callbacks observed235');
+    } finally {
+        await act(async () => root.unmount());
+        jest.useRealTimers();
         container.remove(); delete window.vasio; delete window.electronAPI;
     }
 });

@@ -188,7 +188,7 @@ function App() {
     }, [refreshApplicationProfiles, refreshState]);
 
     useEffect(() => {
-        if (activeView !== 'diagnostics' || !window.vasio?.getState) return undefined;
+        if (!['diagnostics', 'performance'].includes(activeView) || !window.vasio?.getState) return undefined;
         const timer = window.setInterval(() => {
             window.vasio.getState().then(state => {
                 setApiState(state);
@@ -447,6 +447,8 @@ function App() {
     const activeClockDriver = physicalDrivers.find(driver => driver.id === engine?.physicalDriverId)?.name || 'Selected physical ASIO driver';
     const blockMs = bufferHealth ? (bufferHealth.blockPeriodNs / 1000000).toFixed(2) : null;
     const worstMs = bufferHealth ? (bufferHealth.worstProcessingNs / 1000000).toFixed(2) : null;
+    const worstDisplay = bufferHealth?.worstProcessingNs < 1000000
+        ? `${(bufferHealth.worstProcessingNs / 1000).toFixed(1)} µs` : `${worstMs} ms`;
     const marginMs = bufferHealth ? (Math.abs(bufferHealth.worstMarginNs) / 1000000).toFixed(2) : null;
     const stereoPairs = apiState?.stereoPairs || [];
     const selectedStereoPair = stereoPairs.find(pair => pair.id === selectedStereoPairId);
@@ -583,6 +585,46 @@ function App() {
                     </dialog>
                 </section>
             </main> : activeView === 'performance' ? <main className="main-content api-console">
+                <section className="section buffer-health" aria-label="Physical callback performance">
+                    <h2>Physical ASIO callback</h2>
+                    {!bufferHealth ? <p>No callback observation yet. Open an ASIO application and wait for a five-second window.</p> : <>
+                        <p role="status">{bufferHealth.state === 'warning' ? 'Callback timing incidents were observed.' :
+                            bufferHealth.state === 'insufficient' ? 'Insufficient callback data for this window.' :
+                                'No repeated timing incidents in the observed window.'}</p>
+                        <div className="performance-metrics">
+                            <div className="performance-metric primary"><span>Slowest callback</span><strong>{worstDisplay}</strong></div>
+                            <div className="performance-metric"><span>Time available</span><strong>{blockMs} ms</strong></div>
+                            <div className="performance-metric"><span>{bufferHealth.worstMarginNs >= 0 ? 'Time left' : 'Over time'}</span><strong>{marginMs} ms</strong></div>
+                            <div className="performance-metric"><span>Delayed starts</span><strong>{bufferHealth.delayedStartCount}</strong></div>
+                            <div className="performance-metric"><span>Processing overruns</span><strong>{bufferHealth.processingOverrunCount}</strong></div>
+                            <div className="performance-metric"><span>Callbacks observed</span><strong>{bufferHealth.callbackCount}</strong></div>
+                        </div>
+                        <div className="buffer-timeline" role="img" aria-label={`${worstMs} ms of processing within a ${blockMs} ms block; ${bufferHealth.worstMarginNs >= 0 ? `${marginMs} ms remaining` : `${marginMs} ms over the block time`}`}>
+                            <span className="buffer-timeline-work" style={{ width: `${Math.min(100, Math.max(0, bufferHealth.worstProcessingNs / bufferHealth.blockPeriodNs * 100))}%` }} />
+                            <span className="buffer-timeline-remaining" />
+                        </div>
+                        <p className="buffer-explanation">
+                            {bufferHealth.callbackCount} callbacks were observed over {(bufferHealth.windowDurationMs / 1000).toFixed(1)} seconds.{' '}
+                            {bufferHealth.delayedStartCount === 0 && bufferHealth.processingOverrunCount === 0
+                                ? `None started unusually late or took longer than the ${blockMs} ms available per block. `
+                                : `${bufferHealth.delayedStartCount} starts were unusually late; ${bufferHealth.processingOverrunCount} callbacks took longer than the ${blockMs} ms available per block. `}
+                            {`The slowest callback took ${worstMs} ms, `}
+                            {bufferHealth.worstMarginNs >= 0 ? `leaving ${marginMs} ms.`
+                                : `exceeding the ${blockMs} ms available per block by ${marginMs} ms.`}
+                        </p>
+                        <p className="hint">{bufferHealth.sampleRate} Hz · {bufferHealth.bufferFrames} frames · {(bufferHealth.windowDurationMs / 1000).toFixed(1)} s window. Timing incidents do not by themselves prove an audible dropout.</p>
+                    </>}
+                </section>
+                <section className="section transport-health" aria-label="Virtual transport losses">
+                    <h2>Virtual transport</h2>
+                    <p>Underruns and overruns are cumulative for each routed client transport. They indicate incomplete or unconsumed blocks, not elapsed transport time.</p>
+                    {routedTransportDirections.length === 0 ? <p>No routed virtual channels.</p> :
+                        <div className="transport-table-wrap"><table className="transport-table"><thead><tr><th>Client transport</th><th>Underruns</th><th>Overruns</th></tr></thead>
+                            <tbody>{routedTransportDirections.map(direction => <tr key={direction.endpointId}><th scope="row">{direction.label}</th>
+                                <td>{meters[direction.endpointId]?.underruns ?? '—'}</td><td>{meters[direction.endpointId]?.overruns ?? '—'}</td></tr>)}</tbody>
+                        </table></div>}
+                    <p className="hint">Only directions used by active routes are shown. A dash means no meter event has arrived yet.</p>
+                </section>
                 <section className="section clock-source" aria-label="Audio clock source">
                     <span className="performance-kicker">Audio clock</span>
                     <h2>One card sets the pace</h2>
@@ -603,43 +645,7 @@ function App() {
                         <li><strong>Physical ASIO driver receives the block</strong><span>The routed output is handed to the selected card; hardware conversion adds its own delay.</span></li>
                     </ol>
                     <p>If the route passes through SuperCollider, the engine first delivers a block to that application. SuperCollider then publishes its output for a following physical callback. A direct route skips this extra application stage.</p>
-                    <p className="hint">At the selected rate and buffer size, one block represents {engine?.sampleRate && engine?.bufferFrames ? `${(engine.bufferFrames * 1000 / engine.sampleRate).toFixed(2)} ms` : 'an unknown duration'}. The complete application-to-speaker latency is not measured. The callback measurement below answers a different question: did TimoxVasio finish routing each physical block within the time available?</p>
-                </section>
-                <section className="section transport-health" aria-label="Virtual transport losses">
-                    <h2>Virtual transport</h2>
-                    <p>The counters below come from existing audio meter events. They are cumulative for each client transport: an underrun means a block was requested before the transport had all its samples; an overrun means new samples arrived before previous samples were consumed. They do not measure elapsed transport time or prove an audible dropout.</p>
-                    {routedTransportDirections.length === 0 ? <p>No routed virtual channels.</p> :
-                        <div className="transport-table-wrap"><table className="transport-table"><thead><tr><th>Client transport</th><th>Underruns</th><th>Overruns</th></tr></thead>
-                            <tbody>{routedTransportDirections.map(direction => <tr key={direction.endpointId}><th scope="row">{direction.label}</th>
-                                <td>{meters[direction.endpointId]?.underruns ?? '—'}</td><td>{meters[direction.endpointId]?.overruns ?? '—'}</td></tr>)}</tbody>
-                        </table></div>}
-                    <p className="hint">Only directions used by active routes are shown. A dash means no meter event has arrived yet.</p>
-                </section>
-                <section className="section buffer-health" aria-live="polite">
-                    <h2>Physical ASIO buffer</h2>
-                    {!bufferHealth ? <p>No callback observation yet. Start an active route and wait for a five-second window.</p> : <>
-                        <p>{bufferHealth.state === 'warning' ? 'Buffer may be too short for the observed workload.' :
-                            bufferHealth.state === 'insufficient' ? 'Insufficient callback data to assess this buffer.' :
-                                'No repeated timing incidents in the observed windows.'}</p>
-                        <p className="buffer-explanation">
-                            {bufferHealth.callbackCount} callbacks were observed over {(bufferHealth.windowDurationMs / 1000).toFixed(1)} seconds.{' '}
-                            {bufferHealth.delayedStartCount === 0 && bufferHealth.processingOverrunCount === 0
-                                ? `None started unusually late or took longer than the ${blockMs} ms available per block. `
-                                : `${bufferHealth.delayedStartCount} starts were unusually late; ${bufferHealth.processingOverrunCount} callbacks took longer than the ${blockMs} ms available per block. `}
-                            {`The slowest callback took ${worstMs} ms, `}
-                            {bufferHealth.worstMarginNs >= 0 ? `leaving ${marginMs} ms.`
-                                : `exceeding the ${blockMs} ms available per block by ${marginMs} ms.`}
-                        </p>
-                        <div className="buffer-timeline" role="img" aria-label={`${worstMs} ms of processing within a ${blockMs} ms block; ${bufferHealth.worstMarginNs >= 0 ? `${marginMs} ms remaining` : `${marginMs} ms over the block time`}`}>
-                            <span className="buffer-timeline-work" style={{ width: `${Math.min(100, Math.max(0, bufferHealth.worstProcessingNs / bufferHealth.blockPeriodNs * 100))}%` }} />
-                            <span className="buffer-timeline-remaining" />
-                        </div>
-                        <div className="buffer-timeline-labels"><span>Slowest processing: {worstMs} ms</span><span>{bufferHealth.worstMarginNs >= 0 ? `Time left: ${marginMs} ms` : `Over time: ${marginMs} ms`}</span></div>
-                        <p>{bufferHealth.sampleRate} Hz · {bufferHealth.bufferFrames} frames · {(bufferHealth.windowDurationMs / 1000).toFixed(1)} s window · {bufferHealth.callbackCount} callbacks</p>
-                        <p>{bufferHealth.delayedStartCount} delayed starts · {bufferHealth.processingOverrunCount} processing overruns</p>
-                        <p>Block period {(bufferHealth.blockPeriodNs / 1000000).toFixed(2)} ms · worst processing {(bufferHealth.worstProcessingNs / 1000000).toFixed(2)} ms · worst margin {(bufferHealth.worstMarginNs / 1000000).toFixed(2)} ms</p>
-                        <p className="hint">Timing observations do not by themselves prove an audible dropout. Virtual transport underruns and overruns are separate.</p>
-                    </>}
+                    <p className="hint">At the selected rate and buffer size, one block represents {engine?.sampleRate && engine?.bufferFrames ? `${(engine.bufferFrames * 1000 / engine.sampleRate).toFixed(2)} ms` : 'an unknown duration'}. The complete application-to-speaker latency is not measured. The callback measurement above shows whether TimoxVasio finished routing each physical block within the time available.</p>
                 </section>
             </main> : activeView === 'diagnostics' ? <main className="main-content api-console">
                 <section className="section diagnostics-view"><div className="section-heading"><div><h2>Engine logs</h2><p className="hint">Persistent file: %LOCALAPPDATA%\TimoxVasio\logs\engine.log</p></div>

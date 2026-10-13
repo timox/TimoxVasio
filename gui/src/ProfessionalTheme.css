@@ -239,6 +239,13 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 
 .performance-kicker { display: inline-block; margin-bottom: 5px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .clock-source { border-left: 4px solid var(--accent); }
+.performance-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
+.performance-metric { min-width: 0; padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface-inset); }
+.performance-metric span, .performance-metric strong { display: block; }
+.performance-metric span { color: var(--text-secondary); font-size: 13px; }
+.performance-metric strong { margin-top: 5px; color: var(--text-primary); font-size: clamp(20px, 2vw, 28px); font-variant-numeric: tabular-nums; }
+.performance-metric.primary { border-left: 4px solid var(--accent); }
+.performance-metric.primary strong { color: var(--accent); }
 .clock-source p, .performance-flow p { max-width: 90ch; margin-top: 12px; }
 .clock-flow { display: flex; align-items: stretch; gap: 10px; margin-top: 12px; }
 .clock-flow > div { flex: 1 1 0; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--accent-surface); }
@@ -257,8 +264,12 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .buffer-timeline-remaining { flex: 1 1 auto; background: #d7e8e5; }
 .buffer-timeline-labels { display: flex; justify-content: space-between; gap: 12px; margin: 4px 0 14px; color: var(--text-secondary); font-size: 12px; }
 @media (max-width: 850px) {
+    .performance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .clock-flow, .transport-steps { display: flex; flex-direction: column; }
     .clock-flow > span { transform: rotate(90deg); }
+}
+@media (max-width: 520px) {
+    .performance-metrics { grid-template-columns: 1fr; }
 }
 .transport-table-wrap { overflow-x: auto; margin-top: 12px; }
 .transport-table { width: 100%; border-collapse: collapse; }
