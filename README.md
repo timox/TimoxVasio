@@ -2,7 +2,7 @@
 
 **Français** | [English](README.en.md)
 
-**Current release: [1.2.0](https://github.com/timox/TimoxVasio/releases/tag/v1.2.0).** Voir les [notes de version](docs/RELEASE_NOTES_v1.2.0.md) et le [guide des téléchargements Windows](docs/RELEASE_WINDOWS_1.2.0.md).
+**Version actuelle : [1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1).** Voir les [notes de version](docs/RELEASE_NOTES_v1.2.1.md) et le [guide des téléchargements Windows](docs/RELEASE_WINDOWS_1.2.1.md).
 
 ## Objectif
 
@@ -24,7 +24,7 @@ Fournir un pilote ASIO virtuel Windows x64 unique, `TimoxVasio`, qui expose jusq
 
 Les séquences ASIO, les profils API et le chemin Mixxx sont illustrés dans [DRIVER_SEQUENCES.md](docs/DRIVER_SEQUENCES.md). L’architecture est résumée dans [ARCHITECTURE.md](ARCHITECTURE.md). Les preuves et limites du contrôle de protocole sont résumées dans [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md). La [revue UX/UI historique](docs/UX_UI_REVIEW.md) documente les captures antérieures à l’interface 1.1.0.
 
-Les changements de la version 1.2.0 figurent dans les [notes de version](docs/RELEASE_NOTES_v1.2.0.md). Les travaux futurs figurent dans la [feuille de route](docs/ROADMAP.md).
+Les changements de la version 1.2.1 figurent dans les [notes de version](docs/RELEASE_NOTES_v1.2.1.md). Les travaux futurs figurent dans la [feuille de route](docs/ROADMAP.md).
 
 ## Utiliser l’API et soutenir le projet
 

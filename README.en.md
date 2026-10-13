@@ -2,7 +2,7 @@
 
 [Français](README.md) | **English**
 
-**Current release: [1.2.0](https://github.com/timox/TimoxVasio/releases/tag/v1.2.0).** See the [release notes](docs/RELEASE_NOTES_v1.2.0.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.2.0.en.md).
+**Current release: [1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1).** See the [release notes](docs/RELEASE_NOTES_v1.2.1.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.2.1.en.md).
 
 ## Purpose
 
@@ -18,7 +18,7 @@ TimoxVasio is one Windows x64 virtual ASIO driver that can expose up to 256 inpu
 - Timox VASIO Control offers a graphical patchbay alongside the routing matrix, plus meters for active routed channels, stereo L/R correlation, Swagger, an API console, and logs.
 - Discovery was confirmed with a locally modified Mixxx build. The user also confirmed an end-to-end routed audio test on October 5, 2026; measurement details are not recorded here.
 
-See the [driver sequences](docs/DRIVER_SEQUENCES.en.md), [architecture](ARCHITECTURE.en.md), and [ASIO compliance assessment](ASIO_CONFORMITE.en.md). The [1.2.0 release notes](docs/RELEASE_NOTES_v1.2.0.en.md) explain the release. Future work is tracked in the [roadmap](docs/ROADMAP.en.md).
+See the [driver sequences](docs/DRIVER_SEQUENCES.en.md), [architecture](ARCHITECTURE.en.md), and [ASIO compliance assessment](ASIO_CONFORMITE.en.md). The [1.2.1 release notes](docs/RELEASE_NOTES_v1.2.1.en.md) explain the release. Future work is tracked in the [roadmap](docs/ROADMAP.en.md).
 
 ## API and support
 

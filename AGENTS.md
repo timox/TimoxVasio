@@ -8,13 +8,13 @@
 ## Canonical binaries and paths
 | Component | Role | Build | Distribution |
 |---|---|---|---|
-| `TimoxVasio.dll` | ASIO driver loaded by applications | `build_driver_110\Release\TimoxVasio.dll` | `gui\dist\TimoxVasio Driver 1.2.0.zip` |
+| `TimoxVasio.dll` | ASIO driver loaded by applications | `build_driver_110\Release\TimoxVasio.dll` | `gui\dist\TimoxVasio Driver 1.2.1.zip` |
 | `TimoxVirtualAsioEngine.exe` | Audio engine and API server | `build_codex_110\Release\TimoxVirtualAsioEngine.exe` | Embedded under `resources\backend\` in both Electron executables |
-| `Timox VASIO Control` | Electron interface | Sources in `gui\` | `gui\dist\Timox VASIO Control Setup 1.2.0.exe` and `gui\dist\Timox VASIO Control 1.2.0.exe` |
+| `Timox VASIO Control` | Electron interface | Sources in `gui\` | `gui\dist\Timox VASIO Control Setup 1.2.1.exe` and `gui\dist\Timox VASIO Control 1.2.1.exe` |
 
 Electron uses the engine in `build_codex_110\Release` during development and packaging. The packaged application launches it from `process.resourcesPath\backend`. Electron Setup installs the interface and engine. The ASIO DLL is distributed separately in the ZIP and must be installed and registered separately.
 
-The 1.2.0 driver installs to `C:\Program Files\Steinberg\VirtualASIO\1.2.0\TimoxVasio.dll`. This versioned path allows registration while another application still holds an older DLL open. Restart that application to load the new version.
+The 1.2.1 driver installs to `C:\Program Files\Steinberg\VirtualASIO\1.2.1\TimoxVasio.dll`. This versioned path allows registration while another application still holds an older DLL open. Restart that application to load the new version.
 
 ## Provenance
 - Never select a binary by name alone. Check its path, timestamp, and SHA-256.
