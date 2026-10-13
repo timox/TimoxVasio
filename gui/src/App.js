@@ -448,7 +448,8 @@ function App() {
     const bufferHealth = apiState?.bufferHealth;
     const measurements = apiState?.performanceMeasurements;
     const measurementWindow = measurements?.enabled ? measurements.window : null;
-    const hasStageSamples = measurementWindow && [
+    const hasApplicationPath = (measurementWindow?.clients.length || 0) > 0;
+    const hasStageSamples = hasApplicationPath && [
         ...measurementWindow.clients.flatMap(client => [client.hostCallback, client.ringWrite, client.ringWait]),
         measurementWindow.physical.clientRead, measurementWindow.physical.routing, measurementWindow.physical.outputCopy
     ].some(duration => duration !== null);
@@ -671,6 +672,7 @@ function App() {
                         </label>
                         <span role="status">{!measurements?.enabled ? 'Measurements off' :
                             !measurementWindow ? 'Collecting first 5 s window' :
+                            !hasApplicationPath ? 'No active ASIO application path' :
                             !hasStageSamples ? 'No stage samples' : 'Last complete 5 s window'}</span>
                     </div>
                     {measurementsError && <p className="error-panel" role="alert">{measurementsError}</p>}
@@ -680,6 +682,7 @@ function App() {
                                 <div className="stage-client" key={client.processId}>
                                     <h3>{client.driverId} · PID {client.processId}</h3>
                                     {stageDuration('Host callback', client.hostCallback)}
+                                    <small>The full work the application performs during its ASIO callback.</small>
                                     {stageDuration('Virtual ring write', client.ringWrite)}
                                 </div>) : <span>—</span>}</div></li>
                         <li><strong>Engine reads the shared ring</strong><span>At the next physical callback, the engine reads the completed block and applies the configured routes.</span>
@@ -687,13 +690,14 @@ function App() {
                                 <div className="stage-client" key={client.processId}>
                                     <h3>{client.driverId} · PID {client.processId}</h3>
                                     {stageDuration('Ring wait', client.ringWait)}
+                                    <small>From publication to reading the same complete block; not acoustic latency.</small>
                                     <small>Discarded blocks: {client.ringWaitDiscardedBlocks}</small>
                                 </div>) : <span>—</span>}</div></li>
                         <li><strong>Physical ASIO driver receives the block</strong><span>The routed output is handed to the selected card; hardware conversion adds its own delay.</span>
                             <div className="stage-measurements">
-                                {stageDuration('Client read', measurementWindow?.physical.clientRead)}
-                                {stageDuration('Routing', measurementWindow?.physical.routing)}
-                                {stageDuration('Physical output copy', measurementWindow?.physical.outputCopy)}
+                                {stageDuration('Client read', hasApplicationPath ? measurementWindow?.physical.clientRead : null)}
+                                {stageDuration('Routing', hasApplicationPath ? measurementWindow?.physical.routing : null)}
+                                {stageDuration('Physical output copy', hasApplicationPath ? measurementWindow?.physical.outputCopy : null)}
                             </div></li>
                     </ol>
                     <p>If the route passes through SuperCollider, the engine first delivers a block to that application. SuperCollider then publishes its output for a following physical callback. A direct route skips this extra application stage.</p>

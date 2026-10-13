@@ -670,7 +670,11 @@ test.each([
     ['no samples', { enabled: true, sampleEveryCallbacks: 16, window: {
         durationMs: 5000, clients: [{ processId: 42, driverId: 'TimoxVasio',
             hostCallback: null, ringWrite: null, ringWait: null, ringWaitDiscardedBlocks: 0 }],
-        physical: { clientRead: null, routing: null, outputCopy: null } } }, 'No stage samples']
+        physical: { clientRead: null, routing: null, outputCopy: null } } }, 'No stage samples'],
+    ['no application path', { enabled: true, sampleEveryCallbacks: 16, window: {
+        durationMs: 5000, clients: [], physical: {
+            clientRead: null, routing: { samples: 2, meanNs: 20000, worstNs: 30000 },
+            outputCopy: { samples: 2, meanNs: 5000, worstNs: 7000 } } } }, 'No active ASIO application path']
 ])('performance measurements %s state', async (_name, measurements, message) => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     window.vasio = { getState: jest.fn().mockResolvedValue({ ...state, performanceMeasurements: measurements }),
@@ -715,6 +719,8 @@ test('performance measurements show stages and send documented toggle command', 
         expect(flow).toContain('5 s window');
         expect(flow).toContain('Routing');
         expect(flow).toContain('Discarded blocks: 1');
+        expect(flow).toContain('full work the application performs');
+        expect(flow).toContain('same complete block; not acoustic latency');
         await act(async () => { Simulate.change(container.querySelector('.stage-toggle input'), { target: { checked: false } }); await Promise.resolve(); });
         expect(executeCommand).toHaveBeenCalledWith({ id: expect.any(String),
             command: 'performance.measurements.set', payload: { enabled: false } });
