@@ -424,6 +424,8 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
 
 void AudioRoutingRuntime::SetStageMeasurementsEnabled(bool enabled) noexcept {
     stageMeasurementsEnabled_.store(enabled, std::memory_order_release);
+    for (auto& client : clients_)
+        if (client.client.mapping) client.client.mapping->SetStageMeasurementsEnabled(enabled);
     if (!enabled) ConsumeStageCounters();
 }
 

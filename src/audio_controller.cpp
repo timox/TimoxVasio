@@ -137,7 +137,10 @@ bool AudioController::TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
         return false;
 
     ResetPerformanceMeasurementsWindow();
-    replacement->SetStageMeasurementsEnabled(ReadPerformanceMeasurements().enabled);
+    const bool measurementsEnabled = ReadPerformanceMeasurements().enabled;
+    replacement->SetStageMeasurementsEnabled(measurementsEnabled);
+    for (const auto& client : clients)
+        if (client.mapping) client.mapping->SetStageMeasurementsEnabled(measurementsEnabled);
 
     auto retired = std::move(runtime_);
     runtime_ = std::move(replacement);

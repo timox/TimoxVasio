@@ -189,6 +189,20 @@ int main() {
         absentClientRuntime->Process(nullptr, nullptr, frames);
     stageCounters = absentClientRuntime->ConsumeStageCounters();
     if (stageCounters.clientRead.samples || stageCounters.routing.samples) return 24;
+    auto engineMapping = AudioClientMapping::OpenEngine(1, pid, 48000);
+    if (!engineMapping) return 25;
+    auto enginePinned = std::shared_ptr<AudioClientMapping>(std::move(engineMapping));
+    AudioRoutingLayout switchLayout;
+    switchLayout.physicalDriverId = "{driver-1}";
+    switchLayout.sampleRate = 48000;
+    switchLayout.bufferFrames = frames;
+    switchLayout.clients.push_back({{1, pid, L"probe.exe"}, enginePinned});
+    auto switchRuntime = AudioRoutingRuntime::Create(std::move(switchLayout), error);
+    if (!switchRuntime) return 26;
+    switchRuntime->SetStageMeasurementsEnabled(true);
+    if (!pinned->StageMeasurementsEnabled()) return 27;
+    switchRuntime->SetStageMeasurementsEnabled(false);
+    if (pinned->StageMeasurementsEnabled()) return 28;
     std::puts("PASS: physical/virtual routes transfer samples through the preallocated runtime.");
     return 0;
 }
