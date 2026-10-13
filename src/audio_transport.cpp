@@ -488,7 +488,11 @@ bool AudioClientMapping::WriteClientOutputMeasured(const float* data, std::uint3
     if ((!data && audio_->outputStride) || frames > kCapacity) return false;
     const auto w = static_cast<std::uint64_t>(InterlockedCompareExchange64(&audio_->clientWriteFrame, 0, 0));
     const auto r = static_cast<std::uint64_t>(InterlockedCompareExchange64(&audio_->engineReadFrame, 0, 0));
-    if (w - r + frames > kCapacity) { InterlockedIncrement64(&shared_->outputOverruns); return false; }
+    if (w - r + frames > kCapacity) {
+        InterlockedIncrement64(&shared_->outputOverruns);
+        InterlockedIncrement64(&shared_->ringWaitDiscardedBlocks);
+        return false;
+    }
     LARGE_INTEGER copyStart{}, published{};
     QueryPerformanceCounter(&copyStart);
     const auto first = (std::min)(static_cast<std::uint64_t>(frames), kCapacity - w % kCapacity);

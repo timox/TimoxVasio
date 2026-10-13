@@ -192,7 +192,7 @@ bool sampledStages() {
         engine->ReadClientOutput(received, capacity) != capacity) return false;
     counters = engine->ConsumeClientStageCounters();
     if (counters.hostCallback.samples || counters.ringWrite.samples ||
-        counters.ringWait.samples || counters.ringWaitDiscardedBlocks) return false;
+        counters.ringWait.samples || counters.ringWaitDiscardedBlocks != 1) return false;
     if (!client->WriteClientOutputMeasured(block, 16, 14, 24, 1) ||
         !client->SetActiveChannels({}, mask({0})) ||
         engine->ReadClientOutput(received, 16) != 16) return false;
