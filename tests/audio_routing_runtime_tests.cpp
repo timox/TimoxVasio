@@ -176,6 +176,19 @@ int main() {
         noRouteRuntime->Process(nullptr, nullptr, frames);
     stageCounters = noRouteRuntime->ConsumeStageCounters();
     if (stageCounters.clientRead.samples || stageCounters.routing.samples) return 22;
+    AudioRoutingLayout absentClientLayout;
+    absentClientLayout.physicalDriverId = "{driver-1}";
+    absentClientLayout.sampleRate = 48000;
+    absentClientLayout.bufferFrames = frames;
+    absentClientLayout.physicalInputChannels = 1;
+    absentClientLayout.physicalOutputChannels = 1;
+    auto absentClientRuntime = AudioRoutingRuntime::Create(std::move(absentClientLayout), error);
+    if (!absentClientRuntime) return 23;
+    absentClientRuntime->SetStageMeasurementsEnabled(true);
+    for (int cycle = 0; cycle < 16; ++cycle)
+        absentClientRuntime->Process(nullptr, nullptr, frames);
+    stageCounters = absentClientRuntime->ConsumeStageCounters();
+    if (stageCounters.clientRead.samples || stageCounters.routing.samples) return 24;
     std::puts("PASS: physical/virtual routes transfer samples through the preallocated runtime.");
     return 0;
 }

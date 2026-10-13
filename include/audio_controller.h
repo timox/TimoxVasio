@@ -68,7 +68,7 @@ struct PerformanceDuration {
 
 struct PerformanceClientWindow {
     std::uint32_t processId = 0;
-    std::uint32_t driverId = 0;
+    std::string driverId;
     std::optional<PerformanceDuration> hostCallback;
     std::optional<PerformanceDuration> ringWrite;
     std::optional<PerformanceDuration> ringWait;

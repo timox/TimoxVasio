@@ -41,10 +41,11 @@ struct StageTimingCounters {
 class StageTimingAccumulator final {
 public:
     void Add(std::uint64_t ticks) noexcept {
-        const auto index = activeBank_.load(std::memory_order_seq_cst);
+        const auto generation = activeGeneration_.load(std::memory_order_seq_cst);
+        const auto index = generation & 1u;
         auto& bank = banks_[index];
         bank.inFlight.fetch_add(1, std::memory_order_seq_cst);
-        if (activeBank_.load(std::memory_order_seq_cst) != index) {
+        if (activeGeneration_.load(std::memory_order_seq_cst) != generation) {
             bank.inFlight.fetch_sub(1, std::memory_order_seq_cst);
             return;
         }
@@ -56,7 +57,7 @@ public:
         bank.inFlight.fetch_sub(1, std::memory_order_seq_cst);
     }
     StageTimingCounters Consume() noexcept {
-        const auto index = activeBank_.fetch_xor(1u, std::memory_order_seq_cst);
+        const auto index = activeGeneration_.fetch_add(1, std::memory_order_seq_cst) & 1u;
         auto& bank = banks_[index];
         while (bank.inFlight.load(std::memory_order_seq_cst) != 0)
             std::this_thread::yield();
@@ -71,7 +72,7 @@ private:
         std::atomic<std::uint64_t> sumTicks{0};
         std::atomic<std::uint64_t> worstTicks{0};
     };
-    std::atomic<std::uint32_t> activeBank_{0};
+    std::atomic<std::uint64_t> activeGeneration_{0};
     Bank banks_[2];
 };
 

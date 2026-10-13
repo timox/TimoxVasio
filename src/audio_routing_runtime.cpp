@@ -312,7 +312,7 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
     if (sampleStages) {
         LARGE_INTEGER routingEnd{};
         QueryPerformanceCounter(&routingEnd);
-        if (routingEnd.QuadPart >= readEnd.QuadPart)
+        if (observedClient && routingEnd.QuadPart >= readEnd.QuadPart)
             routingTiming_.Add(static_cast<std::uint64_t>(routingEnd.QuadPart - readEnd.QuadPart));
     }
 

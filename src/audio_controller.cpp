@@ -535,7 +535,8 @@ void AudioController::Run() noexcept {
                     for (const auto& client : clients_.GetClientSnapshots()) {
                         PerformanceClientWindow item;
                         item.processId = client.info.processId;
-                        item.driverId = client.info.driverId;
+                        item.driverId = client.info.driverId == 1
+                            ? "TimoxVasio" : std::to_string(client.info.driverId);
                         if (client.mapping) {
                             const auto counters = client.mapping->ConsumeClientStageCounters();
                             if (client.mapping->EngineAttached() && counters.epoch &&
