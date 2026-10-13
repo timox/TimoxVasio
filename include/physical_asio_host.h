@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <cstdint>
+#include <thread>
 #include <vector>
 
 struct PhysicalAsioDriverInfo {
@@ -40,21 +41,38 @@ struct StageTimingCounters {
 class StageTimingAccumulator final {
 public:
     void Add(std::uint64_t ticks) noexcept {
-        samples_.fetch_add(1, std::memory_order_relaxed);
-        sumTicks_.fetch_add(ticks, std::memory_order_relaxed);
-        auto worst = worstTicks_.load(std::memory_order_relaxed);
-        while (ticks > worst && !worstTicks_.compare_exchange_weak(worst, ticks,
+        const auto index = activeBank_.load(std::memory_order_seq_cst);
+        auto& bank = banks_[index];
+        bank.inFlight.fetch_add(1, std::memory_order_seq_cst);
+        if (activeBank_.load(std::memory_order_seq_cst) != index) {
+            bank.inFlight.fetch_sub(1, std::memory_order_seq_cst);
+            return;
+        }
+        bank.sumTicks.fetch_add(ticks, std::memory_order_relaxed);
+        auto worst = bank.worstTicks.load(std::memory_order_relaxed);
+        while (ticks > worst && !bank.worstTicks.compare_exchange_weak(worst, ticks,
             std::memory_order_relaxed, std::memory_order_relaxed)) {}
+        bank.samples.fetch_add(1, std::memory_order_relaxed);
+        bank.inFlight.fetch_sub(1, std::memory_order_seq_cst);
     }
     StageTimingCounters Consume() noexcept {
-        return {samples_.exchange(0, std::memory_order_relaxed),
-            sumTicks_.exchange(0, std::memory_order_relaxed),
-            worstTicks_.exchange(0, std::memory_order_relaxed)};
+        const auto index = activeBank_.fetch_xor(1u, std::memory_order_seq_cst);
+        auto& bank = banks_[index];
+        while (bank.inFlight.load(std::memory_order_seq_cst) != 0)
+            std::this_thread::yield();
+        return {bank.samples.exchange(0, std::memory_order_relaxed),
+            bank.sumTicks.exchange(0, std::memory_order_relaxed),
+            bank.worstTicks.exchange(0, std::memory_order_relaxed)};
     }
 private:
-    std::atomic<std::uint64_t> samples_{0};
-    std::atomic<std::uint64_t> sumTicks_{0};
-    std::atomic<std::uint64_t> worstTicks_{0};
+    struct Bank {
+        std::atomic<std::uint32_t> inFlight{0};
+        std::atomic<std::uint64_t> samples{0};
+        std::atomic<std::uint64_t> sumTicks{0};
+        std::atomic<std::uint64_t> worstTicks{0};
+    };
+    std::atomic<std::uint32_t> activeBank_{0};
+    Bank banks_[2];
 };
 
 using PhysicalAsioProcessCallback = void (*)(const float* const* inputs,
