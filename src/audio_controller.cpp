@@ -15,6 +15,20 @@
 namespace {
 constexpr wchar_t kHostWindowClass[] = L"VirtualASIO.AudioController.MessageWindow";
 
+template<class Counters>
+std::optional<PerformanceDuration> durationFromTicks(const Counters& value,
+    std::uint64_t frequency) noexcept {
+    if (!value.samples || !frequency) return std::nullopt;
+    const auto nanos = [frequency](std::uint64_t ticks) {
+        return static_cast<std::uint64_t>(
+            static_cast<long double>(ticks) * 1000000000.0L / frequency);
+    };
+    return PerformanceDuration{value.samples, static_cast<std::uint64_t>(
+        static_cast<long double>(value.sumTicks) * 1000000000.0L /
+        frequency / value.samples),
+        nanos(value.worstTicks)};
+}
+
 bool supportedBufferFrames(const PhysicalAsioCapabilities& capabilities, std::uint32_t frames) {
     if (!frames || capabilities.minBufferFrames < 0 || capabilities.maxBufferFrames < 0 ||
         frames < static_cast<std::uint32_t>(capabilities.minBufferFrames) ||
@@ -82,6 +96,7 @@ AudioController::AudioController(VasioClientManager& clients, std::wstring confi
 AudioController::~AudioController() { Stop(); }
 
 void AudioController::StopPhysicalRuntime() noexcept {
+    ResetPerformanceMeasurementsWindow();
     callbackSlot_.Publish(nullptr);
     if (physicalHost_) physicalHost_->stop();
     callbackSlot_.WaitForQuiescence();
@@ -120,6 +135,9 @@ bool AudioController::TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
             replacement->RoutedPhysicalOutputChannels().begin(),
             replacement->RoutedPhysicalOutputChannels().end()))
         return false;
+
+    ResetPerformanceMeasurementsWindow();
+    replacement->SetStageMeasurementsEnabled(ReadPerformanceMeasurements().enabled);
 
     auto retired = std::move(runtime_);
     runtime_ = std::move(replacement);
@@ -261,6 +279,38 @@ AudioBufferHealthSnapshot AudioController::ReadBufferHealth() const {
     return bufferHealth_;
 }
 
+PerformanceMeasurementsSnapshot AudioController::ReadPerformanceMeasurements() const {
+    std::lock_guard<std::mutex> lock(performanceMeasurementsMutex_);
+    return performanceMeasurements_;
+}
+
+void AudioController::ResetPerformanceMeasurementsWindow() noexcept {
+    ++performanceMeasurementsGeneration_;
+    std::lock_guard<std::mutex> lock(performanceMeasurementsMutex_);
+    performanceMeasurements_.window.reset();
+}
+
+AudioControllerResult AudioController::SetPerformanceMeasurementsEnabled(bool enabled) {
+    try {
+        return Invoke([this, enabled] {
+            {
+                std::lock_guard<std::mutex> lock(performanceMeasurementsMutex_);
+                if (performanceMeasurements_.enabled == enabled) return AudioControllerResult{true, {}};
+                performanceMeasurements_.enabled = enabled;
+                performanceMeasurements_.window.reset();
+            }
+            ++performanceMeasurementsGeneration_;
+            if (runtime_) runtime_->SetStageMeasurementsEnabled(enabled);
+            if (physicalHost_) physicalHost_->setStageMeasurementsEnabled(enabled);
+            for (const auto& client : clients_.GetClientSnapshots())
+                if (client.mapping) client.mapping->SetStageMeasurementsEnabled(enabled);
+            return AudioControllerResult{true, {}};
+        });
+    } catch (const std::exception& exception) {
+        return {false, exception.what()};
+    }
+}
+
 AudioControllerResult AudioController::ApplyConfiguration(
     const AudioControllerConfiguration& configuration) {
     try {
@@ -358,6 +408,8 @@ void AudioController::Run() noexcept {
         auto nextRouteReconcile = std::chrono::steady_clock::time_point{};
         auto bufferWindowStart = std::chrono::steady_clock::time_point{};
         auto observedBufferHealthGeneration = bufferHealthGeneration_;
+        auto observedPerformanceGeneration = performanceMeasurementsGeneration_;
+        auto performanceWindowStart = std::chrono::steady_clock::time_point{};
         for (;;) {
             const DWORD waitResult = MsgWaitForMultipleObjectsEx(1, &queueEvent_, 20,
                 QS_ALLINPUT, MWMO_INPUTAVAILABLE);
@@ -455,6 +507,54 @@ void AudioController::Run() noexcept {
                 bufferWindowStart = {};
                 bufferHealthPolicy_.Reset();
                 { std::lock_guard<std::mutex> lock(bufferHealthMutex_); bufferHealth_ = {}; }
+            }
+            if (observedPerformanceGeneration != performanceMeasurementsGeneration_) {
+                observedPerformanceGeneration = performanceMeasurementsGeneration_;
+                performanceWindowStart = {};
+                if (runtime_) runtime_->ConsumeStageCounters();
+                if (physicalHost_) physicalHost_->consumeOutputCopyStageCounters();
+                for (const auto& client : clients_.GetClientSnapshots())
+                    if (client.mapping) client.mapping->ConsumeClientStageCounters();
+            }
+            const bool measuring = ReadPerformanceMeasurements().enabled;
+            if (measuring && currentStatus.state == "running" && runtime_ && physicalHost_) {
+                const auto now = std::chrono::steady_clock::now();
+                if (performanceWindowStart == std::chrono::steady_clock::time_point{})
+                    performanceWindowStart = now;
+                if (now - performanceWindowStart >= std::chrono::seconds(5)) {
+                    LARGE_INTEGER frequencyValue{};
+                    QueryPerformanceFrequency(&frequencyValue);
+                    const auto frequency = frequencyValue.QuadPart > 0
+                        ? static_cast<std::uint64_t>(frequencyValue.QuadPart) : 0;
+                    PerformanceMeasurementsWindow window;
+                    const auto runtimeCounters = runtime_->ConsumeStageCounters();
+                    window.physical.clientRead = durationFromTicks(runtimeCounters.clientRead, frequency);
+                    window.physical.routing = durationFromTicks(runtimeCounters.routing, frequency);
+                    window.physical.outputCopy = durationFromTicks(
+                        physicalHost_->consumeOutputCopyStageCounters(), frequency);
+                    for (const auto& client : clients_.GetClientSnapshots()) {
+                        PerformanceClientWindow item;
+                        item.processId = client.info.processId;
+                        item.driverId = client.info.driverId;
+                        if (client.mapping) {
+                            const auto counters = client.mapping->ConsumeClientStageCounters();
+                            if (client.mapping->EngineAttached() && counters.epoch &&
+                                counters.epoch == client.mapping->AudioEpoch() &&
+                                counters.epoch == client.mapping->PublishedAudioEpoch()) {
+                                item.hostCallback = durationFromTicks(counters.hostCallback, frequency);
+                                item.ringWrite = durationFromTicks(counters.ringWrite, frequency);
+                                item.ringWait = durationFromTicks(counters.ringWait, frequency);
+                                item.ringWaitDiscardedBlocks = counters.ringWaitDiscardedBlocks;
+                            }
+                        }
+                        window.clients.push_back(std::move(item));
+                    }
+                    { std::lock_guard<std::mutex> lock(performanceMeasurementsMutex_);
+                      performanceMeasurements_.window = std::move(window); }
+                    performanceWindowStart = now;
+                }
+            } else {
+                performanceWindowStart = {};
             }
             bool shouldStop = false;
             {
@@ -645,6 +745,10 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
         SetStatus(next);
         return {false, next.lastError};
     }
+    runtime_->SetStageMeasurementsEnabled(ReadPerformanceMeasurements().enabled);
+    for (const auto& client : generationClients)
+        if (client.mapping) client.mapping->SetStageMeasurementsEnabled(
+            ReadPerformanceMeasurements().enabled);
 
     // Without an attached client the physical driver remains configured for
     // endpoint discovery. An attached client needs the clock-only callback to
@@ -675,6 +779,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     }
     hostPhysicalInputs_ = runtime_->RoutedPhysicalInputChannels();
     hostPhysicalOutputs_ = runtime_->RoutedPhysicalOutputChannels();
+    physicalHost_->setStageMeasurementsEnabled(ReadPerformanceMeasurements().enabled);
     acknowledgePublishedGenerations(generationClients, sampleRate, physicalBufferFrames);
     next.state = "running";
     next.physicalDriverId = configuration.physicalDriverId;

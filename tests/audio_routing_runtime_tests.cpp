@@ -160,6 +160,22 @@ int main() {
             return 18;
         }
     }
+    auto stageCounters = noRouteRuntime->ConsumeStageCounters();
+    if (stageCounters.clientRead.samples || stageCounters.routing.samples) return 19;
+    for (int cycle = 0; cycle < 16; ++cycle)
+        noRouteRuntime->Process(nullptr, nullptr, frames);
+    stageCounters = noRouteRuntime->ConsumeStageCounters();
+    if (stageCounters.clientRead.samples || stageCounters.routing.samples) return 20;
+    noRouteRuntime->SetStageMeasurementsEnabled(true);
+    for (int cycle = 0; cycle < 16; ++cycle)
+        noRouteRuntime->Process(nullptr, nullptr, frames);
+    stageCounters = noRouteRuntime->ConsumeStageCounters();
+    if (stageCounters.clientRead.samples != 1 || stageCounters.routing.samples != 1) return 21;
+    noRouteRuntime->SetStageMeasurementsEnabled(false);
+    for (int cycle = 0; cycle < 16; ++cycle)
+        noRouteRuntime->Process(nullptr, nullptr, frames);
+    stageCounters = noRouteRuntime->ConsumeStageCounters();
+    if (stageCounters.clientRead.samples || stageCounters.routing.samples) return 22;
     std::puts("PASS: physical/virtual routes transfer samples through the preallocated runtime.");
     return 0;
 }

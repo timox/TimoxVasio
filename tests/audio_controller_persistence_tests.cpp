@@ -45,6 +45,21 @@ int wmain() {
         const auto initial = controller.Snapshot();
         passed = require(initial.state == "stopped" && initial.lastError.empty() &&
             initial.revision == 0, "missing configuration leaves a clean stopped state") && passed;
+        const auto measurementsOff = controller.ReadPerformanceMeasurements();
+        passed = require(!measurementsOff.enabled && !measurementsOff.window,
+            "stage measurements default off without a window") && passed;
+        passed = require(controller.SetPerformanceMeasurementsEnabled(true).success,
+            "stage measurements enable") && passed;
+        passed = require(controller.SetPerformanceMeasurementsEnabled(true).success,
+            "repeated enable is accepted") && passed;
+        const auto measurementsEnabled = controller.ReadPerformanceMeasurements();
+        passed = require(measurementsEnabled.enabled && !measurementsEnabled.window,
+            "enabled measurement has no invented stopped-driver window") && passed;
+        passed = require(controller.SetPerformanceMeasurementsEnabled(false).success,
+            "stage measurements disable") && passed;
+        const auto measurementsDisabled = controller.ReadPerformanceMeasurements();
+        passed = require(!measurementsDisabled.enabled && !measurementsDisabled.window,
+            "disable clears measurement state") && passed;
 
         const AudioControllerConfiguration emptyConfiguration;
         const auto applied = controller.ApplyConfiguration(emptyConfiguration);

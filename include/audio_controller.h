@@ -60,6 +60,38 @@ struct AudioBufferHealthSnapshot {
     AsioBufferAssessment assessment{};
 };
 
+struct PerformanceDuration {
+    std::uint64_t samples = 0;
+    std::uint64_t meanNs = 0;
+    std::uint64_t worstNs = 0;
+};
+
+struct PerformanceClientWindow {
+    std::uint32_t processId = 0;
+    std::uint32_t driverId = 0;
+    std::optional<PerformanceDuration> hostCallback;
+    std::optional<PerformanceDuration> ringWrite;
+    std::optional<PerformanceDuration> ringWait;
+    std::uint64_t ringWaitDiscardedBlocks = 0;
+};
+
+struct PerformancePhysicalWindow {
+    std::optional<PerformanceDuration> clientRead;
+    std::optional<PerformanceDuration> routing;
+    std::optional<PerformanceDuration> outputCopy;
+};
+
+struct PerformanceMeasurementsWindow {
+    std::uint32_t durationMs = 5000;
+    std::vector<PerformanceClientWindow> clients;
+    PerformancePhysicalWindow physical;
+};
+
+struct PerformanceMeasurementsSnapshot {
+    bool enabled = false;
+    std::optional<PerformanceMeasurementsWindow> window;
+};
+
 class AudioController final {
 public:
     explicit AudioController(VasioClientManager& clients,
@@ -86,6 +118,8 @@ public:
     std::vector<AudioControllerSnapshot> EventsSince(std::uint64_t revision) const;
     std::vector<AudioMeterSnapshot> ReadMeters();
     AudioBufferHealthSnapshot ReadBufferHealth() const;
+    AudioControllerResult SetPerformanceMeasurementsEnabled(bool enabled);
+    PerformanceMeasurementsSnapshot ReadPerformanceMeasurements() const;
 
 private:
     template<class Function>
@@ -134,6 +168,10 @@ private:
     AudioBufferHealthSnapshot bufferHealth_;
     AsioBufferHealthPolicy bufferHealthPolicy_;
     std::uint64_t bufferHealthGeneration_ = 0; // Controller worker only.
+    mutable std::mutex performanceMeasurementsMutex_;
+    PerformanceMeasurementsSnapshot performanceMeasurements_;
+    std::uint64_t performanceMeasurementsGeneration_ = 0; // Controller worker only.
+    void ResetPerformanceMeasurementsWindow() noexcept;
     AudioControllerResult ApplyConfigurationCore(const AudioControllerConfiguration& configuration);
     bool TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
         const std::vector<VasioClientSnapshot>& clients);

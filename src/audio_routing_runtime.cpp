@@ -259,6 +259,12 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
         return;
     }
 
+    const bool sampleStages = stageMeasurementsEnabled_.load(std::memory_order_relaxed) &&
+        (++stageSampleIndex_ % 16u == 0);
+    LARGE_INTEGER readStart{};
+    if (sampleStages) QueryPerformanceCounter(&readStart);
+    bool observedClient = false;
+
     std::fill(sourceBlocks_.begin(), sourceBlocks_.end(), nullptr);
     std::fill(destinationBlocks_.begin(), destinationBlocks_.end(), nullptr);
     for (long channel = 0; channel < physicalInputChannels_; ++channel)
@@ -273,7 +279,10 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
         const bool currentGeneration = mapping.AudioEpoch() &&
             mapping.AudioEpoch() == mapping.PublishedAudioEpoch();
         if (attached && currentGeneration)
+        {
+            observedClient = true;
             mapping.ReadClientOutput(client.clientOutput.data(), frames);
+        }
         else std::fill(client.clientOutput.begin(), client.clientOutput.end(), 0.0f);
         for (std::uint32_t slot = 0; slot < client.outputStride; ++slot) {
             const auto sourceIndex = client.outputEndpointIndices[slot];
@@ -293,8 +302,19 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
         }
     }
 
+    LARGE_INTEGER readEnd{};
+    if (sampleStages) QueryPerformanceCounter(&readEnd);
+    if (sampleStages && observedClient && readEnd.QuadPart >= readStart.QuadPart)
+        clientReadTiming_.Add(static_cast<std::uint64_t>(readEnd.QuadPart - readStart.QuadPart));
+
     graph_->Process(sourceBlocks_.data(), destinationBlocks_.data(), frames,
         physicalOutputsPrecleared);
+    if (sampleStages) {
+        LARGE_INTEGER routingEnd{};
+        QueryPerformanceCounter(&routingEnd);
+        if (routingEnd.QuadPart >= readEnd.QuadPart)
+            routingTiming_.Add(static_cast<std::uint64_t>(routingEnd.QuadPart - readEnd.QuadPart));
+    }
 
     const auto correlationGeneration = correlationGeneration_.load(std::memory_order_acquire);
     if ((correlationGeneration & 1u) != 0) {
@@ -400,6 +420,15 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
         if (currentGeneration) mapping.WriteEngineInput(client.clientInput.data(), frames);
         mapping.SignalClient();
     }
+}
+
+void AudioRoutingRuntime::SetStageMeasurementsEnabled(bool enabled) noexcept {
+    stageMeasurementsEnabled_.store(enabled, std::memory_order_release);
+    if (!enabled) ConsumeStageCounters();
+}
+
+AudioRoutingRuntime::StageCounters AudioRoutingRuntime::ConsumeStageCounters() noexcept {
+    return {clientReadTiming_.Consume(), routingTiming_.Consume()};
 }
 
 bool AudioRoutingRuntime::MatchesClientGenerations(

@@ -59,6 +59,10 @@ int wmain() {
     passed = require(initialState && initialState->status == 200 &&
         nlohmann::json::parse(initialState->body).at("bufferHealth").is_null(),
         "GET state reports no physical buffer observation before callbacks") && passed;
+    passed = require(initialState && initialState->status == 200 &&
+        nlohmann::json::parse(initialState->body).at("performanceMeasurements") ==
+            nlohmann::json{{"enabled", false}, {"sampleEveryCallbacks", 16}, {"window", nullptr}},
+        "GET state exposes disabled measurements with a null window") && passed;
     const auto diagnosticState = client.Get("/api/v1/diagnostics?limit=10");
     passed = require(diagnosticState && diagnosticState->status == 200 &&
         nlohmann::json::parse(diagnosticState->body)["level"] == "info",
@@ -122,6 +126,26 @@ int wmain() {
         websocket.read(websocketMessage); // Initial engine.status
         websocket.read(websocketMessage); // Initial devices.changed
         websocket.read(websocketMessage); // Initial audio.stereoPairs.changed
+        passed = require(websocket.send(R"({"id":"measure-on","command":"performance.measurements.set","payload":{"enabled":true}})"),
+            "WebSocket accepts stage measurement enable") && passed;
+        passed = require(websocket.read(websocketMessage) == httplib::ws::Text &&
+            nlohmann::json::parse(websocketMessage).value("success", false),
+            "stage measurement enable is acknowledged") && passed;
+        const auto measuringState = client.Get("/api/v1/state");
+        passed = require(measuringState && measuringState->status == 200 &&
+            nlohmann::json::parse(measuringState->body)["performanceMeasurements"]["enabled"] == true &&
+            nlohmann::json::parse(measuringState->body)["performanceMeasurements"]["window"].is_null(),
+            "stage measurement enable does not invent a physical observation") && passed;
+        passed = require(websocket.send(R"({"id":"measure-repeat","command":"performance.measurements.set","payload":{"enabled":true}})"),
+            "WebSocket accepts repeated stage measurement enable") && passed;
+        passed = require(websocket.read(websocketMessage) == httplib::ws::Text &&
+            nlohmann::json::parse(websocketMessage).value("success", false),
+            "repeated stage measurement enable is acknowledged") && passed;
+        passed = require(websocket.send(R"({"id":"measure-off","command":"performance.measurements.set","payload":{"enabled":false}})"),
+            "WebSocket accepts stage measurement disable") && passed;
+        passed = require(websocket.read(websocketMessage) == httplib::ws::Text &&
+            nlohmann::json::parse(websocketMessage).value("success", false),
+            "stage measurement disable is acknowledged") && passed;
         passed = require(websocket.send(R"({"id":"stop-test","command":"engine.stop"})"),
             "WebSocket accepts an engine.stop request") && passed;
         const auto responseType = websocket.read(websocketMessage);

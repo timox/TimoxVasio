@@ -333,6 +333,27 @@ struct ControlApiServer::Impl {
     Json stateJson() const {
         const auto state = controller.Snapshot();
         const auto bufferHealth = controller.ReadBufferHealth();
+        const auto measurements = controller.ReadPerformanceMeasurements();
+        const auto durationJson = [](const std::optional<PerformanceDuration>& value) -> Json {
+            if (!value) return nullptr;
+            return Json{{"samples", value->samples}, {"meanNs", value->meanNs},
+                {"worstNs", value->worstNs}};
+        };
+        Json measurementWindow = nullptr;
+        if (measurements.window) {
+            Json clientsJson = Json::array();
+            for (const auto& client : measurements.window->clients)
+                clientsJson.push_back({{"processId", client.processId}, {"driverId", client.driverId},
+                    {"hostCallback", durationJson(client.hostCallback)},
+                    {"ringWrite", durationJson(client.ringWrite)},
+                    {"ringWait", durationJson(client.ringWait)},
+                    {"ringWaitDiscardedBlocks", client.ringWaitDiscardedBlocks}});
+            const auto& physical = measurements.window->physical;
+            measurementWindow = {{"durationMs", 5000}, {"clients", std::move(clientsJson)},
+                {"physical", {{"clientRead", durationJson(physical.clientRead)},
+                    {"routing", durationJson(physical.routing)},
+                    {"outputCopy", durationJson(physical.outputCopy)}}}};
+        }
         Json bufferHealthJson = nullptr;
         if (bufferHealth.available) {
             const char* healthState = bufferHealth.assessment.state == AsioBufferHealthState::Warning
@@ -365,6 +386,8 @@ struct ControlApiServer::Impl {
                          {"lastError", std::move(lastError)}}},
             {"physicalDrivers", physicalDriversJson()}, {"virtualDrivers", virtualDriversJson()},
             {"bufferHealth", std::move(bufferHealthJson)},
+            {"performanceMeasurements", {{"enabled", measurements.enabled},
+                {"sampleEveryCallbacks", 16}, {"window", std::move(measurementWindow)}}},
             {"routes", std::move(routes)}, {"configuredRoutes", std::move(configuredRoutes)},
             {"stereoPairs", stereoPairsJson()}};
     }
@@ -377,6 +400,18 @@ struct ControlApiServer::Impl {
             !request.contains("command") || !request["command"].is_string())
             return errorEnvelope(id, "INVALID_CONFIGURATION", "Invalid request envelope", "validate");
         diagnostics.Write(EngineDiagnostics::Level::Debug, "api", "Received command " + request["command"].get<std::string>());
+        if (request["command"] == "performance.measurements.set") {
+            if (request.size() != 3 || !request.contains("payload") ||
+                !request["payload"].is_object() || request["payload"].size() != 1 ||
+                !request["payload"].contains("enabled") ||
+                !request["payload"]["enabled"].is_boolean())
+                return errorEnvelope(id, "INVALID_COMMAND", "Expected payload.enabled boolean", "validate");
+            const auto result = controller.SetPerformanceMeasurementsEnabled(
+                request["payload"]["enabled"].get<bool>());
+            if (!result.success)
+                return errorEnvelope(id, "AUDIO_ENGINE_ERROR", result.error, "apply");
+            return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}}}};
+        }
         if (request["command"] == "engine.start" || request["command"] == "engine.stop") {
             if (request.size() != 2)
                 return errorEnvelope(id, "INVALID_ENGINE_COMMAND", "Engine lifecycle commands accept only id and command", "validate");

@@ -27,6 +27,10 @@ struct AudioRoutingLayout {
 // only reads/writes their fixed storage and the shared-memory rings.
 class AudioRoutingRuntime final {
 public:
+    struct StageCounters {
+        StageTimingCounters clientRead;
+        StageTimingCounters routing;
+    };
     static std::unique_ptr<AudioRoutingRuntime> Create(AudioRoutingLayout layout,
         std::string& error);
     AudioRoutingRuntime(const AudioRoutingRuntime&) = delete;
@@ -35,6 +39,8 @@ public:
     void Process(const float* const* physicalInputs, float* const* physicalOutputs,
                  std::uint32_t frames, bool physicalOutputsPrecleared = false) noexcept;
     std::vector<AudioMeterSnapshot> ReadMeters();
+    void SetStageMeasurementsEnabled(bool enabled) noexcept;
+    StageCounters ConsumeStageCounters() noexcept;
     bool SetCorrelationPair(const std::string& leftEndpointId,
                             const std::string& rightEndpointId) noexcept;
     void StopCorrelation() noexcept;
@@ -84,6 +90,10 @@ private:
     std::vector<const float*> sourceBlocks_;
     std::vector<float*> destinationBlocks_;
     std::vector<ClientBuffers> clients_;
+    std::atomic<bool> stageMeasurementsEnabled_{false};
+    std::uint32_t stageSampleIndex_ = 0; // Physical callback thread only.
+    StageTimingAccumulator clientReadTiming_;
+    StageTimingAccumulator routingTiming_;
     std::unique_ptr<std::atomic<float>[]> peakLinear_;
     std::vector<MeterBinding> meterBindings_;
     std::atomic<std::size_t> correlationLeftIndex_{static_cast<std::size_t>(-1)};

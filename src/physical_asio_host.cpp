@@ -130,6 +130,9 @@ struct PhysicalAsioHost::Session {
     std::atomic<std::uint64_t> timingDelayedStarts{0};
     std::atomic<std::uint64_t> timingOverruns{0};
     std::atomic<std::uint64_t> timingWorstTicks{0};
+    std::atomic<bool> stageMeasurementsEnabled{false};
+    std::uint32_t stageSampleIndex = 0; // Physical callback thread only.
+    StageTimingAccumulator outputCopyTiming;
 
     void Process(long bufferIndex) noexcept {
         if (bufferIndex < 0 || bufferIndex > 1 || !process) return;
@@ -161,6 +164,10 @@ struct PhysicalAsioHost::Session {
             outputPointers[static_cast<std::size_t>(outputChannels[channel].channel)] = destination;
         }
         process(inputPointers.data(), outputPointers.data(), frames, processContext);
+        const bool sampleOutputCopy = stageMeasurementsEnabled.load(std::memory_order_relaxed) &&
+            (++stageSampleIndex % 16u == 0);
+        LARGE_INTEGER outputCopyStart{};
+        if (sampleOutputCopy) QueryPerformanceCounter(&outputCopyStart);
         const auto outputBase = inputCount;
         for (std::size_t channel = 0; channel < outputCount; ++channel) {
             const auto& info = outputChannels[channel];
@@ -173,6 +180,12 @@ struct PhysicalAsioHost::Session {
         if (hasClockOnlyBuffer && clockOnlyBufferIsOutput) {
             auto* destination = static_cast<std::uint8_t*>(buffers[clockOnlyBufferIndex].buffers[index]);
             std::memset(destination, 0, static_cast<std::size_t>(frames) * clockOnlyBytesPerSample);
+        }
+        if (sampleOutputCopy && outputCount > 0) {
+            LARGE_INTEGER outputCopyEnd{};
+            QueryPerformanceCounter(&outputCopyEnd);
+            if (outputCopyEnd.QuadPart >= outputCopyStart.QuadPart)
+                outputCopyTiming.Add(static_cast<std::uint64_t>(outputCopyEnd.QuadPart - outputCopyStart.QuadPart));
         }
         LARGE_INTEGER callbackEnd{};
         QueryPerformanceCounter(&callbackEnd);
@@ -380,6 +393,16 @@ PhysicalAsioTimingCounters PhysicalAsioHost::consumeTimingCounters() noexcept {
         counters.worstProcessingNs = static_cast<std::uint64_t>(
             static_cast<long double>(worstTicks) * 1000000000.0L / session.timingFrequency);
     return counters;
+}
+
+void PhysicalAsioHost::setStageMeasurementsEnabled(bool enabled) noexcept {
+    if (!session_) return;
+    session_->stageMeasurementsEnabled.store(enabled, std::memory_order_release);
+    if (!enabled) session_->outputCopyTiming.Consume();
+}
+
+StageTimingCounters PhysicalAsioHost::consumeOutputCopyStageCounters() noexcept {
+    return session_ && session_->started ? session_->outputCopyTiming.Consume() : StageTimingCounters{};
 }
 
 bool PhysicalAsioHost::start(std::uint32_t bufferFrames,

@@ -189,6 +189,10 @@ if(WIN32)
     target_include_directories(AudioRoutingRuntimeTests PRIVATE ${INCLUDE_DIR})
     target_link_libraries(AudioRoutingRuntimeTests PRIVATE ole32)
 
+    add_executable(PerformanceStageMeasurementsTests
+        tests/performance_stage_measurements_tests.cpp)
+    target_include_directories(PerformanceStageMeasurementsTests PRIVATE ${INCLUDE_DIR})
+
     add_executable(RealtimeCallbackSlotTests tests/realtime_callback_slot_tests.cpp)
     target_include_directories(RealtimeCallbackSlotTests PRIVATE ${INCLUDE_DIR})
 
