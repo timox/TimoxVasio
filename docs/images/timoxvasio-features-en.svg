@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" width="960" height="470" font-family="Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">TimoxVasio features</title>
+  <desc id="d">Eight features: one driver for every application, 256 inputs and outputs per application, no channel locks, one master clock, routes that survive restarts, a local API, meters and stereo correlation, and free software under GPL-3.0.</desc>
+
+  <rect width="960" height="470" fill="#ffffff"/>
+  <text x="30" y="44" font-size="20" font-weight="700" fill="#222">TimoxVasio at a glance</text>
+  <text x="30" y="68" font-size="13" fill="#666">A virtual ASIO driver and routing engine for Windows x64</text>
+
+  <!-- Row 1 -->
+  <g>
+    <rect x="30" y="92" width="210" height="165" rx="14" fill="#efeafd" stroke="#d6ccf7"/>
+    <g fill="none" stroke="#6b4fd8" stroke-width="2.2">
+      <circle cx="68" cy="128" r="9"/>
+      <path d="M50 116L60 122M50 140L60 134M86 116L76 122M86 140L76 134"/>
+      <circle cx="46" cy="114" r="3.5" fill="#6b4fd8"/><circle cx="46" cy="142" r="3.5" fill="#6b4fd8"/>
+      <circle cx="90" cy="114" r="3.5" fill="#6b4fd8"/><circle cx="90" cy="142" r="3.5" fill="#6b4fd8"/>
+    </g>
+    <text x="50" y="180" font-size="15" font-weight="700" fill="#222">One driver</text>
+    <text x="50" y="204" font-size="12.5" fill="#444">Every application picks</text>
+    <text x="50" y="222" font-size="12.5" fill="#444">TimoxVasio. No virtual</text>
+    <text x="50" y="240" font-size="12.5" fill="#444">cards to share out.</text>
+  </g>
+
+  <g>
+    <rect x="260" y="92" width="210" height="165" rx="14" fill="#efeafd" stroke="#d6ccf7"/>
+    <text x="280" y="140" font-size="26" font-weight="800" fill="#6b4fd8">256</text>
+    <text x="280" y="180" font-size="15" font-weight="700" fill="#222">256 in / 256 out</text>
+    <text x="280" y="204" font-size="12.5" fill="#444">Per application, with</text>
+    <text x="280" y="222" font-size="12.5" fill="#444">per-app profiles for hosts</text>
+    <text x="280" y="240" font-size="12.5" fill="#444">that need fewer.</text>
+  </g>
+
+  <g>
+    <rect x="490" y="92" width="210" height="165" rx="14" fill="#e8f5f5" stroke="#b9dcdc"/>
+    <text x="510" y="142" font-size="30" font-weight="800" fill="#0f8b8d">Σ</text>
+    <text x="510" y="180" font-size="15" font-weight="700" fill="#222">No channel locks</text>
+    <text x="510" y="204" font-size="12.5" fill="#444">Several apps can share</text>
+    <text x="510" y="222" font-size="12.5" fill="#444">a channel. Their signals</text>
+    <text x="510" y="240" font-size="12.5" fill="#444">are simply summed.</text>
+  </g>
+
+  <g>
+    <rect x="720" y="92" width="210" height="165" rx="14" fill="#fff6e6" stroke="#f0d6a6"/>
+    <g fill="none" stroke="#d98a00" stroke-width="2.2">
+      <circle cx="758" cy="128" r="16"/>
+      <path d="M758 118V128L766 133"/>
+    </g>
+    <text x="740" y="180" font-size="15" font-weight="700" fill="#222">One master clock</text>
+    <text x="740" y="204" font-size="12.5" fill="#444">The physical interface sets</text>
+    <text x="740" y="222" font-size="12.5" fill="#444">rate and buffer. Nothing</text>
+    <text x="740" y="240" font-size="12.5" fill="#444">is resampled.</text>
+  </g>
+
+  <!-- Row 2 -->
+  <g>
+    <rect x="30" y="277" width="210" height="165" rx="14" fill="#e8f5f5" stroke="#b9dcdc"/>
+    <g fill="none" stroke="#0f8b8d" stroke-width="2.2">
+      <path d="M53 313a15 15 0 1 1 4 12"/>
+      <path d="M51 327l2 -9 8 4"/>
+    </g>
+    <text x="50" y="365" font-size="15" font-weight="700" fill="#222">Persistent routes</text>
+    <text x="50" y="389" font-size="12.5" fill="#444">Routes are tied to the</text>
+    <text x="50" y="407" font-size="12.5" fill="#444">executable and wait for</text>
+    <text x="50" y="425" font-size="12.5" fill="#444">the app to come back.</text>
+  </g>
+
+  <g>
+    <rect x="260" y="277" width="210" height="165" rx="14" fill="#e8f5f5" stroke="#b9dcdc"/>
+    <text x="280" y="327" font-size="22" font-weight="800" fill="#0f8b8d" font-family="Consolas, Menlo, monospace">{ }</text>
+    <text x="280" y="365" font-size="15" font-weight="700" fill="#222">Local API</text>
+    <text x="280" y="389" font-size="12.5" fill="#444">HTTP and WebSocket,</text>
+    <text x="280" y="407" font-size="12.5" fill="#444">documented in OpenAPI.</text>
+    <text x="280" y="425" font-size="12.5" fill="#444">Script everything.</text>
+  </g>
+
+  <g>
+    <rect x="490" y="277" width="210" height="165" rx="14" fill="#f6f6f6" stroke="#dcdcdc"/>
+    <g fill="#0f8b8d">
+      <rect x="512" y="318" width="7" height="14" rx="2"/>
+      <rect x="523" y="306" width="7" height="26" rx="2"/>
+      <rect x="534" y="298" width="7" height="34" rx="2"/>
+      <rect x="545" y="310" width="7" height="22" rx="2"/>
+    </g>
+    <text x="510" y="365" font-size="15" font-weight="700" fill="#222">Meters and analysis</text>
+    <text x="510" y="389" font-size="12.5" fill="#444">Live levels on routed</text>
+    <text x="510" y="407" font-size="12.5" fill="#444">channels and L/R stereo</text>
+    <text x="510" y="425" font-size="12.5" fill="#444">correlation.</text>
+  </g>
+
+  <g>
+    <rect x="720" y="277" width="210" height="165" rx="14" fill="#f6f6f6" stroke="#dcdcdc"/>
+    <text x="740" y="327" font-size="18" font-weight="800" fill="#444">GPL-3.0</text>
+    <text x="740" y="365" font-size="15" font-weight="700" fill="#222">Free software</text>
+    <text x="740" y="389" font-size="12.5" fill="#444">Open from driver to UI,</text>
+    <text x="740" y="407" font-size="12.5" fill="#444">including the ASIO SDK</text>
+    <text x="740" y="425" font-size="12.5" fill="#444">under its GPLv3 option.</text>
+  </g>
+</svg>

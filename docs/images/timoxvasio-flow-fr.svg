@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" width="960" height="620" font-family="Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">TimoxVasio : flux audio et contrôle</title>
+  <desc id="d">Les applications ASIO passent par le pilote virtuel TimoxVasio. Le moteur relie les canaux dans une matrice vers d'autres applications ou vers la carte physique, qui fournit l'horloge maître. L'interface et les scripts pilotent le moteur par une API locale HTTP/WebSocket.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#555"/>
+    </marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#0f8b8d"/>
+    </marker>
+  </defs>
+
+  <rect width="960" height="620" fill="#ffffff"/>
+  <text x="30" y="42" font-size="20" font-weight="700" fill="#222">TimoxVasio : du son entre applications, sans câble</text>
+
+  <!-- Applications -->
+  <text x="130" y="78" font-size="12" font-weight="600" fill="#666" text-anchor="middle">APPLICATIONS ASIO</text>
+  <g font-size="14" fill="#222" text-anchor="middle">
+    <rect x="30" y="90" width="200" height="70" rx="10" fill="#f6f6f6" stroke="#c9c9c9"/>
+    <text x="130" y="120" font-weight="700">Renoise</text>
+    <text x="130" y="140" font-size="12" fill="#666">Séquenceur</text>
+    <rect x="30" y="175" width="200" height="70" rx="10" fill="#f6f6f6" stroke="#c9c9c9"/>
+    <text x="130" y="205" font-weight="700">Ableton Live</text>
+    <text x="130" y="225" font-size="12" fill="#666">DAW</text>
+    <rect x="30" y="260" width="200" height="70" rx="10" fill="#f6f6f6" stroke="#c9c9c9"/>
+    <text x="130" y="290" font-weight="700">Mixxx</text>
+    <text x="130" y="310" font-size="12" fill="#666">Mix DJ</text>
+    <rect x="30" y="345" width="200" height="70" rx="10" fill="#f6f6f6" stroke="#c9c9c9"/>
+    <text x="130" y="375" font-weight="700">SuperCollider</text>
+    <text x="130" y="395" font-size="12" fill="#666">Moteur de synthèse</text>
+  </g>
+
+  <!-- Apps <-> driver -->
+  <g stroke="#555" stroke-width="1.6" fill="none">
+    <path d="M232 125H263" marker-start="url(#a)" marker-end="url(#a)"/>
+    <path d="M232 210H263" marker-start="url(#a)" marker-end="url(#a)"/>
+    <path d="M232 295H263" marker-start="url(#a)" marker-end="url(#a)"/>
+    <path d="M232 380H263" marker-start="url(#a)" marker-end="url(#a)"/>
+  </g>
+
+  <!-- Driver -->
+  <rect x="265" y="90" width="140" height="325" rx="12" fill="#efeafd" stroke="#6b4fd8" stroke-width="2"/>
+  <g text-anchor="middle" fill="#222">
+    <text x="335" y="215" font-size="15" font-weight="700">TimoxVasio</text>
+    <text x="335" y="240" font-size="12">Un seul pilote</text>
+    <text x="335" y="257" font-size="12">pour toutes</text>
+    <text x="335" y="274" font-size="12">les applis</text>
+    <text x="335" y="301" font-size="12" font-weight="600" fill="#6b4fd8">256 E / 256 S</text>
+    <text x="335" y="318" font-size="12" fill="#6b4fd8">par application</text>
+  </g>
+
+  <!-- Driver <-> engine -->
+  <path d="M407 250H443" stroke="#555" stroke-width="2.4" fill="none" marker-start="url(#a)" marker-end="url(#a)"/>
+
+  <!-- Engine -->
+  <rect x="445" y="70" width="260" height="365" rx="12" fill="#e8f5f5" stroke="#0f8b8d" stroke-width="2"/>
+  <text x="575" y="96" font-size="15" font-weight="700" fill="#222" text-anchor="middle">Moteur de routage</text>
+
+  <!-- Matrix -->
+  <g font-size="11" fill="#444">
+    <text x="580" y="140" text-anchor="middle" font-weight="600">SC</text>
+    <text x="620" y="140" text-anchor="middle" font-weight="600">Live</text>
+    <text x="660" y="140" text-anchor="middle" font-weight="600">SSL</text>
+    <text x="552" y="172" text-anchor="end">Renoise 1-2</text>
+    <text x="552" y="208" text-anchor="end">Renoise 3-4</text>
+    <text x="552" y="244" text-anchor="end">Live 1-2</text>
+    <text x="552" y="280" text-anchor="end">Mixxx 1-2</text>
+    <text x="552" y="316" text-anchor="end">Synthés</text>
+  </g>
+  <g stroke="#b9dcdc" stroke-width="1">
+    <path d="M560 150H680M560 186H680M560 222H680M560 258H680M560 294H680M560 330H680"/>
+    <path d="M560 150V330M600 150V330M640 150V330M680 150V330"/>
+  </g>
+  <rect x="640" y="150" width="40" height="144" fill="#0f8b8d" fill-opacity="0.10"/>
+  <g fill="#0f8b8d">
+    <circle cx="660" cy="168" r="7"/>
+    <circle cx="580" cy="204" r="7"/>
+    <circle cx="660" cy="240" r="7"/>
+    <circle cx="660" cy="276" r="7"/>
+    <circle cx="580" cy="312" r="7"/>
+    <circle cx="620" cy="312" r="7"/>
+  </g>
+  <text x="660" y="346" font-size="13" font-weight="700" fill="#0f8b8d" text-anchor="middle">Σ</text>
+
+  <g font-size="12" fill="#222">
+    <text x="465" y="370"><tspan font-weight="700" fill="#0f8b8d">Σ</tspan>  Sources additionnées</text>
+    <text x="465" y="388">•  Gain et mute par route</text>
+    <text x="465" y="406">•  Routes liées à l'exécutable</text>
+    <text x="465" y="424">•  Aucune conversion de fréquence</text>
+  </g>
+
+  <!-- Engine <-> physical -->
+  <path d="M707 240H743" stroke="#555" stroke-width="2.4" fill="none" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text x="725" y="228" font-size="10" fill="#666" text-anchor="middle">ASIO</text>
+
+  <!-- Physical -->
+  <text x="840" y="78" font-size="12" font-weight="600" fill="#666" text-anchor="middle">MATÉRIEL</text>
+  <rect x="745" y="90" width="190" height="50" rx="10" fill="#f6f6f6" stroke="#c9c9c9"/>
+  <text x="840" y="120" font-size="13" fill="#222" text-anchor="middle">Entrées : synthés</text>
+  <path d="M840 142V168" stroke="#555" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+  <rect x="745" y="170" width="190" height="140" rx="12" fill="#fff6e6" stroke="#d98a00" stroke-width="2"/>
+  <g text-anchor="middle" fill="#222">
+    <text x="840" y="210" font-size="15" font-weight="700">Carte ASIO physique</text>
+    <text x="840" y="230" font-size="12" fill="#666">ex. SSL 12</text>
+    <text x="840" y="262" font-size="12" font-weight="600" fill="#b06f00">Horloge maître</text>
+    <text x="840" y="280" font-size="12" fill="#b06f00">fréquence et buffer</text>
+    <text x="840" y="296" font-size="12" fill="#b06f00">communs à tous</text>
+  </g>
+  <path d="M840 312V348" stroke="#555" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+  <rect x="745" y="350" width="190" height="50" rx="10" fill="#f6f6f6" stroke="#c9c9c9"/>
+  <text x="840" y="380" font-size="13" fill="#222" text-anchor="middle">Sorties : enceintes, casque</text>
+
+  <!-- Engine <-> API -->
+  <path d="M575 437V461" stroke="#0f8b8d" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-start="url(#ac)" marker-end="url(#ac)"/>
+
+  <!-- API -->
+  <rect x="445" y="463" width="260" height="56" rx="10" fill="#ffffff" stroke="#0f8b8d" stroke-width="2"/>
+  <text x="575" y="487" font-size="14" font-weight="700" fill="#222" text-anchor="middle">API locale</text>
+  <text x="575" y="506" font-size="11" fill="#0f8b8d" text-anchor="middle">HTTP + WebSocket · OpenAPI · en local</text>
+
+  <!-- API <-> clients -->
+  <g stroke="#0f8b8d" stroke-width="1.6" stroke-dasharray="5 4" fill="none">
+    <path d="M507 521V543" marker-start="url(#ac)" marker-end="url(#ac)"/>
+    <path d="M642 521V543" marker-start="url(#ac)" marker-end="url(#ac)"/>
+  </g>
+
+  <!-- Clients -->
+  <rect x="445" y="545" width="125" height="58" rx="10" fill="#f6f6f6" stroke="#c9c9c9"/>
+  <text x="507" y="569" font-size="13" font-weight="700" fill="#222" text-anchor="middle">VASIO Control</text>
+  <text x="507" y="587" font-size="11" fill="#666" text-anchor="middle">Matrice, niveaux</text>
+  <rect x="580" y="545" width="125" height="58" rx="10" fill="#f6f6f6" stroke="#c9c9c9"/>
+  <text x="642" y="569" font-size="13" font-weight="700" fill="#222" text-anchor="middle">Vos scripts</text>
+  <text x="642" y="587" font-size="11" fill="#666" text-anchor="middle">PowerShell, Node…</text>
+
+  <!-- API features -->
+  <g font-size="12" fill="#222">
+    <text x="745" y="487" font-weight="600" fill="#0f8b8d">Ce que l'API expose</text>
+    <text x="745" y="507">•  Clients et canaux ouverts</text>
+    <text x="745" y="525">•  Routes : lecture, application</text>
+    <text x="745" y="543">•  Niveaux, corrélation stéréo</text>
+    <text x="745" y="561">•  Démarrage, arrêt, journaux</text>
+  </g>
+
+  <!-- Legend -->
+  <g font-size="12" fill="#444">
+    <path d="M30 555H70" stroke="#555" stroke-width="2"/>
+    <text x="80" y="559">Audio</text>
+    <path d="M30 580H70" stroke="#0f8b8d" stroke-width="1.6" stroke-dasharray="5 4"/>
+    <text x="80" y="584">Contrôle</text>
+  </g>
+</svg>

@@ -2,78 +2,102 @@
 
 **Français** | [English](README.en.md)
 
-**Version actuelle : [1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1).** Voir les [notes de version](docs/RELEASE_NOTES_v1.2.1.md) et le [guide des téléchargements Windows](docs/RELEASE_WINDOWS_1.2.1.md).
+Pilote ASIO virtuel et moteur de routage audio pour Windows x64.
 
-## Objectif
+TimoxVasio permet de faire circuler l'audio entre plusieurs applications ASIO, et vers une carte son physique, sans câble ni table de mixage. Les routes se configurent depuis une interface graphique ou par une API locale.
 
+Version actuelle : **[1.1.1](https://github.com/timox/TimoxVasio/releases/tag/v1.1.1)**.
 
-<img width="1665" height="941" alt="{AD197DE5-301E-4BB9-B8A0-9F3CAD2BDD3B}" src="https://github.com/user-attachments/assets/4530be3c-ff8f-4613-b160-6f602c519c8a" />
+![TimoxVasio en un coup d'œil : un seul pilote, 256 entrées et sorties par application, pas de verrou, une seule horloge, routes persistantes, API locale, niveaux et analyse, logiciel libre](docs/images/timoxvasio-features-fr.svg)
 
+## Pourquoi
 
-Fournir un pilote ASIO virtuel Windows x64 unique, `TimoxVasio`, qui expose jusqu’à 256 canaux d’entrée et 256 canaux de sortie à chaque application compatible ASIO. Un moteur distinct relie les canaux effectivement ouverts par les applications aux entrées et sorties d’un pilote ASIO physique. Une interface configure le périphérique maître et les routes.
+Un pilote ASIO classique ne sert qu'une application à la fois, et les applications ne peuvent pas s'envoyer de son. TimoxVasio se place entre les applications et la carte : toutes l'ouvrent en même temps, et le moteur les relie entre elles et à la carte.
 
-## État actuel
+![Avant : une seule application accède à la carte, les autres sont bloquées. Après : toutes les applications passent par TimoxVasio en même temps.](docs/images/timoxvasio-before-after-fr.svg)
 
-- La DLL `TimoxVasio.dll` et le moteur `TimoxVirtualAsioEngine.exe` sont deux composants distincts; les builds sont documentés dans [BUILD_DRIVERS.md](BUILD_DRIVERS.md).
-- La sonde COM confirme 256 canaux dans chaque direction, jusqu’à l’index 255. Des probes couvrent aussi l’allocation de buffers, le transport et le graphe de routage.
-- Le moteur ouvre le pilote ASIO physique choisi et utilise sa fréquence et sa taille de bloc effectives comme référence commune.
-- L’API publie les clients, les canaux réellement alloués, les routes enregistrées et les routes actives; l’interface transmet les changements de configuration à cette API.
-- Les routes enregistrées par nom d’exécutable attendent la reconnexion d’une application sans dépendre de son ancien PID.
-- Timox VASIO Control présente les niveaux des canaux actifs et routés, la corrélation d’une paire stéréo L/R, Swagger, une console API et les journaux.
-- La découverte de `TimoxVasio` a été confirmée avec une build locale modifiée de Mixxx. Le test de bout en bout du signal routé a également été réalisé et confirmé par l’utilisateur le 5 octobre 2026; les détails de mesure ne sont pas consignés dans ce README.
+## Ce que ça fait
 
-Les séquences ASIO, les profils API et le chemin Mixxx sont illustrés dans [DRIVER_SEQUENCES.md](docs/DRIVER_SEQUENCES.md). L’architecture est résumée dans [ARCHITECTURE.md](ARCHITECTURE.md). Les preuves et limites du contrôle de protocole sont résumées dans [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md). La [revue UX/UI historique](docs/UX_UI_REVIEW.md) documente les captures antérieures à l’interface 1.1.0.
+- **Un seul pilote pour toutes les applications.** Pas de cartes virtuelles multiples à répartir : chaque application sélectionne TimoxVasio et ouvre les canaux dont elle a besoin.
+- **Jusqu'à 256 entrées et 256 sorties** par application.
+- **Pas de verrou sur les canaux.** Plusieurs applications peuvent ouvrir le pilote simultanément, y compris sur les mêmes canaux. Les signaux sont alors additionnés.
+- **Un routage canal par canal** entre applications, ou entre une application et les entrées/sorties d'une carte ASIO physique, avec gain et mute par route.
+- **Des routes qui survivent aux redémarrages.** Une route enregistrée pour `renoise.exe` attend que Renoise se reconnecte.
+- **Une API locale** HTTP et WebSocket, décrite en OpenAPI, pour tout piloter par script.
 
-Les changements de la version 1.2.1 figurent dans les [notes de version](docs/RELEASE_NOTES_v1.2.1.md). Les travaux futurs figurent dans la [feuille de route](docs/ROADMAP.md).
+Testé avec Renoise, Ableton Live et Mixxx.
 
-## Utiliser l’API et soutenir le projet
+## Comment ça marche
 
-Le [quick start API](docs/API_QUICKSTART.md) présente l’architecture complète
-et des exemples PowerShell/Node.js. Le contrat détaillé se trouve dans
-[`API.md`](API.md) et [`openapi-v1.json`](openapi-v1.json).
+![Flux audio : les applications passent par le pilote TimoxVasio, le moteur route les canaux vers d'autres applications ou vers la carte physique, qui fournit l'horloge. L'interface et les scripts pilotent le moteur par l'API locale.](docs/images/timoxvasio-flow-fr.svg)
 
-TimoxVasio peut être soutenu via [GitHub Sponsors](https://github.com/sponsors/timox).
-Voir [Soutenir le projet](docs/FUNDING.md) pour savoir comment le financement
-sera utilisé.
+| Composant | Rôle |
+|---|---|
+| `TimoxVasio.dll` | Le pilote ASIO virtuel chargé par les applications audio. |
+| `TimoxVirtualAsioEngine.exe` | Le moteur qui transporte l'audio et applique les routes. |
+| API locale | HTTP et WebSocket sur `127.0.0.1`, décrite en OpenAPI. C'est le seul point d'entrée pour configurer le moteur. |
+| Timox VASIO Control | L'interface Electron : choix de la carte physique, matrice et patchbay de routage, niveaux, corrélation stéréo, console API, journaux. |
 
-## Architecture simplifiée
+La carte physique choisie sert d'horloge maître : toutes les applications utilisent sa fréquence d'échantillonnage et sa taille de buffer. Aucune conversion de fréquence n'est faite.
 
-```mermaid
-flowchart LR
-    subgraph Apps[Applications compatibles ASIO]
-        A["Application A<br/>canaux alloués"]
-        B["Application B<br/>canaux alloués"]
-    end
-    D["TimoxVasio.dll<br/>256 entrées + 256 sorties"]
-    M["TimoxVirtualAsioEngine.exe<br/>transport et graphe"]
-    P["Pilote ASIO physique<br/>horloge maître"]
-    UI[Interface React / Electron]
-    API[API de contrôle]
+## Et les alternatives ?
 
-    A <-->|ASIO| D
-    B <-->|ASIO| D
-    D <-->|transport audio partagé| M
-    M <-->|"ASIO<br/>fréquence et bloc effectifs"| P
-    UI <-->|configuration et état| API
-    API <--> M
+D'autres outils font du routage ASIO sous Windows, souvent depuis plus longtemps. TimoxVasio se distingue surtout par trois choses : il est libre et maintenu, il se pilote entièrement par une API documentée, et ses routes sont rattachées aux applications plutôt qu'à des numéros de canaux.
+
+| | Licence | Plusieurs applis ASIO | Audio Windows (WDM) | Pilotage externe |
+|---|---|---|---|---|
+| **TimoxVasio** | GPL-3.0, maintenu | Oui, 256 canaux par appli | Non | API HTTP/WebSocket, OpenAPI |
+| [VB-Audio Matrix](https://vb-audio.com/Matrix/) | Propriétaire, donationware | Oui, 4 pilotes virtuels (8 à 128 canaux) | Oui | MIDI, VBAN |
+| [ASIO Link Pro](https://give.academy/downloads/2018/03/) | Gratuit, plus développé | Oui, mode multi-client | Oui | Interface graphique |
+| [Synchronous Audio Router](https://github.com/eiz/SynchronousAudioRouter) | Libre, dernière version en 2018 | Non, un seul hôte ASIO | Oui, c'est son rôle | Interface graphique |
+| [ReaRoute](https://www.reaper.fm) | Fourni avec Reaper | Vers et depuis Reaper seulement | Non | Via Reaper |
+
+En contrepartie, TimoxVasio ne gère pas l'audio des applications Windows classiques (navigateur, visio, jeux), ne transporte rien sur le réseau, et impose une seule horloge : celle de la carte physique. VB-Audio Matrix reste plus complet sur ces points. Ces limites sont des choix : une seule horloge et un seul pilote, pour garder un routage sans conversion et une configuration simple.
+
+Sous Linux, [PipeWire](https://pipewire.org) et [JACK](https://jackaudio.org) couvrent ce besoin depuis longtemps.
+
+## Installation
+
+Prérequis : Windows 10 ou 11 x64, des applications ASIO 64 bits, les droits administrateur et, pour sortir du son, un pilote ASIO physique.
+
+1. Télécharger les fichiers de la [dernière release](https://github.com/timox/TimoxVasio/releases/latest).
+2. **Pilote** : extraire `TimoxVasio.Driver.<version>.zip` et lancer `Installer TimoxVasio.bat` en administrateur.
+3. **Interface et moteur** : installer `Timox.VASIO.Control.Setup.<version>.exe`, ou lancer la version portable.
+4. Démarrer Timox VASIO Control **avant** d'ouvrir TimoxVasio dans une application audio, puis choisir la carte physique.
+
+Détails et désinstallation : [INSTALL.md](INSTALL.md).
+
+## Utilisation rapide
+
+1. Dans **Configuration**, choisir le pilote ASIO physique, la fréquence et la taille de buffer.
+2. Dans chaque application audio, sélectionner **TimoxVasio** comme périphérique ASIO.
+3. Dans **Channels**, relier les sorties des applications aux entrées d'autres applications ou aux sorties physiques.
+
+Lire l'état depuis PowerShell (le port est celui choisi par le moteur à son démarrage) :
+
+```powershell
+Invoke-RestMethod 'http://127.0.0.1:<port>/api/v1/state'
 ```
 
-Le pilote virtuel annonce sa capacité maximale. Chaque application ne rend disponibles que les canaux qu’elle a effectivement alloués. Le moteur construit les routes depuis ces canaux et l’inventaire réel du périphérique physique. Le détail du contrat figure dans la [spécification](docs/superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.md).
+Le [quick start API](docs/API_QUICKSTART.md) donne des exemples PowerShell et Node.js. Le contrat complet est dans [API.md](API.md) et [openapi-v1.json](openapi-v1.json).
 
-## Vérifications
+## Limites connues
 
-Les builds et probes locaux valident des parties du pilote, du transport et du moteur. Le test dans un hôte tiers avec routage audio de bout en bout a été réalisé et confirmé par l’utilisateur le 5 octobre 2026. Les résultats détaillés et mesures chiffrées ne sont pas reproduits ici.
+- Windows x64 uniquement ; 32 bits, ARM et Windows 7/8 ne sont pas validés.
+- Une application qui exige une fréquence ou une taille de buffer différente de celles de la carte physique est refusée.
+- Les signaux additionnés sur un même canal peuvent saturer la sortie physique : régler les gains des routes en conséquence.
+- Certains hôtes ne savent pas représenter 256 canaux (c'est le cas de Mixxx 2.6). Un profil par application permet d'annoncer moins de canaux à un exécutable donné. Voir [la note de compatibilité Mixxx](docs/mixxx-256-channel-compatibility.md).
+- ASIO4ALL peut servir de pilote physique, mais n'a pas été validé.
 
-Voir [BUILD_DRIVERS.md](BUILD_DRIVERS.md) pour reconstruire et sonder les composants, et [INSTALL.md](INSTALL.md) pour l’installation.
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) : vue d'ensemble technique
+- [BUILD_DRIVERS.md](BUILD_DRIVERS.md) : compiler et tester les composants
+- [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md) : conformité au SDK ASIO
+- [docs/ROADMAP.md](docs/ROADMAP.md) : travaux prévus
 
 ## Licence
 
-Le code original est sous GNU GPL version 3 (`GPL-3.0-only`). Les licences ASIO SDK et des dépendances tierces gardent leurs propres termes. Le nom du pilote reste **TimoxVasio**. Voir [LICENSING.md](LICENSING.md).
+Code original sous [GPL-3.0-only](LICENSE). Le SDK ASIO 2.3.4 de Steinberg est utilisé selon son option GPLv3. Les autres dépendances tierces gardent leurs propres licences : voir [LICENSING.md](LICENSING.md).
 
-## Les trois composants
-
-- **TimoxVasio** : pilote ASIO virtuel chargé par les applications audio.
-- **TimoxVirtualAsioEngine** : moteur qui transporte et route l’audio entre les applications et le pilote physique.
-- **Timox VASIO Control** : interface Electron qui configure le moteur, ses routes et ses diagnostics.
-
-L’interface et le moteur communiquent via l’API documentée. Le nom du pilote reste `TimoxVasio`; le nom de l’application Electron est `Timox VASIO Control`.
+Le projet peut être soutenu via [GitHub Sponsors](https://github.com/sponsors/timox).
