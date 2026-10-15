@@ -17,7 +17,7 @@ Electron `Timox VASIO Control`.
 - Licence GPL-3.0-only, notice de licence du projet et licence du SDK ASIO
   incluses dans les ressources légales du paquet Electron.
 - Revue UX/UI fondée sur cinq captures de la configuration et du routage,
-  publiée dans [UX_UI_REVIEW.md](UX_UI_REVIEW.md).
+  publiée dans [UX_UI_REVIEW.md](archive/UX_UI_REVIEW.md).
 - Guide de prise en main avec schéma d’architecture complet et exemples API :
   [quick start](https://github.com/timox/TimoxVasio/blob/main/docs/API_QUICKSTART.md).
 - Soutien au développement via [GitHub Sponsors](https://github.com/sponsors/timox),
