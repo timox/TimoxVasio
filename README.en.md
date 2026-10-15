@@ -8,19 +8,13 @@ TimoxVasio moves audio between several ASIO applications, and to a physical audi
 
 Current release: **[1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1)**. See the [release notes](docs/RELEASE_NOTES_v1.2.1.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.2.1.en.md).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/timoxvasio-features-en-dark.svg">
-  <img alt="TimoxVasio at a glance: one driver, 256 inputs and outputs per application, no channel locks, one master clock, persistent routes, local API, meters and analysis, free software" src="docs/images/timoxvasio-features-en.svg">
-</picture>
+![TimoxVasio at a glance: one driver, 256 inputs and outputs per application, no channel locks, one master clock, persistent routes, local API, meters and analysis, free software](docs/images/timoxvasio-features-en.svg)
 
 ## Why
 
 A classic ASIO driver serves one application at a time, and applications cannot send audio to each other. TimoxVasio sits between the applications and the interface: they all open it at the same time, and the engine connects them to each other and to the interface.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/timoxvasio-before-after-en-dark.svg">
-  <img alt="Before: only one application can use the audio interface, the others are locked out. After: every application goes through TimoxVasio at the same time." src="docs/images/timoxvasio-before-after-en.svg">
-</picture>
+![Before: only one application can use the audio interface, the others are locked out. After: every application goes through TimoxVasio at the same time.](docs/images/timoxvasio-before-after-en.svg)
 
 ## What it does
 
@@ -35,10 +29,7 @@ Tested with Renoise, Ableton Live and Mixxx.
 
 ## How it works
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/timoxvasio-flow-en-dark.svg">
-  <img alt="Audio flow: applications go through the TimoxVasio driver, the engine routes channels to other applications or to the physical interface, which provides the clock. Control and scripts drive the engine through the local API." src="docs/images/timoxvasio-flow-en.svg">
-</picture>
+![Audio flow: applications go through the TimoxVasio driver, the engine routes channels to other applications or to the physical interface, which provides the clock. Control and scripts drive the engine through the local API.](docs/images/timoxvasio-flow-en.svg)
 
 | Component | Role |
 |---|---|
