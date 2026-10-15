@@ -6,8 +6,8 @@ Ce guide présente les composants et les premières requêtes utiles pour
 intégrer un outil au moteur. Pour le contrat complet, les schémas et la liste
 des erreurs, voir la [référence API](API.md), le
 [contrat OpenAPI](../api/openapi-v1.json) et les
-[schémas JSON](../api/schemas/api-v1.json). Les vues et mesures de la version 1.1.0
-sont illustrées dans le [guide des fonctions](FONCTIONS_1.1.0.md).
+[schémas JSON](../api/schemas/api-v1.json). Les vues et mesures de Timox VASIO Control
+sont illustrées dans le [guide des fonctions](FONCTIONS.md).
 
 ## Architecture complète
 
@@ -230,7 +230,7 @@ Les événements `audio.correlation` renvoient un coefficient de `−1` à `+1`.
 En absence de signal mesurable, `correlation` est `null` et `state` vaut
 `no_signal`. Pour terminer, envoyez
 `{"id":"analyse-fin","command":"audio.correlation.stop"}`. Le [guide
-des fonctions](FONCTIONS_1.1.0.md) donne un schéma du cycle et un exemple Node.js.
+des fonctions](FONCTIONS.md) donne un schéma du cycle et un exemple Node.js.
 
 ## 5. Consulter les diagnostics
 

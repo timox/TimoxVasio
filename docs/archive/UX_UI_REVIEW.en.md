@@ -4,7 +4,7 @@
 
 [Français](UX_UI_REVIEW.md) | **English**
 
-> Historical review of screenshots from before version 1.1.0. For the shipped interface, see the [1.1.0 feature guide](../FONCTIONS_1.1.0.en.md).
+> Historical review of screenshots from before version 1.1.0. For the shipped interface, see the [feature guide](../FONCTIONS.en.md).
 
 ## Scope
 

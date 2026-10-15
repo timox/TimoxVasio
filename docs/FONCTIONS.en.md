@@ -1,14 +1,15 @@
-# Using Timox VASIO Control 1.1.0
+# Using Timox VASIO Control
 
-[Français](FONCTIONS_1.1.0.md) | **English**
+[Français](FONCTIONS.md) | **English**
 
-This guide describes the features in [TimoxVasio 1.1.0](https://github.com/timox/TimoxVasio/releases/tag/v1.1.0).
+This guide describes Timox VASIO Control in [TimoxVasio 1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1). The application has six views:
 
 | View | Main use |
 | --- | --- |
 | **Configuration** | Select the physical ASIO driver, sample rate, and buffer size; configure per-application channel profiles. |
-| **Channels** | Inspect connected applications, open and routed channels, and meters; expand the routing matrix to edit routes. |
+| **Channels** | Inspect connected applications, open and routed channels, and meters; edit routes in the graphical patchbay or the matrix. |
 | **Analysis** | Follow L/R correlation for an open, routed stereo output pair. |
+| **Performance** | Check that the physical driver callback fits within one block and measure each stage of the audio path. |
 | **API and Swagger** | Read the embedded contract and send HTTP requests or WebSocket commands from the integrated console. |
 | **Logs** | Inspect engine events and set the diagnostic level. |
 
@@ -28,6 +29,8 @@ Samples follow the audio path. Control, Swagger, and the console use the local A
 ## Open channels, routes, and meters
 
 An application profile can advertise up to 256 inputs and 256 outputs. Only channels it opens through ASIO become active endpoints. An open channel is not automatically routed. In **Channels**, meters appear only for the application's channels that are both open and part of an active route.
+
+Routes are created in the graphical **patchbay** (ports grouped by application, visible cables, a connection inspector) or in the **matrix**, which suits dense routing. One or more selected connections can receive a label and a color; these choices exist only in the cabling view and change neither the engine's routes nor the audio processing.
 
 ```mermaid
 flowchart LR
@@ -94,6 +97,37 @@ stateDiagram-v2
 
 For example, with no application connected, state may show eight `configuredRoutes` and zero `routes`. The engine retains the eight routes and does not start a physical audio stream until a route becomes active. To create a new waiting route, the application must have a profile in `GET /api/v1/application-profiles`, and the channel number must fit that profile. `configuration.apply` replaces the entire list: send **all** routes you want to keep. Reconfiguration may briefly interrupt audio.
 
+## Performance: callback budget and stage timing
+
+The **Performance** view answers two questions: does the physical driver callback fit within one block, and where does the time go between the application and the interface.
+
+**Physical callback budget.** For each five-second window the engine publishes `bufferHealth` in `GET /api/v1/state`: the slowest callback, the time available for one block (`bufferFrames / sampleRate`), the remaining margin or overrun (*Time left* / *Over time*), the number of delayed starts, processing overruns and observed callbacks. The state is `healthy`, `warning`, or `insufficient` when the window does not hold enough callbacks. A delayed start is a scheduling observation, not proof of an audible dropout. Nothing is adjusted automatically: raising the buffer size remains the user's decision.
+
+**Stage timing.** The *Enable stage measurements* checkbox sends the `performance.measurements.set` WebSocket command. Collection is off when the engine starts; once enabled it samples at most one callback in sixteen and publishes, for the last complete five-second window, the mean, worst value and sample count of each stage:
+
+| Stage | What is measured |
+| --- | --- |
+| *Host callback* | The ASIO application's `bufferSwitch` call, that is all the work it does during that call. |
+| *Virtual ring write* | Copying the application's outputs into the shared ring. |
+| *Ring wait* | The wait between publishing a complete block and the engine reading it. |
+| *Client read* | The physical callback reading the client rings. |
+| *Routing* | Applying routes, gains and mutes. |
+| *Physical output copy* | Copying into the physical driver's buffer. |
+
+An unobserved stage stays blank. The physical copy ends at the driver handoff: these numbers measure neither hardware latency nor when sound is heard, and worst values from separate stages do not add up to a total latency.
+
+```json
+{ "id": "measure-1", "command": "performance.measurements.set", "payload": { "enabled": true } }
+```
+
+The command is idempotent; `false` stops collection and clears the window. `GET /api/v1/state` exposes `performanceMeasurements` with `enabled`, `sampleEveryCallbacks` (16) and `window` (`null` until a window completes). In PowerShell:
+
+```powershell
+$state = Invoke-RestMethod 'http://127.0.0.1:52525/api/v1/state'
+$state.bufferHealth | Format-List state, callbackCount, delayedStartCount, processingOverrunCount
+$state.performanceMeasurements.window.physical | Format-List
+```
+
 ## Integrated API console and programming examples
 
 Open **API and Swagger**. Swagger describes HTTP endpoints, WebSocket commands, and schemas. The **API Console** provides request templates, a JSON editor, and a response panel. `configuration.apply` and `engine.stop` require confirmation in Control.
@@ -104,7 +138,7 @@ To read state without changing the engine, select **HTTP request** and enter:
 { "method": "GET", "path": "/api/v1/state" }
 ```
 
-The same request in PowerShell:
+The same request in PowerShell (`52525` is the default port; if the engine picked another one, Control shows it):
 
 ```powershell
 $state = Invoke-RestMethod 'http://127.0.0.1:52525/api/v1/state'

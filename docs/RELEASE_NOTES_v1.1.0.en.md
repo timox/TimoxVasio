@@ -23,6 +23,6 @@ Install the driver from the ZIP, then install or launch Timox VASIO Control. Ope
 - Reorganized interface with meters for active channels, stereo L/R correlation, API console, and logs.
 - Post-installation checks of the registered DLL, running engine, and API version.
 
-The [1.1.0 feature guide](FONCTIONS_1.1.0.en.md) explains the five views with diagrams and provides HTTP and WebSocket examples for meters, correlation, and persistent routes.
+The [1.1.0 feature guide](FONCTIONS.en.md) explains the five views with diagrams and provides HTTP and WebSocket examples for meters, correlation, and persistent routes.
 
 Native builds and tests and interface tests pass. Artifact SHA-256 hashes are in `MANIFEST.json`. Buffer-size and missed-deadline diagnostics are tracked in the [roadmap](ROADMAP.en.md) for a later version.

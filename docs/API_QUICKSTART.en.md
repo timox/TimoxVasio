@@ -2,7 +2,7 @@
 
 [Français](API_QUICKSTART.md) | **English**
 
-This guide introduces the components and first requests for integrating a tool with the engine. For the complete contract, schemas, and errors, see the [API reference](API.en.md), [OpenAPI contract](../api/openapi-v1.json), and [JSON schemas](../api/schemas/api-v1.json). The [1.1.0 feature guide](FONCTIONS_1.1.0.en.md) illustrates views and measurements.
+This guide introduces the components and first requests for integrating a tool with the engine. For the complete contract, schemas, and errors, see the [API reference](API.en.md), [OpenAPI contract](../api/openapi-v1.json), and [JSON schemas](../api/schemas/api-v1.json). The [feature guide](FONCTIONS.en.md) illustrates views and measurements.
 
 ## Full architecture
 
@@ -166,7 +166,7 @@ Find measurable L/R pairs in `stereoPairs` and use an `id` actually returned by 
 }
 ```
 
-`audio.correlation` events return a coefficient from `-1` to `+1`. With no measurable signal, `correlation` is `null` and `state` is `no_signal`. To stop, send `{"id":"analysis-stop","command":"audio.correlation.stop"}`. See the [feature guide](FONCTIONS_1.1.0.en.md) for diagrams and a Node.js event listener.
+`audio.correlation` events return a coefficient from `-1` to `+1`. With no measurable signal, `correlation` is `null` and `state` is `no_signal`. To stop, send `{"id":"analysis-stop","command":"audio.correlation.stop"}`. See the [feature guide](FONCTIONS.en.md) for diagrams and a Node.js event listener.
 
 ## 5. Read diagnostics
 
