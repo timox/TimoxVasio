@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" width="960" height="470" font-family="Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Fonctionnalités de TimoxVasio</title>
+  <desc id="d">Huit fonctionnalités : un seul pilote, 256 entrées et sorties par application, pas de verrou sur les canaux, une seule horloge, des routes persistantes, une API locale, des niveaux et une corrélation stéréo, et un logiciel libre sous GPL-3.0.</desc>
+
+  <rect width="960" height="470" fill="#0d1117"/>
+  <text x="30" y="44" font-size="20" font-weight="700" fill="#e6edf3">TimoxVasio en un coup d'œil</text>
+  <text x="30" y="68" font-size="13" fill="#9da7b3">Pilote ASIO virtuel et moteur de routage pour Windows x64</text>
+
+  <!-- Row 1 -->
+  <g>
+    <rect x="30" y="92" width="210" height="165" rx="14" fill="#241c3d" stroke="#4b3d85"/>
+    <g fill="none" stroke="#a78bfa" stroke-width="2.2">
+      <circle cx="68" cy="128" r="9"/>
+      <path d="M50 116L60 122M50 140L60 134M86 116L76 122M86 140L76 134"/>
+      <circle cx="46" cy="114" r="3.5" fill="#a78bfa"/><circle cx="46" cy="142" r="3.5" fill="#a78bfa"/>
+      <circle cx="90" cy="114" r="3.5" fill="#a78bfa"/><circle cx="90" cy="142" r="3.5" fill="#a78bfa"/>
+    </g>
+    <text x="50" y="180" font-size="15" font-weight="700" fill="#e6edf3">Un seul pilote</text>
+    <text x="50" y="204" font-size="12.5" fill="#c9d1d9">Toutes les applications</text>
+    <text x="50" y="222" font-size="12.5" fill="#c9d1d9">choisissent TimoxVasio.</text>
+    <text x="50" y="240" font-size="12.5" fill="#c9d1d9">Rien à répartir.</text>
+  </g>
+
+  <g>
+    <rect x="260" y="92" width="210" height="165" rx="14" fill="#241c3d" stroke="#4b3d85"/>
+    <text x="280" y="140" font-size="26" font-weight="800" fill="#a78bfa">256</text>
+    <text x="280" y="180" font-size="15" font-weight="700" fill="#e6edf3">256 E / 256 S</text>
+    <text x="280" y="204" font-size="12.5" fill="#c9d1d9">Par application, avec</text>
+    <text x="280" y="222" font-size="12.5" fill="#c9d1d9">des profils pour les</text>
+    <text x="280" y="240" font-size="12.5" fill="#c9d1d9">hôtes qui en veulent moins.</text>
+  </g>
+
+  <g>
+    <rect x="490" y="92" width="210" height="165" rx="14" fill="#0f2a2a" stroke="#1f5556"/>
+    <text x="510" y="142" font-size="30" font-weight="800" fill="#2dd4bf">Σ</text>
+    <text x="510" y="180" font-size="15" font-weight="700" fill="#e6edf3">Pas de verrou</text>
+    <text x="510" y="204" font-size="12.5" fill="#c9d1d9">Plusieurs applis peuvent</text>
+    <text x="510" y="222" font-size="12.5" fill="#c9d1d9">partager un canal : les</text>
+    <text x="510" y="240" font-size="12.5" fill="#c9d1d9">signaux s'additionnent.</text>
+  </g>
+
+  <g>
+    <rect x="720" y="92" width="210" height="165" rx="14" fill="#33250a" stroke="#7a5a1a"/>
+    <g fill="none" stroke="#f0b24a" stroke-width="2.2">
+      <circle cx="758" cy="128" r="16"/>
+      <path d="M758 118V128L766 133"/>
+    </g>
+    <text x="740" y="180" font-size="15" font-weight="700" fill="#e6edf3">Une seule horloge</text>
+    <text x="740" y="204" font-size="12.5" fill="#c9d1d9">La carte physique impose</text>
+    <text x="740" y="222" font-size="12.5" fill="#c9d1d9">fréquence et buffer.</text>
+    <text x="740" y="240" font-size="12.5" fill="#c9d1d9">Aucune conversion.</text>
+  </g>
+
+  <!-- Row 2 -->
+  <g>
+    <rect x="30" y="277" width="210" height="165" rx="14" fill="#0f2a2a" stroke="#1f5556"/>
+    <g fill="none" stroke="#2dd4bf" stroke-width="2.2">
+      <path d="M53 313a15 15 0 1 1 4 12"/>
+      <path d="M51 327l2 -9 8 4"/>
+    </g>
+    <text x="50" y="365" font-size="15" font-weight="700" fill="#e6edf3">Routes persistantes</text>
+    <text x="50" y="389" font-size="12.5" fill="#c9d1d9">Les routes sont liées à</text>
+    <text x="50" y="407" font-size="12.5" fill="#c9d1d9">l'exécutable et attendent</text>
+    <text x="50" y="425" font-size="12.5" fill="#c9d1d9">le retour de l'appli.</text>
+  </g>
+
+  <g>
+    <rect x="260" y="277" width="210" height="165" rx="14" fill="#0f2a2a" stroke="#1f5556"/>
+    <text x="280" y="327" font-size="22" font-weight="800" fill="#2dd4bf" font-family="Consolas, Menlo, monospace">{ }</text>
+    <text x="280" y="365" font-size="15" font-weight="700" fill="#e6edf3">API locale</text>
+    <text x="280" y="389" font-size="12.5" fill="#c9d1d9">HTTP et WebSocket,</text>
+    <text x="280" y="407" font-size="12.5" fill="#c9d1d9">décrite en OpenAPI.</text>
+    <text x="280" y="425" font-size="12.5" fill="#c9d1d9">Tout se scripte.</text>
+  </g>
+
+  <g>
+    <rect x="490" y="277" width="210" height="165" rx="14" fill="#161b22" stroke="#30363d"/>
+    <g fill="#2dd4bf">
+      <rect x="512" y="318" width="7" height="14" rx="2"/>
+      <rect x="523" y="306" width="7" height="26" rx="2"/>
+      <rect x="534" y="298" width="7" height="34" rx="2"/>
+      <rect x="545" y="310" width="7" height="22" rx="2"/>
+    </g>
+    <text x="510" y="365" font-size="15" font-weight="700" fill="#e6edf3">Niveaux et analyse</text>
+    <text x="510" y="389" font-size="12.5" fill="#c9d1d9">Niveaux en direct des</text>
+    <text x="510" y="407" font-size="12.5" fill="#c9d1d9">canaux routés et corrélation</text>
+    <text x="510" y="425" font-size="12.5" fill="#c9d1d9">stéréo L/R.</text>
+  </g>
+
+  <g>
+    <rect x="720" y="277" width="210" height="165" rx="14" fill="#161b22" stroke="#30363d"/>
+    <text x="740" y="327" font-size="18" font-weight="800" fill="#c9d1d9">GPL-3.0</text>
+    <text x="740" y="365" font-size="15" font-weight="700" fill="#e6edf3">Logiciel libre</text>
+    <text x="740" y="389" font-size="12.5" fill="#c9d1d9">Libre du pilote à l'interface,</text>
+    <text x="740" y="407" font-size="12.5" fill="#c9d1d9">SDK ASIO compris,</text>
+    <text x="740" y="425" font-size="12.5" fill="#c9d1d9">sous son option GPLv3.</text>
+  </g>
+</svg>

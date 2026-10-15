@@ -8,13 +8,19 @@ TimoxVasio permet de faire circuler l'audio entre plusieurs applications ASIO, e
 
 Version actuelle : **[1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1)**. Voir les [notes de version](docs/RELEASE_NOTES_v1.2.1.md) et le [guide des téléchargements Windows](docs/RELEASE_WINDOWS_1.2.1.md).
 
-![TimoxVasio en un coup d'œil : un seul pilote, 256 entrées et sorties par application, pas de verrou, une seule horloge, routes persistantes, API locale, niveaux et analyse, logiciel libre](docs/images/timoxvasio-features-fr.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/timoxvasio-features-fr-dark.svg">
+  <img alt="TimoxVasio en un coup d'œil : un seul pilote, 256 entrées et sorties par application, pas de verrou, une seule horloge, routes persistantes, API locale, niveaux et analyse, logiciel libre" src="docs/images/timoxvasio-features-fr.svg">
+</picture>
 
 ## Pourquoi
 
 Un pilote ASIO classique ne sert qu'une application à la fois, et les applications ne peuvent pas s'envoyer de son. TimoxVasio se place entre les applications et la carte : toutes l'ouvrent en même temps, et le moteur les relie entre elles et à la carte.
 
-![Avant : une seule application accède à la carte, les autres sont bloquées. Après : toutes les applications passent par TimoxVasio en même temps.](docs/images/timoxvasio-before-after-fr.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/timoxvasio-before-after-fr-dark.svg">
+  <img alt="Avant : une seule application accède à la carte, les autres sont bloquées. Après : toutes les applications passent par TimoxVasio en même temps." src="docs/images/timoxvasio-before-after-fr.svg">
+</picture>
 
 ## Ce que ça fait
 
@@ -29,7 +35,10 @@ Testé avec Renoise, Ableton Live et Mixxx.
 
 ## Comment ça marche
 
-![Flux audio : les applications passent par le pilote TimoxVasio, le moteur route les canaux vers d'autres applications ou vers la carte physique, qui fournit l'horloge. L'interface et les scripts pilotent le moteur par l'API locale.](docs/images/timoxvasio-flow-fr.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/timoxvasio-flow-fr-dark.svg">
+  <img alt="Flux audio : les applications passent par le pilote TimoxVasio, le moteur route les canaux vers d'autres applications ou vers la carte physique, qui fournit l'horloge. L'interface et les scripts pilotent le moteur par l'API locale." src="docs/images/timoxvasio-flow-fr.svg">
+</picture>
 
 | Composant | Rôle |
 |---|---|
