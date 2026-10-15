@@ -1,0 +1,473 @@
+# Audit ASIO — notes de travail historiques
+
+> **ARCHIVE** — Document historique conservé pour référence. Il ne décrit pas l'état courant de TimoxVasio (1.2.1). Voir le [README](../../README.md) et la documentation courante qu'il référence.
+
+**Français** | [English](ASIO_AUDIT.en.md)
+
+> **Attention : ce fichier contient des constats de dates et d’états différents.**
+> Les sections anciennes ci-dessous ne décrivent pas toutes le pilote actuel; en
+> particulier, l’affirmation qu’il n’existe pas d’interface `IASIO`, de DLL COM
+> ou de callbacks est obsolète. Pour la synthèse courante, voir
+> [README.md](../../README.md); pour l’évaluation du code actif et ses preuves, voir
+> [ASIO_CONFORMITE.md](../../ASIO_CONFORMITE.md). Ne pas utiliser les anciennes
+> recommandations de remplacement par PortAudio comme description du contrat
+> actuel.
+
+## Clôture des écarts signalés
+
+Chaque écart marqué ❌ plus bas est fermé dans le pilote courant. Vérifié sur les sources 1.2.1 le 15 octobre 2026.
+
+| Écart signalé | État courant | Preuve |
+|---|---|---|
+| Pas d'interface `IASIO` | Implémentée | `src/vasio_com_driver.h` : `class VASIODriver final : public IASIO, public CUnknown` ; 21 méthodes `IASIO` dans `src/vasio_driver.cpp` |
+| Pas de registration COM/DLL | Faite | CLSID dans `src/vasio_driver_factory.cpp`, export `DllGetClassObject` dans `src/vasio_driver.def`, clés `HKLM\SOFTWARE\Classes\CLSID` et `HKLM\SOFTWARE\ASIO` écrites par `register_drivers.ps1` |
+| Pas de callbacks temps réel | Présents | `bufferSwitchTimeInfo` / `bufferSwitch` et `asioMessage` dans `src/vasio_driver.cpp` |
+| Pas de double-buffering | Présent | `bufferIndex` alterné dans `src/vasio_driver.cpp` |
+| Enregistrement registre simplifié | Corrigé | Voir registration ; les anciennes entrées VASIO1–4 sont retirées |
+| Pas de gestion des formats | Faite | `ASIOSTFloat32LSB` déclaré par canal dans `src/vasio_driver.cpp` |
+
+Le prototype PortAudio critiqué ici (`src/main_portaudio.cpp`, `src/virtual_driver.cpp`, `src/vasio_driver_correct.cpp`, `CMakeLists_PortAudio.txt`) n'est plus référencé par `CMakeLists.txt` et n'est pas compilé. L'évaluation courante est dans [ASIO_CONFORMITE.md](../../ASIO_CONFORMITE.md).
+
+## Résumé courant
+
+Le pilote actif est `TimoxVasio.dll`; il implémente `IASIO`, annonce 256 canaux
+dans chaque direction et traite les canaux effectivement alloués par l’hôte.
+Les probes locales vérifient la capacité, des allocations sparse et le transport
+de callbacks. Après réinstallation de la version 1.0.0, le test de bout en bout
+a été confirmé par l’utilisateur le 5 octobre 2026. Renoise avait 64 entrées et
+64 sorties, huit routes étaient actives et le moteur utilisait SSL ASIO Driver 1
+à 48 kHz/1024 frames. Un relevé de 3,5 secondes a reçu 60 événements `audio.meter`
+sur les sorties physiques routées et les sorties virtuelles sources, avec des
+crêtes entre `-101,65` et `-26,43 dBFS`; l’utilisateur a confirmé le son.
+La conformité observée est documentée dans [ASIO_CONFORMITE.md](../../ASIO_CONFORMITE.md).
+
+L’API `/api/v1/diagnostics` et le fichier `%LOCALAPPDATA%/TimoxVasio/logs/engine.log`
+ont confirmé le démarrage du moteur, la configuration physique à 48 kHz/1024
+frames et l’application des huit routes. Swagger a été vérifié par l’utilisateur
+dans l’application Electron installée.
+
+---
+
+## Notes d’audit et historique
+
+Les constats qui suivent ont été conservés pour leur contexte et peuvent être
+antérieurs au pilote et au moteur actuels. Ils ne sont pas le statut courant.
+
+### État au 4 octobre 2026 — relevé historique, remplacé par le test du 5 octobre
+
+## État courant
+
+Le pilote et le moteur ont progressé depuis l’audit historique conservé plus bas.
+
+- `TimoxVasio.dll` est un pilote ASIO x64 enregistré sous `HKLM\SOFTWARE\ASIO\TimoxVasio`. Après le remplacement du 4 octobre, le registre pointe vers `C:\Program Files\Steinberg\VirtualASIO\TimoxVasio.dll`; son SHA-256 correspond au build `build_drivers_vs2026_ninja\TimoxVasio.dll` (`7FA67EE0DF55ADA8F28A68B81159A44B2003BAA77AA7A1CBD36894313D5307EE`). Le Mixxx installé est x64, version `2.6.0-beta` (commit `2.6-beta-402-ge1c1e5b72b`).
+- Après installation de cette DLL et redémarrage de Mixxx, la capture des Préférences audio montre `TimoxVasio` disponible pour les sorties principales, casque, cabine, bus et platines, avec les paires de canaux 1 à 20. L’API du moteur confirme `mixxx.exe` avec 20 sorties ouvertes et aucune entrée. La découverte et l’ouverture du pilote sont donc vérifiées sur le Mixxx installé.
+- Le probe qui charge exactement `C:\Program Files\Mixxx\portaudio.dll` affiche la version PortAudio, puis reste dans `Pa_Initialize()` sans atteindre `Pa_GetDeviceCount()`. Ce résultat ne permet pas de conclure que Mixxx masque le pilote.
+- Le relevé API courant confirme Renoise avec 64 entrées/sorties ouvertes et Mixxx avec 0 entrée et 20 sorties ouvertes. Le profil effectivement servi par l’API est `mixxx.exe` 255/255; le réglage 12/12 n’est pas présent dans l’état courant. Il s’agit d’un plafond annoncé au pilote, distinct des 20 sorties réellement allouées par Mixxx.
+- À cette date, le moteur actif indiquait l’état `stopped`, 48 kHz et 1024 frames, sans route configurée. Ce relevé précède le test de bout en bout confirmé le 5 octobre; il ne décrit pas son résultat.
+- Le callback ASIO du pilote physique signale maintenant les changements de fréquence au worker du moteur. Celui-ci vérifie le signal au plus tard après son attente de 20 ms, arrête le moteur et invalide les capacités physiques jusqu’à une nouvelle application de configuration. Le build `TimoxVirtualAsioEngine` passe dans `build_engine_names_check`; le processus actif n’a pas été redémarré.
+- La GUI React compile en production (`npm run react-build`). Les modifications verrouillent les réglages et les routes pendant `reconfiguring`; cette compilation ne valide pas le comportement en runtime.
+- Le relevé de l’API du moteur actif confirme le SSL 12 avec 16 entrées et 8 sorties : les entrées ont des noms explicites, mais les sorties 3 à 8 sont encore `Out 3` à `Out 8`. La résolution de ces six libellés génériques est maintenant ajoutée pour la signature SSL 12 et le nom exact `SSL ASIO Driver 1`; elle conserve les noms non génériques transmis par le pilote. Les noms publiés seront `Line 3`, `Line 4`, `Headphone A L/R` et `Headphone B L/R`, rôles documentés par le [guide SSL 12](https://support.solidstatelogic.com/hc/en-gb/articles/5568765809309-SSL-12-User-Guide). Le build mis à jour passe dans `build_engine_names_check`; le moteur actif `build_engine_vs2026_ninja` n’a pas été redémarré, donc l’API continue de publier les anciens libellés.
+- L’ancien relevé WebSocket à `-120 dBFS` précède le test concluant du 5 octobre. Il est conservé uniquement dans l’historique et ne constitue pas un résultat actuel ni un critère restant.
+
+### Compatibilité Mixxx (4 octobre 2026)
+
+- Le diagnostic de code reste valable : dans cette révision, `ChannelCount::value_t` est un `uint8_t`, donc le compte 256 n’est pas représentable. Pour le Mixxx stable installé, le profil applicatif TimoxVasio à 255/255 contourne cette limite sans réduire la capacité générale du pilote, qui conserve 256 slots et 256 canaux par défaut pour les applications sans profil.
+- Le code PortAudio inclus dans ce dépôt charge les pilotes ASIO durant son initialisation puis recueille leurs capacités; le probe générique voit TimoxVasio en 256/256. Le probe de la DLL exacte de Mixxx s’est bloqué dans `Pa_Initialize()` et ne permet pas une vérification indépendante de cette installation.
+- Le précédent essai avec une DLL installée obsolète ne permettait pas de valider le profil. Depuis, la DLL du build a été installée et l’API confirme l’ouverture de 20 sorties par Mixxx; aucun correctif n’a été appliqué au code source de Mixxx.
+
+### Couverture complémentaire
+
+Le test de bout en bout demandé est réussi. Une couverture de mesures
+supplémentaires, d’autres hôtes et d’autres transitions peut étendre ces
+résultats; elle ne constitue pas une réserve sur le test réalisé.
+
+## Archive d’audit antérieure au pilote courant
+
+> Note d’audit historique, antérieure au pilote `TimoxVasio.dll`. Les exemples
+> d’implémentation et les références aux quatre anciens pilotes ne sont pas le
+> contrat courant. Voir [BUILD_DRIVERS.md](../../BUILD_DRIVERS.md) et [la spécification actuelle](../superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.md).
+
+## Documentation Steinberg ASIO SDK
+
+Source officielle: https://github.com/steinbergmedia/asiosdk
+
+### Structure minimale requise
+
+```cpp
+// asio.h - Interface principale
+struct IASIO {
+    // Initialisation
+    ASIOBool Init(void* sysHandle);
+    void getDriverName(char* name);
+    long getDriverVersion();
+    
+    // Capabilities
+    ASIOError getChannels(long* numInputChannels, long* numOutputChannels);
+    ASIOError getBufferSize(long* minSize, long* maxSize, 
+                           long* preferredSize, long* granularity);
+    ASIOError canSampleRate(ASIOSampleRate sampleRate);
+    ASIOError getSampleRate(ASIOSampleRate* sampleRate);
+    ASIOError setSampleRate(ASIOSampleRate sampleRate);
+    
+    // Configuration
+    ASIOError createBuffers(ASIOBufferInfo* bufferInfos, long numChannels,
+                           long bufferSize, ASIOCallbacks* callbacks);
+    ASIOError disposeBuffers();
+    
+    // Contrôle
+    ASIOError start();
+    ASIOError stop();
+    ASIOError getLatencies(long* inputLatency, long* outputLatency);
+    
+    // I/O
+    ASIOError outputReady();
+    
+    // Contrôle avancé
+    ASIOError controlPanel();
+    ASIOError future(long selector, void* opt);
+    ASIOError dispose();
+};
+```
+
+## Problèmes identifiés dans l'implémentation actuelle
+
+### 1. ❌ Pas d'interface IASIO implémentée
+
+**Problème:**
+```cpp
+// Actuellement: Wrapper PortAudio simplifié
+class VirtualDriver {
+    // Pas d'héritage de IASIO
+    // Pas de méthodes ASIO requises
+};
+```
+
+**Correct (ASIO SDK):**
+```cpp
+class VirtualASIODriver : public IASIO {
+    ASIOError Init(void* sysHandle) override;
+    ASIOError getChannels(long* in, long* out) override;
+    ASIOError createBuffers(...) override;
+    // ~40 méthodes obligatoires
+};
+```
+
+### 2. ❌ Pas de registration COM/DLL
+
+**Problème:**
+L'ASIO SDK nécessite une DLL avec registration COM pour que Windows reconnaisse le driver.
+
+**Correct:**
+```cpp
+// VASIO1.cpp - Export DLL
+extern "C" EXPORT ASIODriver* (*asioCreateDriver)(void);
+
+ASIODriver* asioCreateDriver(void) {
+    return new VirtualASIODriver("VASIO1");
+}
+
+// Enregistrement dans registre (CLSID)
+HKEY_LOCAL_MACHINE\SOFTWARE\Steinberg\ASIO\VASIO1
+  → InprocServer32 = VASIO1.dll
+  → CLSID = {GUID-UNIQUE}
+```
+
+### 3. ❌ Pas de callbacks audio temps-réel
+
+**Problème:**
+```cpp
+// Actuellement pas de callbacks
+ASIOError ProcessBuffer(float* input, float* output, long numSamples) {
+    std::memcpy(output, input, ...);  // Trop lent !
+}
+```
+
+**Correct (ASIO):**
+```cpp
+// Callback appelé par le kernel
+void bufferSwitch(long doubleBufferIndex, ASIOBool directProcess) {
+    // Traiter les buffers audio
+    // MUST être fast (< 1ms)
+    processAudio(doubleBufferIndex);
+    
+    // Notifier que output est ready
+    ASIOOutputReady();
+}
+```
+
+### 4. ❌ Pas de gestion buffer circulaire
+
+**Problème:**
+Pas de double-buffering (ping-pong) pour éviter les clicks.
+
+**Correct:**
+```cpp
+struct BufferInfo {
+    void* buffers[2];    // Double buffer
+    long bufferSize;
+    long currentIndex;   // 0 ou 1
+};
+```
+
+### 5. ❌ Enregistrement registre trop simplifié
+
+**Problème:**
+```cpp
+// Actuellement
+RegSetValueExA(hKey, "VASIO1", 0, REG_SZ, "VirtualASIODriver", 18);
+```
+
+**Correct:**
+```
+HKEY_LOCAL_MACHINE\SOFTWARE\Steinberg\ASIO\VASIO1
+  ├─ CLSID = {12345678-1234-1234-1234-123456789ABC}
+  └─ [CLSID]
+      └─ InprocServer32 = C:\path\to\VASIO1.dll
+```
+
+### 6. ❌ Pas de gestion des formats audio
+
+**Problème:**
+Hardcoding ASIOSTFloat32LSB.
+
+**Correct:**
+```cpp
+ASIOError getChannelInfo(ASIOChannelInfo* info) {
+    info->type = ASIOSTFloat32LSB;  // Ou Int24LSB, etc.
+    info->isActive = ASIOTrue;
+    strcpy(info->name, "VASIO1:1");
+    return ASE_OK;
+}
+```
+
+---
+
+## Vérification contre exemples Steinberg
+
+### Exemple 1: ASIO SDK Host Example
+
+Source: `asiosdk/host/getsamplerate.cpp`
+
+```cpp
+// Bon pattern:
+ASIOError ret = ASIOInit(&asioVersion);
+if (ret == ASE_NotPresent) {
+    // ASIO not installed
+}
+
+// Énumérer drivers
+for (int i = 0; i < asioDrivers->getNumberOfDrivers(); i++) {
+    char driverName[32];
+    asioDrivers->getDriverName(i, driverName);
+}
+
+// Créer instance
+ASIODriver* driver = asioDrivers->getCurrentDriver();
+```
+
+**Notre implémentation:** ❌ N'utilise pas `ASIOInit()`, pas de `asioDrivers`
+
+### Exemple 2: ASIO SDK Tutorial
+
+Pattern correct:
+
+```cpp
+// 1. Initialiser
+ASIOCallbacks callbacks = {
+    .bufferSwitch = bufferSwitchCallback,
+    .sampleRateDidChange = sampleRateCallback,
+    .asioMessage = messageCallback,
+    .bufferSwitchTimeInfo = bufferSwitchTimeInfoCallback
+};
+
+// 2. Créer buffers
+ASIOBufferInfo bufferInfos[numChannels];
+for (int i = 0; i < numChannels; i++) {
+    bufferInfos[i].isInput = ASIOFalse;
+    bufferInfos[i].channelNum = i;
+    bufferInfos[i].buffers[0] = malloc(bufferSize);
+    bufferInfos[i].buffers[1] = malloc(bufferSize);
+}
+
+driver->createBuffers(bufferInfos, numChannels, bufferSize, &callbacks);
+
+// 3. Démarrer
+driver->start();
+
+// 4. Callback en temps-réel
+void bufferSwitchCallback(long index, ASIOBool processNow) {
+    // ⚠️ MUST return < 1ms
+    for (int i = 0; i < numChannels; i++) {
+        float* buffer = (float*)bufferInfos[i].buffers[index];
+        processAudio(buffer, bufferSize);
+    }
+    driver->outputReady();
+}
+```
+
+**Notre implémentation:** ❌ Pas de callbacks, pas de bufferSwitch
+
+---
+
+## Résumé des écarts
+
+| Point | Steinberg | Notre code | Status |
+|-------|-----------|-----------|--------|
+| Interface IASIO | ✓ Obligatoire | ❌ Manquant | **CRITIQUE** |
+| Callbacks bufferSwitch | ✓ Obligatoire | ❌ Manquant | **CRITIQUE** |
+| Double-buffering | ✓ Requis | ❌ Absent | **CRITIQUE** |
+| Registration COM/DLL | ✓ Obligatoire | ❌ Simplifié | **CRITIQUE** |
+| Methods ASIO (~40) | ✓ Obligatoire | ❌ ~15 seulement | **CRITIQUE** |
+| Synchronisation kernel | ✓ Requis | ❌ Absent | **GRAVE** |
+| Message callbacks | ✓ Recommandé | ❌ Absent | **Moyen** |
+| Control panel | ✓ Recommandé | ❌ Absent | **Moyen** |
+
+---
+
+## Approche correcte
+
+### Option A: Utiliser correctement l'ASIO SDK
+
+```cpp
+// VASIO1Driver.cpp - Implémentation IASIO complète
+#include "asio.h"
+#include "asiodrivers.h"
+
+class VASIO1Driver : public IASIO {
+    // ~40 méthodes à implémenter
+    // Buffers circulaires
+    // Callbacks temps-réel
+    // Registration COM
+};
+
+// Exporter pour DLL
+extern "C" {
+    EXPORT ASIODriver* (*asioCreateDriver)(void) = createVASIO1Driver;
+}
+```
+
+**Avantages:** ✓ Vrai driver ASIO, ✓ Full features
+**Inconvénients:** ❌ Complexe (~2000 lignes), ❌ Gestion bas-niveau
+
+### Option B: Continuer avec PortAudio (simplifié)
+
+```cpp
+// Garder PortAudio comme backend
+// Utiliser wrapper ASIO officiel de PortAudio
+// Enregistrer via helper ASIO
+```
+
+**Avantages:** ✓ Simple, ✓ Marche rapidement
+**Inconvénients:** ❌ Pas de vrai driver ASIO, ❌ Latence plus haute
+
+### Option C: Utiliser VirtualAudio (recommandé)
+
+Utiliser une bibliotèque dédiée aux drivers virtuels:
+- VirtualAudio.exe (VB-Audio)
+- LoopMIDI (MIDI, pattern similaire)
+- VoiceMeeter (source partielle disponible)
+
+**Avantages:** ✓ Éprouvé, ✓ Professionnel
+**Inconvénients:** ❌ Moins d'apprentissage
+
+---
+
+## Décision recommandée
+
+### Pour une implémentation CORRECTE:
+
+**Approche hibride:**
+
+1. **Backend C++:** PortAudio (simple, fonctionne)
+2. **Frontend Electron/React:** ✓ Déjà fait, bon design
+3. **Driver ASIO:** Utiliser wrapper ASIO officiel de PortAudio
+
+**Raison:** 
+- PortAudio a un backend ASIO officiel
+- Pas besoin de 40 méthodes IASIO
+- Évite la complexité DLL/COM
+- Reste compatible ASIO
+
+---
+
+## Vérifications à faire
+
+### 1. L'ASIO SDK est-il vraiment nécessaire?
+
+**Réponse:** Oui, mais PortAudio l'intègre déjà.
+
+✓ PortAudio → ASIO SDK (interne)
+✓ Notre code → PortAudio (wrapper)
+
+### 2. Les drivers virtuels apparaîtront-ils dans les DAW?
+
+**Actuellement:** Problématique
+
+Besoin:
+- [ ] Enregistrement COM correct
+- [ ] CLSID unique par driver
+- [ ] DLL signée (ou désactiver SmartScreen)
+- [ ] Redémarrage Windows
+
+### 3. Latence acceptable?
+
+**PortAudio:** 10-20 ms (acceptable)
+**ASIO natif:** 1-5 ms (meilleur)
+
+---
+
+## Plan de correction
+
+### Phase 1: Vérification (rapide)
+- [ ] Tester si VASIO1-4 apparaissent dans Reaper
+- [ ] Vérifier registre Windows
+- [ ] Tester avec audio simple
+
+### Phase 2: Utiliser l'ASIO SDK correctement
+- [ ] Lire `asiosdk/host/asiodrivers.cpp` complet
+- [ ] Implémenter les 40 méthodes IASIO
+- [ ] Gérer callbacks bufferSwitch
+- [ ] Double-buffering proper
+
+### Phase 3: Packaging
+- [ ] Signer DLL (optionnel)
+- [ ] Installer script
+- [ ] Testing multi-DAW
+
+---
+
+## Ressources officielles
+
+**Documentation ASIO:**
+- https://github.com/steinbergmedia/asiosdk
+- `asiosdk/ASIO_SDK.txt` - Spec complète
+- `asiosdk/host/asio.h` - Interface principale
+- `asiosdk/host/asiodrivers.cpp` - Implémentation exemple
+
+**Exemples:**
+- `asiosdk/host/getsamplerate.cpp` - Lecture sample rate
+- `asiosdk/host/createbuffers.cpp` - Gestion buffers
+- `asiosdk/host/hostsample.cpp` - Host complet
+
+**Community:**
+- ASIO SDK issues: https://github.com/steinbergmedia/asiosdk/issues
+- Reaper ASIO testing
+- MIXXX ASIO implementation
+
+---
+
+## Conclusion
+
+**Notre implémentation actuelle:**
+- ✓ Bonne interface Electron/React
+- ✓ Communication C++ saine
+- ❌ Pas conforme ASIO SDK
+- ❌ Drivers ne seront pas reconnus par Windows
+
+**Recommandation:**
+Utiliser PortAudio officiellement avec son backend ASIO,
+plutôt que coder from scratch l'interface IASIO.
+
+**Prochaine étape:**
+Vérifier si les drivers apparaissent dans une DAW réelle.
+Si non → implémenter correctement les callbacks ASIO.
