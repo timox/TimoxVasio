@@ -17,7 +17,7 @@ See [BUILD_DRIVERS.en.md](BUILD_DRIVERS.en.md) for source build instructions.
 In an administrator terminal at the repository root:
 
 ```powershell
-.\build_and_install.bat
+.\install\build_and_install.bat
 ```
 
 The script builds `TimoxVasio` in `build_driver_110`, copies the DLL to `C:\Program Files\Steinberg\VirtualASIO\1.2.1`, and registers it. It removes known old VASIO1–VASIO4 registrations and attempts to delete their DLLs. A locked old DLL may remain on disk, but is no longer registered.
@@ -32,7 +32,7 @@ To perform the same operation manually, open an administrator PowerShell in the 
 $driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.2.1'
 New-Item -ItemType Directory -Force -Path $driverDir | Out-Null
 Copy-Item -LiteralPath '.\TimoxVasio.dll' -Destination (Join-Path $driverDir 'TimoxVasio.dll') -Force
-pwsh -NoProfile -File '.\register_drivers.ps1' install -DllDirectory $driverDir
+pwsh -NoProfile -File '.\install\register_drivers.ps1' install -DllDirectory $driverDir
 ```
 
 This registers the ASIO name `TimoxVasio` and removes only known TimoxVasio and historical VASIO entries. Other installed ASIO drivers are unchanged.
@@ -40,7 +40,7 @@ This registers the ASIO name `TimoxVasio` and removes only known TimoxVasio and 
 ## Verify and start
 
 ```powershell
-pwsh -NoProfile -File .\register_drivers.ps1 list
+pwsh -NoProfile -File .\install\register_drivers.ps1 list
 Get-ChildItem 'C:\Program Files\Steinberg\VirtualASIO\1.2.1\TimoxVasio.dll'
 pwsh -NoProfile -File .\tests\verify-installed-stack.ps1
 ```
@@ -54,5 +54,5 @@ Start `TimoxVirtualAsioEngine.exe` or Timox VASIO Control. Choose a physical ASI
 In an administrator terminal at the repository root:
 
 ```powershell
-pwsh -NoProfile -File .\register_drivers.ps1 uninstall
+pwsh -NoProfile -File .\install\register_drivers.ps1 uninstall
 ```

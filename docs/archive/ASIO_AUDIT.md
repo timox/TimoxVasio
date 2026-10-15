@@ -9,7 +9,7 @@
 > particulier, l’affirmation qu’il n’existe pas d’interface `IASIO`, de DLL COM
 > ou de callbacks est obsolète. Pour la synthèse courante, voir
 > [README.md](../../README.md); pour l’évaluation du code actif et ses preuves, voir
-> [ASIO_CONFORMITE.md](../../ASIO_CONFORMITE.md). Ne pas utiliser les anciennes
+> [ASIO_CONFORMITE.md](../ASIO_CONFORMITE.md). Ne pas utiliser les anciennes
 > recommandations de remplacement par PortAudio comme description du contrat
 > actuel.
 
@@ -26,7 +26,7 @@ Chaque écart marqué ❌ plus bas est fermé dans le pilote courant. Vérifié 
 | Enregistrement registre simplifié | Corrigé | Voir registration ; les anciennes entrées VASIO1–4 sont retirées |
 | Pas de gestion des formats | Faite | `ASIOSTFloat32LSB` déclaré par canal dans `src/vasio_driver.cpp` |
 
-Le prototype PortAudio critiqué ici (`src/main_portaudio.cpp`, `src/virtual_driver.cpp`, `src/vasio_driver_correct.cpp`, `CMakeLists_PortAudio.txt`) n'est plus référencé par `CMakeLists.txt` et n'est pas compilé. L'évaluation courante est dans [ASIO_CONFORMITE.md](../../ASIO_CONFORMITE.md).
+Le prototype PortAudio critiqué ici (`src/main_portaudio.cpp`, `src/virtual_driver.cpp`, `src/vasio_driver_correct.cpp`, `CMakeLists_PortAudio.txt`) n'est plus référencé par `CMakeLists.txt` et n'est pas compilé. L'évaluation courante est dans [ASIO_CONFORMITE.md](../ASIO_CONFORMITE.md).
 
 ## Résumé courant
 
@@ -39,7 +39,7 @@ a été confirmé par l’utilisateur le 5 octobre 2026. Renoise avait 64 entré
 à 48 kHz/1024 frames. Un relevé de 3,5 secondes a reçu 60 événements `audio.meter`
 sur les sorties physiques routées et les sorties virtuelles sources, avec des
 crêtes entre `-101,65` et `-26,43 dBFS`; l’utilisateur a confirmé le son.
-La conformité observée est documentée dans [ASIO_CONFORMITE.md](../../ASIO_CONFORMITE.md).
+La conformité observée est documentée dans [ASIO_CONFORMITE.md](../ASIO_CONFORMITE.md).
 
 L’API `/api/v1/diagnostics` et le fichier `%LOCALAPPDATA%/TimoxVasio/logs/engine.log`
 ont confirmé le démarrage du moteur, la configuration physique à 48 kHz/1024
@@ -85,7 +85,7 @@ résultats; elle ne constitue pas une réserve sur le test réalisé.
 
 > Note d’audit historique, antérieure au pilote `TimoxVasio.dll`. Les exemples
 > d’implémentation et les références aux quatre anciens pilotes ne sont pas le
-> contrat courant. Voir [BUILD_DRIVERS.md](../../BUILD_DRIVERS.md) et [la spécification actuelle](../superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.md).
+> contrat courant. Voir [BUILD_DRIVERS.md](../BUILD_DRIVERS.md) et [la spécification actuelle](../superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.md).
 
 ## Documentation Steinberg ASIO SDK
 

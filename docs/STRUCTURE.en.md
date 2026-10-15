@@ -34,5 +34,5 @@ The product has three separate components: the virtual ASIO driver `TimoxVasio.d
 
 - Driver DLL: `TimoxVasio.dll`; CMake target: `TimoxVasio`.
 - Engine: `TimoxVirtualAsioEngine.exe`; CMake target: `TimoxVirtualAsioEngine`.
-- API contract: [API.en.md](API.en.md), [openapi-v1.json](openapi-v1.json), and [schemas/api-v1.json](schemas/api-v1.json).
-- Design and acceptance criteria: [256-channel specification](docs/superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.en.md).
+- API contract: [API.en.md](API.en.md), [openapi-v1.json](../api/openapi-v1.json), and [schemas/api-v1.json](../api/schemas/api-v1.json).
+- Design and acceptance criteria: [256-channel specification](superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.en.md).

@@ -10,4 +10,4 @@ Install the driver before selecting TimoxVasio in an ASIO application. Extract t
 
 Then install or run Control. It starts or connects to the engine and its local API. The Setup and portable executables do not install or register the ASIO DLL.
 
-The release `MANIFEST.json` records the source commit, artifact paths, binary versions, and SHA-256 values. See the [release notes](RELEASE_NOTES_v1.1.1.en.md) and [installation guide](../INSTALL.en.md).
+The release `MANIFEST.json` records the source commit, artifact paths, binary versions, and SHA-256 values. See the [release notes](RELEASE_NOTES_v1.1.1.en.md) and [installation guide](INSTALL.en.md).

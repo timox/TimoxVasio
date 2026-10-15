@@ -4,7 +4,7 @@
 
 [Français](ASIO_AUDIT.md) | **English**
 
-> **Warning: this file contains findings from different dates and states.** Older sections below do not all describe the current driver. In particular, claims that no `IASIO` interface, COM DLL, or callbacks exist are obsolete. For the current summary, see [README.en.md](../../README.en.md); for the active code assessment and evidence, see [ASIO_CONFORMITE.en.md](../../ASIO_CONFORMITE.en.md). Do not treat old recommendations to replace the driver with PortAudio as a description of the current contract.
+> **Warning: this file contains findings from different dates and states.** Older sections below do not all describe the current driver. In particular, claims that no `IASIO` interface, COM DLL, or callbacks exist are obsolete. For the current summary, see [README.en.md](../../README.en.md); for the active code assessment and evidence, see [ASIO_CONFORMITE.en.md](../ASIO_CONFORMITE.en.md). Do not treat old recommendations to replace the driver with PortAudio as a description of the current contract.
 
 ## Closure of the reported gaps
 
@@ -19,11 +19,11 @@ Every gap marked ❌ below is closed in the current driver. Checked against the 
 | Simplified registry entries | Fixed | See registration; old VASIO1–4 entries are removed |
 | No sample-format handling | Done | `ASIOSTFloat32LSB` declared per channel in `src/vasio_driver.cpp` |
 
-The PortAudio prototype criticised here (`src/main_portaudio.cpp`, `src/virtual_driver.cpp`, `src/vasio_driver_correct.cpp`, `CMakeLists_PortAudio.txt`) is no longer referenced by `CMakeLists.txt` and is not built. The current assessment is in [ASIO_CONFORMITE.en.md](../../ASIO_CONFORMITE.en.md).
+The PortAudio prototype criticised here (`src/main_portaudio.cpp`, `src/virtual_driver.cpp`, `src/vasio_driver_correct.cpp`, `CMakeLists_PortAudio.txt`) is no longer referenced by `CMakeLists.txt` and is not built. The current assessment is in [ASIO_CONFORMITE.en.md](../ASIO_CONFORMITE.en.md).
 
 ## Current summary
 
-The active driver is `TimoxVasio.dll`. It implements `IASIO`, advertises 256 channels in each direction, and processes channels actually allocated by the host. Local probes verify capacity, sparse allocations, and callback transport. After reinstalling version 1.0.0, the user confirmed an end-to-end test on October 5, 2026. Renoise had 64 inputs and 64 outputs, eight routes were active, and the engine used SSL ASIO Driver 1 at 48 kHz/1024 frames. A 3.5-second observation received 60 `audio.meter` events on routed physical outputs and source virtual outputs, with peaks between `-101.65` and `-26.43 dBFS`; the user confirmed audible sound. Observed compliance is documented in [ASIO_CONFORMITE.en.md](../../ASIO_CONFORMITE.en.md).
+The active driver is `TimoxVasio.dll`. It implements `IASIO`, advertises 256 channels in each direction, and processes channels actually allocated by the host. Local probes verify capacity, sparse allocations, and callback transport. After reinstalling version 1.0.0, the user confirmed an end-to-end test on October 5, 2026. Renoise had 64 inputs and 64 outputs, eight routes were active, and the engine used SSL ASIO Driver 1 at 48 kHz/1024 frames. A 3.5-second observation received 60 `audio.meter` events on routed physical outputs and source virtual outputs, with peaks between `-101.65` and `-26.43 dBFS`; the user confirmed audible sound. Observed compliance is documented in [ASIO_CONFORMITE.en.md](../ASIO_CONFORMITE.en.md).
 
 The `/api/v1/diagnostics` API and `%LOCALAPPDATA%/TimoxVasio/logs/engine.log` confirmed engine startup, physical configuration at 48 kHz/1024 frames, and application of the eight routes. The user verified Swagger in the installed Electron application.
 
@@ -61,7 +61,7 @@ The requested end-to-end test succeeded. Further measurements, hosts, and transi
 
 ## Audit archive predating the current driver
 
-> Historical audit note predating `TimoxVasio.dll`. Implementation examples and references to four old drivers are not the current contract. See [BUILD_DRIVERS.en.md](../../BUILD_DRIVERS.en.md) and the [current specification](../superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.en.md).
+> Historical audit note predating `TimoxVasio.dll`. Implementation examples and references to four old drivers are not the current contract. See [BUILD_DRIVERS.en.md](../BUILD_DRIVERS.en.md) and the [current specification](../superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.en.md).
 
 ## Steinberg ASIO SDK documentation
 

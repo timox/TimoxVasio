@@ -20,7 +20,7 @@ Dans un terminal administrateur :
 
 ```powershell
 cd C:\Users\timo\Documents\GitHub\TimoxVasio
-.\build_and_install.bat
+.\install\build_and_install.bat
 ```
 
 Le script configure et compile la cible `TimoxVasio` dans `build_driver_110`, copie `TimoxVasio.dll` dans `C:\Program Files\Steinberg\VirtualASIO\1.2.1`, puis enregistre le pilote. Il retire les anciennes entrées VASIO1–VASIO4 connues et tente de supprimer leurs DLL. Si une ancienne DLL reste verrouillée, le script le signale; elle n’est plus enregistrée comme pilote.
@@ -35,7 +35,7 @@ Pour effectuer la même opération manuellement depuis le dossier extrait, ouvri
 $driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.2.1'
 New-Item -ItemType Directory -Force -Path $driverDir | Out-Null
 Copy-Item -LiteralPath '.\TimoxVasio.dll' -Destination (Join-Path $driverDir 'TimoxVasio.dll') -Force
-pwsh -NoProfile -File '.\register_drivers.ps1' install -DllDirectory $driverDir
+pwsh -NoProfile -File '.\install\register_drivers.ps1' install -DllDirectory $driverDir
 ```
 
 Cette opération inscrit le pilote sous le nom ASIO `TimoxVasio`. Elle retire uniquement les entrées connues de TimoxVasio et VASIO historiques. Les autres pilotes ASIO installés restent inchangés.
@@ -43,7 +43,7 @@ Cette opération inscrit le pilote sous le nom ASIO `TimoxVasio`. Elle retire un
 ## Vérification
 
 ```powershell
-pwsh -NoProfile -File .\register_drivers.ps1 list
+pwsh -NoProfile -File .\install\register_drivers.ps1 list
 Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\1.2.1\TimoxVasio.dll"
 pwsh -NoProfile -File .\tests\verify-installed-stack.ps1
 ```
@@ -59,5 +59,5 @@ Avant d’ouvrir Renoise ou une autre application ASIO, vérifier que Timox VASI
 Dans un terminal administrateur placé dans le dépôt :
 
 ```powershell
-pwsh -NoProfile -File .\register_drivers.ps1 uninstall
+pwsh -NoProfile -File .\install\register_drivers.ps1 uninstall
 ```

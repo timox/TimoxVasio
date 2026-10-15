@@ -24,4 +24,4 @@ Release probes cover cross-process transport, 0, 2, 8, and 256 channels, sparse 
 | `Timox.VASIO.Control.1.2.0.exe` | Portable Control and engine. |
 | `MANIFEST.json` | Commit, versions, and SHA-256 hashes. |
 
-Install the driver from the ZIP, then install or run Control. Restart audio applications that already had the previous DLL loaded. See the [installation guide](../INSTALL.en.md).
+Install the driver from the ZIP, then install or run Control. Restart audio applications that already had the previous DLL loaded. See the [installation guide](INSTALL.en.md).

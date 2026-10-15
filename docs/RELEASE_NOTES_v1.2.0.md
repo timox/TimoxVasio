@@ -24,4 +24,4 @@ Les probes Release couvrent le transport interprocessus, 0, 2, 8 et 256 voies, l
 | `Timox.VASIO.Control.1.2.0.exe` | Interface portable et moteur. |
 | `MANIFEST.json` | Commit, versions et empreintes SHA-256. |
 
-Installer le pilote depuis le ZIP, puis Control. Les applications audio déjà ouvertes doivent être relancées pour charger la nouvelle DLL. Le guide [Installation](../INSTALL.md) décrit les étapes.
+Installer le pilote depuis le ZIP, puis Control. Les applications audio déjà ouvertes doivent être relancées pour charger la nouvelle DLL. Le guide [Installation](INSTALL.md) décrit les étapes.

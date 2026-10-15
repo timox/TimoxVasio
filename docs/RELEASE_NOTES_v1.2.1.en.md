@@ -23,4 +23,4 @@ The ASIO call includes all work the application performs during that call. Ring 
 | `Timox.VASIO.Control.1.2.1.exe` | Portable Control and engine. |
 | `MANIFEST.json` | Source commit, versions, and SHA-256 hashes. |
 
-Install the driver from the ZIP, then Control. See the [installation guide](../INSTALL.en.md).
+Install the driver from the ZIP, then Control. See the [installation guide](INSTALL.en.md).

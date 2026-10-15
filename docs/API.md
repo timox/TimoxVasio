@@ -5,16 +5,16 @@
 Cette API est le contrat entre l’interface de contrôle et le moteur natif. Electron main en est le client ; le renderer ne lit ni le registre, ni le fichier de configuration, ni la mémoire audio partagée.
 
 Pour une prise en main par étapes, avec schéma d’architecture et exemples
-PowerShell/Node.js, voir le [quick start API](docs/API_QUICKSTART.md). Ce fichier
+PowerShell/Node.js, voir le [quick start API](API_QUICKSTART.md). Ce fichier
 reste la référence détaillée du contrat.
 
-La définition [Swagger/OpenAPI 3.1](openapi-v1.json) décrit les routes HTTP et référence les schémas JSON partagés. Son extension `x-websocket` décrit les commandes, réponses et événements de la connexion WebSocket. Le [guide des fonctions 1.1.0](docs/FONCTIONS_1.1.0.md) illustre les mesures et la console intégrée.
+La définition [Swagger/OpenAPI 3.1](../api/openapi-v1.json) décrit les routes HTTP et référence les schémas JSON partagés. Son extension `x-websocket` décrit les commandes, réponses et événements de la connexion WebSocket. Le [guide des fonctions 1.1.0](FONCTIONS_1.1.0.md) illustre les mesures et la console intégrée.
 
 Le serveur natif utilise `cpp-httplib` 0.58.0 pour HTTP et WebSocket, et `nlohmann/json` 3.12.0 pour encoder et décoder les messages. Les en-têtes et licences de ces dépendances sont conservés dans `vendor/`.
 
 L’inventaire physique énumère les pilotes ASIO enregistrés sans les ouvrir. `capabilitiesKnown` vaut `false` et les capacités sont vides tant qu’un pilote n’a pas été explicitement sélectionné et ouvert par le moteur.
 
-Les messages sont encodés en JSON UTF-8. Les schémas normatifs sont dans [`schemas/api-v1.json`](schemas/api-v1.json). Les unités sont explicites dans les champs : fréquence en hertz, taille de buffer en frames, canal numéroté à partir de 1, gain en dB et niveau de crête en dBFS.
+Les messages sont encodés en JSON UTF-8. Les schémas normatifs sont dans [`schemas/api-v1.json`](../api/schemas/api-v1.json). Les unités sont explicites dans les champs : fréquence en hertz, taille de buffer en frames, canal numéroté à partir de 1, gain en dB et niveau de crête en dBFS.
 
 ## Adresse et lecture
 
@@ -33,8 +33,8 @@ Le moteur écoute uniquement sur l’interface loopback `127.0.0.1`. Le port peu
 Les deux routes HTTP sont appelées sous le même préfixe `http://127.0.0.1:<port>`.
 
 Le déroulé API puis redémarrage d'hôte est schématisé dans
-[Séquences du pilote](docs/DRIVER_SEQUENCES.md#2-profil-par-application-via-lapi-et-swaggeropenapi).
-Le document [OpenAPI](openapi-v1.json) est la définition utilisée pour
+[Séquences du pilote](DRIVER_SEQUENCES.md#2-profil-par-application-via-lapi-et-swaggeropenapi).
+Le document [OpenAPI](../api/openapi-v1.json) est la définition utilisée pour
 présenter ces routes dans Swagger UI.
 
 Les réponses HTTP sont des objets JSON conformes à `definitions.state` ou `definitions.drivers`. Un pilote matériel contient ses ports d’entrée et de sortie, les taux annoncés par son pilote ainsi que ses capacités de buffer. TimoxVasio expose les clients détectés et seulement les canaux alloués par chacun via `createBuffers`, avec leurs ports actifs.

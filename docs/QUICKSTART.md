@@ -26,8 +26,8 @@ La compilation produit `build_drivers_vs2026_ninja/TimoxVasio.dll` et `build_eng
 Dans un terminal administrateur :
 
 ```powershell
-.\build_and_install.bat
-pwsh -NoProfile -File .\register_drivers.ps1 list
+.\install\build_and_install.bat
+pwsh -NoProfile -File .\install\register_drivers.ps1 list
 ```
 
 Le nom enregistré attendu est `TimoxVasio`. Pour vérifier COM sans démarrer de flux audio :

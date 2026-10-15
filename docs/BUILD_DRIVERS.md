@@ -45,8 +45,8 @@ La sonde audio vérifie également les index de canaux bas, élevés et clairsem
 Pour installer sur cette machine, voir `INSTALL.md`. Pour lister ou désinstaller l’entrée du produit :
 
 ```powershell
-pwsh -NoProfile -File .\register_drivers.ps1 list
-pwsh -NoProfile -File .\register_drivers.ps1 uninstall
+pwsh -NoProfile -File .\install\register_drivers.ps1 list
+pwsh -NoProfile -File .\install\register_drivers.ps1 uninstall
 ```
 
 ## État de validation

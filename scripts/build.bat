@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0.."
 REM Script de compilation du moteur TimoxVirtualAsioEngine sous Windows
 
 echo.

@@ -2,7 +2,7 @@
 
 [Français](API.md) | **English**
 
-This API is the contract between the control application and the native engine. Electron main is its client; the renderer reads neither the registry, configuration file, nor shared audio memory. For an introduction with diagrams and PowerShell/Node.js examples, see the [API quick start](docs/API_QUICKSTART.en.md). The normative machine-readable contract is [OpenAPI 3.1](openapi-v1.json), including its `x-websocket` extension, and the [shared JSON schemas](schemas/api-v1.json). The [1.1.0 feature guide](docs/FONCTIONS_1.1.0.en.md) illustrates measurements and the integrated console.
+This API is the contract between the control application and the native engine. Electron main is its client; the renderer reads neither the registry, configuration file, nor shared audio memory. For an introduction with diagrams and PowerShell/Node.js examples, see the [API quick start](API_QUICKSTART.en.md). The normative machine-readable contract is [OpenAPI 3.1](../api/openapi-v1.json), including its `x-websocket` extension, and the [shared JSON schemas](../api/schemas/api-v1.json). The [1.1.0 feature guide](FONCTIONS_1.1.0.en.md) illustrates measurements and the integrated console.
 
 The native server uses `cpp-httplib` 0.58.0 for HTTP/WebSocket and `nlohmann/json` 3.12.0 for JSON. Dependency notices and licenses are retained in `vendor/`. The physical inventory enumerates registered ASIO drivers without opening them. Until the engine explicitly selects and opens one, `capabilitiesKnown` is `false` and its capabilities are empty.
 

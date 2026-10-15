@@ -37,5 +37,5 @@ documentée; les applications audio chargent le pilote ASIO.
 
 - DLL pilote : `TimoxVasio.dll` ; cible CMake : `TimoxVasio`.
 - Moteur : `TimoxVirtualAsioEngine.exe` ; cible CMake : `TimoxVirtualAsioEngine`.
-- Contrat API : [API.md](API.md), [openapi-v1.json](openapi-v1.json) et [schemas/api-v1.json](schemas/api-v1.json).
-- Conception et critères d’acceptation : [spécification 256 canaux](docs/superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.md).
+- Contrat API : [API.md](API.md), [openapi-v1.json](../api/openapi-v1.json) et [schemas/api-v1.json](../api/schemas/api-v1.json).
+- Conception et critères d’acceptation : [spécification 256 canaux](superpowers/specs/2026-10-03-vasio-single-driver-256-channel-design.md).

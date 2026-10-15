@@ -3,11 +3,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$schemaPath = Join-Path $PSScriptRoot '..\schemas\api-v1.json'
+$schemaPath = Join-Path $PSScriptRoot '..\api\schemas\api-v1.json'
 function Assert-ApiSchema($value, [string]$description) {
     $jsonText = ConvertTo-Json -InputObject $value -Depth 20 -Compress
     if (-not (Test-Json -Json $jsonText -SchemaFile $schemaPath)) {
-        throw "$description does not match schemas/api-v1.json"
+        throw "$description does not match api/schemas/api-v1.json"
     }
 }
 

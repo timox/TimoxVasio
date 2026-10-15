@@ -45,8 +45,8 @@ The audio probe also checks low, high, and sparse channel indices. Results of th
 For installation on this machine, see [INSTALL.en.md](INSTALL.en.md). To list or uninstall the product entry:
 
 ```powershell
-pwsh -NoProfile -File .\register_drivers.ps1 list
-pwsh -NoProfile -File .\register_drivers.ps1 uninstall
+pwsh -NoProfile -File .\install\register_drivers.ps1 list
+pwsh -NoProfile -File .\install\register_drivers.ps1 uninstall
 ```
 
 ## Validation status

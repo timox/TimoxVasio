@@ -23,4 +23,4 @@
 /vendor/mixxx-2.7-256-source.zip
 
 # Local checkout of the separate public release repository
-ASIOHost.vcxproj.user
+legacy/ASIOHost.vcxproj.user

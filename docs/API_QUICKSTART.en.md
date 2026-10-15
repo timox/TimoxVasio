@@ -2,7 +2,7 @@
 
 [Français](API_QUICKSTART.md) | **English**
 
-This guide introduces the components and first requests for integrating a tool with the engine. For the complete contract, schemas, and errors, see the [API reference](../API.en.md), [OpenAPI contract](../openapi-v1.json), and [JSON schemas](../schemas/api-v1.json). The [1.1.0 feature guide](FONCTIONS_1.1.0.en.md) illustrates views and measurements.
+This guide introduces the components and first requests for integrating a tool with the engine. For the complete contract, schemas, and errors, see the [API reference](API.en.md), [OpenAPI contract](../api/openapi-v1.json), and [JSON schemas](../api/schemas/api-v1.json). The [1.1.0 feature guide](FONCTIONS_1.1.0.en.md) illustrates views and measurements.
 
 ## Full architecture
 
@@ -150,7 +150,7 @@ socket.on('open', () => {
 });
 ```
 
-`sampleRate: null` requests the selected driver's current rate; `bufferFrames: null` requests its preferred size. Explicit supported values are also accepted. See [routing rules](../API.en.md#routing-rules). `configuration.apply` replaces the entire driver, parameter, and route configuration. Repeating it does not duplicate routes but may briefly rebuild the audio stream. A new waiting virtual route may use `virtual:TimoxVasio:app:<executable>:output:<channel>` if the executable has a registered profile and the channel is within it. A matching `id` response accepts or rejects the command; later events report confirmed state. `audio.meter` events carry peaks and transport counters, not samples.
+`sampleRate: null` requests the selected driver's current rate; `bufferFrames: null` requests its preferred size. Explicit supported values are also accepted. See [routing rules](API.en.md#routing-rules). `configuration.apply` replaces the entire driver, parameter, and route configuration. Repeating it does not duplicate routes but may briefly rebuild the audio stream. A new waiting virtual route may use `virtual:TimoxVasio:app:<executable>:output:<channel>` if the executable has a registered profile and the channel is within it. A matching `id` response accepts or rejects the command; later events report confirmed state. `audio.meter` events carry peaks and transport counters, not samples.
 
 ## 4. Observe levels and correlation
 

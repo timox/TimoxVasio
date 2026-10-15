@@ -5,8 +5,8 @@
 **Français** | [English](ROUTING_STRATEGIES.en.md)
 
 > Document d’exploration historique. Ses exemples VASIO1–VASIO4 ne décrivent
-> plus le produit actif. Le contrat courant est documenté dans [API.md](../../API.md)
-> et l’architecture actuelle dans [STRUCTURE.md](../../STRUCTURE.md).
+> plus le produit actif. Le contrat courant est documenté dans [API.md](../API.md)
+> et l’architecture actuelle dans [STRUCTURE.md](../STRUCTURE.md).
 
 ## Approche 1: Matrice de Routage (Mixing Matrix)
 

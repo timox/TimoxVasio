@@ -23,7 +23,7 @@ flowchart LR
     API <--> E
 ```
 
-Les échantillons suivent le chemin du haut. L’interface, Swagger et la console utilisent l’API locale pour lire l’état et envoyer des commandes; ils ne transportent pas les échantillons. Le moteur doit fonctionner avant qu’une application ASIO puisse ouvrir ses buffers TimoxVasio. Le guide [Installation](../INSTALL.md) décrit l’ordre de lancement.
+Les échantillons suivent le chemin du haut. L’interface, Swagger et la console utilisent l’API locale pour lire l’état et envoyer des commandes; ils ne transportent pas les échantillons. Le moteur doit fonctionner avant qu’une application ASIO puisse ouvrir ses buffers TimoxVasio. Le guide [Installation](INSTALL.md) décrit l’ordre de lancement.
 
 ## Canaux ouverts, routes et vumètres
 
@@ -144,4 +144,4 @@ socket.on('message', raw => {
 socket.on('error', error => console.error(error.message));
 ```
 
-Pour activer la corrélation dans ce programme, commencez par lire `GET /api/v1/state`, choisissez une paire dans `stereoPairs`, puis envoyez la commande `audio.correlation.start` ci-dessus. Une requête sur une paire absente ou non routée est refusée. La [référence API](../API.md) et le [quick start](API_QUICKSTART.md) donnent le contrat complet de configuration et de diagnostics.
+Pour activer la corrélation dans ce programme, commencez par lire `GET /api/v1/state`, choisissez une paire dans `stereoPairs`, puis envoyez la commande `audio.correlation.start` ci-dessus. Une requête sur une paire absente ou non routée est refusée. La [référence API](API.md) et le [quick start](API_QUICKSTART.md) donnent le contrat complet de configuration et de diagnostics.

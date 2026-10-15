@@ -1,5 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
+cd /d "%~dp0.."
 
 :: Script de compilation et installation du pilote TimoxVasio
 :: Exécuter avec privilèges administrateur
@@ -120,7 +121,7 @@ echo.
 
 :: Enregistrement des drivers
 echo [INFO] Enregistrement de TimoxVasio...
-powershell -ExecutionPolicy Bypass -File register_drivers.ps1 install
+powershell -ExecutionPolicy Bypass -File install\register_drivers.ps1 install
 
 if %errorlevel% neq 0 (
     echo [ERREUR] Enregistrement échoué

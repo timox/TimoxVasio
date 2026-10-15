@@ -27,7 +27,7 @@ flowchart LR
 La DLL et le moteur sont des composants séparés. L'API est le contrat de
 configuration et d'inventaire; l'interface ne lit pas directement la mémoire
 partagée ou les fichiers privés du moteur. Voir [API.md](API.md) et les
-[séquences détaillées](docs/DRIVER_SEQUENCES.md).
+[séquences détaillées](DRIVER_SEQUENCES.md).
 
 ## Capacité et canaux actifs
 
@@ -61,7 +61,7 @@ conversion implicite de fréquence n'est effectuée.
 La solution de compatibilité 255 canaux est un profil côté TimoxVasio; la
 correction générique de la représentation de compte de canaux appartient à
 Mixxx. Les constats, le patch local et les limites de validation sont décrits
-dans [la note de compatibilité Mixxx](docs/mixxx-256-channel-compatibility.md).
+dans [la note de compatibilité Mixxx](mixxx-256-channel-compatibility.md).
 Les séquences donnent les éléments reproductibles pour expliquer le contrat à
 un mainteneur Mixxx; elles ne prétendent pas qu'une PR Mixxx a déjà été publiée.
 

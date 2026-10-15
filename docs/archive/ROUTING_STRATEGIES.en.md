@@ -4,7 +4,7 @@
 
 [Français](ROUTING_STRATEGIES.md) | **English**
 
-> Historical exploration. Its VASIO1–VASIO4 examples no longer describe the active product. The current contract is in [API.en.md](../../API.en.md), and the current architecture is in [STRUCTURE.en.md](../../STRUCTURE.en.md).
+> Historical exploration. Its VASIO1–VASIO4 examples no longer describe the active product. The current contract is in [API.en.md](../API.en.md), and the current architecture is in [STRUCTURE.en.md](../STRUCTURE.en.md).
 
 ## Approach 1: Routing matrix
 

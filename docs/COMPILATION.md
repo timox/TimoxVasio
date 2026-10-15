@@ -25,7 +25,7 @@ cmake --build build_drivers_vs2026_ninja --target TimoxVasio DriverProbe DriverA
 
 Le fichier produit est `build_drivers_vs2026_ninja\TimoxVasio.dll`. `VASIO_BUILD_DRIVERS` est le nom historique de l’option CMake ; il active la cible unique `TimoxVasio`.
 
-La sonde directe est documentée dans [BUILD_DRIVERS.md](BUILD_DRIVERS.md). Pour installer la DLL dans `Program Files` et l’enregistrer, exécuter `build_and_install.bat` dans un terminal administrateur.
+La sonde directe est documentée dans [BUILD_DRIVERS.md](BUILD_DRIVERS.md). Pour installer la DLL dans `Program Files` et l’enregistrer, exécuter `install\build_and_install.bat` dans un terminal administrateur.
 
 ## Compiler le moteur
 

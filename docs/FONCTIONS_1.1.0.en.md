@@ -23,7 +23,7 @@ flowchart LR
     API <--> E
 ```
 
-Samples follow the audio path. Control, Swagger, and the console use the local API to read state and send commands; they do not transport samples. The engine must be running before an ASIO application opens TimoxVasio buffers. See [Installation](../INSTALL.en.md) for startup order.
+Samples follow the audio path. Control, Swagger, and the console use the local API to read state and send commands; they do not transport samples. The engine must be running before an ASIO application opens TimoxVasio buffers. See [Installation](INSTALL.en.md) for startup order.
 
 ## Open channels, routes, and meters
 
@@ -144,4 +144,4 @@ socket.on('message', raw => {
 socket.on('error', error => console.error(error.message));
 ```
 
-To activate correlation in a program, first read `GET /api/v1/state`, select a pair from `stereoPairs`, and send the `audio.correlation.start` command above. A missing or unrouted pair is rejected. See the [API contract](../API.en.md) and [API quick start](API_QUICKSTART.en.md) for configuration and diagnostics.
+To activate correlation in a program, first read `GET /api/v1/state`, select a pair from `stereoPairs`, and send the `audio.correlation.start` command above. A missing or unrouted pair is rejected. See the [API contract](API.en.md) and [API quick start](API_QUICKSTART.en.md) for configuration and diagnostics.

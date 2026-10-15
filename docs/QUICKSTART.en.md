@@ -26,8 +26,8 @@ The outputs are `build_drivers_vs2026_ninja/TimoxVasio.dll` and `build_engine_vs
 In an administrator terminal:
 
 ```powershell
-.\build_and_install.bat
-pwsh -NoProfile -File .\register_drivers.ps1 list
+.\install\build_and_install.bat
+pwsh -NoProfile -File .\install\register_drivers.ps1 list
 ```
 
 The registered ASIO name should be `TimoxVasio`. To probe COM without starting audio:
@@ -42,4 +42,4 @@ See [Installation](INSTALL.en.md) and [BUILD_DRIVERS.en.md](BUILD_DRIVERS.en.md)
 
 ## Start and route
 
-Run the engine on its own to start the local service, or launch Timox VASIO Control, which starts it. In Control, select a physical ASIO driver, apply its accepted sample rate and buffer size, and create routes from endpoints returned by the API. Validate the full path with a real ASIO host and an observed signal on the hardware. See [TEST_VERIFICATION.en.md](TEST_VERIFICATION.en.md) and the [API quick start](docs/API_QUICKSTART.en.md).
+Run the engine on its own to start the local service, or launch Timox VASIO Control, which starts it. In Control, select a physical ASIO driver, apply its accepted sample rate and buffer size, and create routes from endpoints returned by the API. Validate the full path with a real ASIO host and an observed signal on the hardware. See [TEST_VERIFICATION.en.md](TEST_VERIFICATION.en.md) and the [API quick start](API_QUICKSTART.en.md).

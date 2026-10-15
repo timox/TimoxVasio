@@ -23,4 +23,4 @@ Le temps de l’appel ASIO couvre tout le travail de l’application pendant cet
 | `Timox.VASIO.Control.1.2.1.exe` | Interface portable et moteur. |
 | `MANIFEST.json` | Commit, versions et empreintes SHA-256. |
 
-Installer le pilote depuis le ZIP, puis Control. Le [guide d’installation](../INSTALL.md) détaille ces étapes.
+Installer le pilote depuis le ZIP, puis Control. Le [guide d’installation](INSTALL.md) détaille ces étapes.
