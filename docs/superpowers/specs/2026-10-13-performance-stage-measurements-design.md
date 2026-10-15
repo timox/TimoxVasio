@@ -1,5 +1,7 @@
 # Mesures par étape dans l'onglet Performance — 1.2.1
 
+**Français** | [English](2026-10-13-performance-stage-measurements-design.en.md)
+
 ## Objectif validé
 
 Afficher dans l'onglet Performance des durées réellement observées aux étapes du trajet audio, sur des fenêtres de cinq secondes. Les chiffres doivent être rattachés à l'étape qu'ils décrivent, accompagnés du nombre d'échantillons et d'une explication courte. L'instrumentation supplémentaire est désactivée au démarrage et activable depuis l'interface. Aucun réglage automatique du tampon, de la phase ou du routage n'en découle. La livraison visée est la version 1.2.1.

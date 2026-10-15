@@ -18,3 +18,6 @@ Pour la documentation courante, partir du [README](../../README.md).
 | `superpowers/plans/2026-10-02-*`, `superpowers/specs/2026-10-02-*` | Plans et conception du modèle quatre pilotes | Plan maître du 3 octobre 2026 |
 | `superpowers/plans/2026-10-06-*`, `2026-10-07-*` | Programmes de travail post-1.1.0 | Livrés en 1.2.x |
 | `superpowers/plans/IMPLEMENTATION_LEDGER.md` / `.en.md` | Journal d'implémentation figé au 5 octobre 2026 | Notes de version |
+| `ASIO_RECONFIG_PROTOCOL_DECISION.md` | Décision sur la notification de reset ASIO lors d'un changement de format (octobre 2026) | Implémentée : `kAsioResetRequest` dans `src/vasio_driver.cpp` |
+| `TESTS_HOTES_REELS.md` | Fiche de tests manuels de la campagne `vasio-probe` | `tools/vasio-probe/README.md` |
+| `VASIO_CLOCK_SOURCE_TRACE.md` | Trace dans le code de la source de cadence | `ARCHITECTURE.md`, `ASIO_BUFFER_HEALTH.md` |

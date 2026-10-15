@@ -1,5 +1,7 @@
 # Source de cadence de TimoxVasio
 
+> **ARCHIVE** — Document historique conservé pour référence. Il ne décrit pas l'état courant de TimoxVasio (1.2.1). Voir le [README](../../README.md) et la documentation courante qu'il référence.
+
 L'ASIO virtuel est cadencé par les callbacks du pilote ASIO physique sélectionné dans le moteur. Ce constat vient du code, indépendamment des mesures de dérive encore à effectuer.
 
 1. `AudioController::ApplyConfigurationCore` exige un pilote physique pour configurer fréquence, buffer et routes (`src/audio_controller.cpp:558-564`), confirme fréquence et taille avec ce pilote (`:575-608`) et démarre son hôte quand des routes sont actives (`:627-644`). Sans route résolue, l'état reste `stopped` et aucun callback physique n'est démarré.
