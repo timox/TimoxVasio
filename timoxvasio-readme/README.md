@@ -81,6 +81,22 @@ Invoke-RestMethod 'http://127.0.0.1:<port>/api/v1/state'
 
 Le [quick start API](docs/API_QUICKSTART.md) donne des exemples PowerShell et Node.js. Le contrat complet est dans [API.md](API.md) et [openapi-v1.json](openapi-v1.json).
 
+## Captures d'écran
+
+Interface Timox VASIO Control (les noms de canaux viennent d'une session de test) :
+
+**Profils de canaux par application** : limite les canaux annoncés à chaque exécutable.
+
+![Profils de canaux par application](docs/images/gui-profils-canaux.png)
+
+**Matrice de routage** : une case relie un canal source à un canal de destination.
+
+![Matrice de routage](docs/images/gui-matrice-routage.png)
+
+**Routes configurées** : gain et mute par route, avec le bouton « Afficher dans la matrice ».
+
+![Routes configurées](docs/images/gui-routes-configurees.png)
+
 ## Limites connues
 
 - Windows x64 uniquement ; 32 bits, ARM et Windows 7/8 ne sont pas validés.
