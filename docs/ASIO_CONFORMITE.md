@@ -29,7 +29,7 @@ Cette distinction est importante pour les hôtes qui stockent leur compte de can
 
 ## Validation hôte et matériel — 5 octobre 2026
 
-Après réinstallation de la version 1.0.0, l’utilisateur a confirmé le test
+Le 5 octobre 2026, sur la version 1.0.0 alors installée, l’utilisateur a confirmé le test
 audible de bout en bout avec Renoise et SSL ASIO Driver 1. L’API a relevé le
 moteur `running` à 48 kHz/1024 frames, un client Renoise avec 64 entrées et
 64 sorties, et huit routes actives. Le flux `audio.meter` a fourni 60 événements

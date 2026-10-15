@@ -1,3 +1,5 @@
+# ARCHIVE — INCOMPATIBLE SAUF 1.1.1 : ce script cible la DLL et le moteur 1.1.1 (chemins et versions codés en dur). Il n'est plus maintenu et échoue sur une installation 1.2.1. Conservé pour référence.
+
 param(
     [Parameter(Mandatory = $true)]
     [ValidateSet('Inspect', 'Stage', 'Restore')]

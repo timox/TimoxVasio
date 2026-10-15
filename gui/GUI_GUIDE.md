@@ -28,6 +28,10 @@ Les axes montrent uniquement les endpoints publiés par l’API. Pour faire appa
 
 Un changement de configuration interrompt le flux pendant la reconstruction du graphe. Le statut du moteur et les erreurs structurées sont affichés dans l’interface.
 
+## Performance
+
+La vue « Performance » lit `bufferHealth` dans `GET /api/v1/state` : callback physique le plus lent, temps disponible pour un bloc, marge ou dépassement, démarrages retardés, dépassements de traitement et callbacks observés sur la dernière fenêtre de cinq secondes. La case « Enable stage measurements » envoie `performance.measurements.set` ; la collecte, désactivée au démarrage du moteur, échantillonne au plus un callback sur seize et publie la moyenne, le maximum et le nombre d’échantillons de chaque étape (appel de l’application, écriture dans l’anneau, attente, lecture des clients, routage, copie physique). Rien n’est ajusté automatiquement. Le [guide des fonctions](../docs/FONCTIONS.md) détaille la lecture de ces valeurs.
+
 ## API, journaux et cycle de vie du moteur
 
 La navigation « API et Swagger » affiche la spécification OpenAPI et les commandes/événements WebSocket. Swagger UI, son style et les schémas OpenAPI sont empaquetés dans l’application; l’affichage ne dépend d’aucun CDN. Le descriptif WebSocket provient du champ `x-websocket` de `openapi-v1.json`.

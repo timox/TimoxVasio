@@ -1,4 +1,5 @@
 {
+  "_archive": "ARCHIVE — INCOMPATIBLE SAUF 1.1.1 : configuration de packaging de test liée à la version 1.1.1-test.1 et aux chemins d'avant le rangement du dépôt. Non maintenue, conservée pour référence.",
   "appId": "com.vasio.control.test",
   "productName": "Timox VASIO Control Test",
   "extraMetadata": {

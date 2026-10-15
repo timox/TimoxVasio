@@ -1,3 +1,5 @@
+# ARCHIVE — INCOMPATIBLE SAUF 1.1.1 : ce script cible la DLL et le moteur 1.1.1 (chemins et versions codés en dur). Il n'est plus maintenu et échoue sur une installation 1.2.1. Conservé pour référence.
+
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $probe = Join-Path $repoRoot 'build_driver_110\Release\DriverProbe.exe'

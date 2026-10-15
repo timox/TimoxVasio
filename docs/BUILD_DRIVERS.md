@@ -51,4 +51,4 @@ pwsh -NoProfile -File .\install\register_drivers.ps1 uninstall
 
 ## État de validation
 
-La compilation, l’activation COM directe, les sondes de transport/routage et les contrats API/UI ont été vérifiés. Après réinstallation de la version 1.0.0, le test audio de bout en bout a été confirmé par l’utilisateur le 5 octobre 2026 : Renoise, huit routes, SSL ASIO Driver 1, 48 kHz/1024 frames; l’API a publié 60 événements `audio.meter` en 3,5 secondes avec des crêtes de `-101,65` à `-26,43 dBFS`. Les diagnostics et le fichier `engine.log` ont confirmé le démarrage et la configuration.
+La compilation, l’activation COM directe, les sondes de transport/routage et les contrats API/UI ont été vérifiés. Le test audio de bout en bout a été confirmé par l’utilisateur le 5 octobre 2026 sur la version 1.0.0 : Renoise, huit routes, SSL ASIO Driver 1, 48 kHz/1024 frames; l’API a publié 60 événements `audio.meter` en 3,5 secondes avec des crêtes de `-101,65` à `-26,43 dBFS`. Les diagnostics et le fichier `engine.log` ont confirmé le démarrage et la configuration.

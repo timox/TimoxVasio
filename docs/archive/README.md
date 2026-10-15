@@ -9,7 +9,7 @@ Pour la documentation courante, partir du [README](../../README.md).
 | `ASIO_AUDIT.md` / `.en.md` | Audit du prototype PortAudio, avec tableau de clôture des écarts | `ASIO_CONFORMITE.md` |
 | `ROUTING_STRATEGIES.md` / `.en.md` | Exploration du routage avec quatre pilotes | `API.md`, `ARCHITECTURE.md` |
 | `AGENT_TEST.md` | Consignes de construction du banc de test `vasio-probe` | `tools/*/README.md` |
-| `UX_UI_REVIEW.md` / `.en.md`, `ux-audit/` | Revue des captures d'avant 1.1.0 | `FONCTIONS_1.1.0.md` |
+| `UX_UI_REVIEW.md` / `.en.md`, `ux-audit/` | Revue des captures d'avant 1.1.0 | `FONCTIONS.md` |
 | `2026-10-06-control-ui-design-audit.md` | Audit de design de l'interface, proposition de patchbay | Interface livrée |
 | `RELEASE_VALIDATION_1.1.0.md` / `.en.md` | Validation de la release 1.1.0 | Notes de version 1.2.x |
 | `VASIO_STATUS_SHARED_STATE_DESIGN.md` | Conception de l'état partagé, transport v7 | Transport v9 (notes 1.2.1) |

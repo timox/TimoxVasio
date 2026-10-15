@@ -8,7 +8,7 @@ Pour une prise en main par étapes, avec schéma d’architecture et exemples
 PowerShell/Node.js, voir le [quick start API](API_QUICKSTART.md). Ce fichier
 reste la référence détaillée du contrat.
 
-La définition [Swagger/OpenAPI 3.1](../api/openapi-v1.json) décrit les routes HTTP et référence les schémas JSON partagés. Son extension `x-websocket` décrit les commandes, réponses et événements de la connexion WebSocket. Le [guide des fonctions 1.1.0](FONCTIONS_1.1.0.md) illustre les mesures et la console intégrée.
+La définition [Swagger/OpenAPI 3.1](../api/openapi-v1.json) décrit les routes HTTP et référence les schémas JSON partagés. Son extension `x-websocket` décrit les commandes, réponses et événements de la connexion WebSocket. Le [guide des fonctions](FONCTIONS.md) illustre les mesures et la console intégrée.
 
 Le serveur natif utilise `cpp-httplib` 0.58.0 pour HTTP et WebSocket, et `nlohmann/json` 3.12.0 pour encoder et décoder les messages. Les en-têtes et licences de ces dépendances sont conservés dans `vendor/`.
 

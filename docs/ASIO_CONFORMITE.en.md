@@ -29,6 +29,6 @@ This matters to hosts that store a channel count in a type too small for 256. Th
 
 ## Host and hardware validation — October 5, 2026
 
-After reinstalling version 1.0.0, the user confirmed audible end-to-end audio with Renoise and SSL ASIO Driver 1. The API showed the engine `running` at 48 kHz / 1024 frames, one Renoise client with 64 inputs and 64 outputs, and eight active routes. The `audio.meter` stream produced 60 events over 3.5 seconds for routed physical outputs and source virtual outputs; observed peaks ranged from `-101.65` to `-26.43 dBFS`. Diagnostics recorded application of all eight routes and the physical configuration. The user also verified Swagger in Electron.
+On October 5, 2026, on the then-installed version 1.0.0, the user confirmed audible end-to-end audio with Renoise and SSL ASIO Driver 1. The API showed the engine `running` at 48 kHz / 1024 frames, one Renoise client with 64 inputs and 64 outputs, and eight active routes. The `audio.meter` stream produced 60 events over 3.5 seconds for routed physical outputs and source virtual outputs; observed peaks ranged from `-101.65` to `-26.43 dBFS`. Diagnostics recorded application of all eight routes and the physical configuration. The user also verified Swagger in Electron.
 
 This validates the signal path tested on that workstation. Other ASIO hosts, devices, and transitions can be covered separately. Reproducible build and probe instructions are in [BUILD_DRIVERS.en.md](BUILD_DRIVERS.en.md); see also the [README](../README.en.md).

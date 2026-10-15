@@ -9,17 +9,16 @@ The project provides one virtual ASIO driver, `TimoxVasio.dll`, and a separate a
 From a Visual Studio 2026 x64 Developer Command Prompt at the repository root:
 
 ```powershell
-cmake -S . -B build_drivers_vs2026_ninja -G Ninja `
-  -DCMAKE_BUILD_TYPE=Release `
+cmake -S . -B build_driver_110 -G "Visual Studio 18 2026" -A x64 `
   -DASIO_SDK_PATH="$PWD/asiosdk" `
   -DVASIO_BUILD_DRIVERS=ON
-cmake --build build_drivers_vs2026_ninja --target TimoxVasio DriverProbe DriverAudioProbe
+cmake --build build_driver_110 --config Release --target TimoxVasio DriverProbe DriverAudioProbe
 
-cmake -S . -B build_engine_vs2026_ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build_engine_vs2026_ninja --target TimoxVirtualAsioEngine
+cmake -S . -B build_codex_110 -G "Visual Studio 18 2026" -A x64
+cmake --build build_codex_110 --config Release --target TimoxVirtualAsioEngine
 ```
 
-The outputs are `build_drivers_vs2026_ninja/TimoxVasio.dll` and `build_engine_vs2026_ninja/TimoxVirtualAsioEngine.exe`.
+The outputs are `build_driver_110/Release/TimoxVasio.dll` and `build_codex_110/Release/TimoxVirtualAsioEngine.exe`.
 
 ## Install and inspect the driver
 
@@ -33,8 +32,8 @@ pwsh -NoProfile -File .\install\register_drivers.ps1 list
 The registered ASIO name should be `TimoxVasio`. To probe COM without starting audio:
 
 ```powershell
-.\build_drivers_vs2026_ninja\DriverProbe.exe `
-  --dll .\build_drivers_vs2026_ninja\TimoxVasio.dll `
+.\build_driver_110\Release\DriverProbe.exe `
+  --dll .\build_driver_110\Release\TimoxVasio.dll `
   --clsid "{A4D39126-78CB-4D89-9E0A-54494D4F5856}"
 ```
 

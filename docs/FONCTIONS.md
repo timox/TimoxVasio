@@ -1,16 +1,17 @@
-# Utiliser Timox VASIO Control 1.1.0
+# Utiliser Timox VASIO Control
 
-**Français** | [English](FONCTIONS_1.1.0.en.md)
+**Français** | [English](FONCTIONS.en.md)
 
-Cette page décrit les fonctions livrées avec [TimoxVasio 1.1.0](https://github.com/timox/TimoxVasio/releases/tag/v1.1.0). L’application Windows réunit cinq vues :
+Cette page décrit les fonctions de Timox VASIO Control dans [TimoxVasio 1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1). L’interface est en anglais ; elle réunit six vues :
 
 | Vue | Usage principal |
 | --- | --- |
 | **Configuration** | Choisir le pilote ASIO physique, sa fréquence et son tampon; régler les profils de canaux par application. |
-| **Canaux** | Voir les applications connectées, les canaux ouverts et routés, leurs niveaux, puis déplier la matrice pour modifier les routes. |
-| **Analyse** | Suivre la corrélation des sorties gauche et droite d’une paire stéréo ouverte et routée. |
-| **API et Swagger** | Lire le contrat embarqué et envoyer des requêtes HTTP ou commandes WebSocket depuis la console intégrée. |
-| **Journaux** | Consulter les événements du moteur et choisir le niveau de diagnostic. |
+| **Channels** | Voir les applications connectées, les canaux ouverts et routés, leurs niveaux, puis modifier les routes dans le patchbay graphique ou la matrice. |
+| **Analysis** | Suivre la corrélation des sorties gauche et droite d’une paire stéréo ouverte et routée. |
+| **Performance** | Vérifier que le callback du pilote physique tient dans le temps d’un bloc et mesurer la durée de chaque étape du trajet audio. |
+| **API and Swagger** | Lire le contrat embarqué et envoyer des requêtes HTTP ou commandes WebSocket depuis la console intégrée. |
+| **Logs** | Consulter les événements du moteur et choisir le niveau de diagnostic. |
 
 ## Trois composants et deux chemins distincts
 
@@ -27,7 +28,9 @@ Les échantillons suivent le chemin du haut. L’interface, Swagger et la consol
 
 ## Canaux ouverts, routes et vumètres
 
-Une application peut recevoir un profil annonçant jusqu’à 256 entrées et 256 sorties. Seuls les canaux qu’elle ouvre avec ASIO deviennent des extrémités actives. Un canal ouvert n’est pas automatiquement routé. Dans **Canaux**, les vumètres sont affichés uniquement pour les canaux de cette application qui sont à la fois ouverts et présents dans une route active.
+Une application peut recevoir un profil annonçant jusqu’à 256 entrées et 256 sorties. Seuls les canaux qu’elle ouvre avec ASIO deviennent des extrémités actives. Un canal ouvert n’est pas automatiquement routé. Dans **Channels**, les vumètres sont affichés uniquement pour les canaux de cette application qui sont à la fois ouverts et présents dans une route active.
+
+Les routes se créent dans le **patchbay** graphique (ports groupés par application, câbles visibles, inspecteur de connexion) ou dans la **matrice**, mieux adaptée aux routages denses. Une ou plusieurs connexions sélectionnées peuvent recevoir un libellé et une couleur ; ces choix n’existent que dans la vue de câblage et ne changent ni les routes du moteur ni le traitement audio.
 
 ```mermaid
 flowchart LR
@@ -55,7 +58,7 @@ L’API publie les mesures environ deux fois par seconde. Elle représente le si
 
 ## Corrélation stéréo L/R
 
-La vue **Analyse** propose les paires de sorties adjacentes d’une même application dont les deux canaux sont ouverts et routés. Choisissez une paire, puis lancez l’analyse. Le graphique montre l’évolution du coefficient entre `−1` et `+1` :
+La vue **Analysis** propose les paires de sorties adjacentes d’une même application dont les deux canaux sont ouverts et routés. Choisissez une paire, puis lancez l’analyse. Le graphique montre l’évolution du coefficient entre `−1` et `+1` :
 
 | Valeur | Lecture |
 | --- | --- |
@@ -94,9 +97,40 @@ stateDiagram-v2
 
 Un exemple d’état sans application connectée est `configuredRoutes: 8`, `routes: 0`. Le moteur conserve les huit routes; il ne lance aucun flux physique tant qu’aucune route n’est active. Pour créer une nouvelle route en attente, l’application doit disposer d’un profil dans `GET /api/v1/application-profiles`, et le numéro de canal doit rester dans les limites de ce profil. Lors d’un `configuration.apply`, envoyez **toutes** les routes à conserver : la commande remplace la liste complète et peut interrompre brièvement le flux.
 
+## Performance : budget du callback et durées par étape
+
+La vue **Performance** répond à deux questions : le callback du pilote physique tient-il dans le temps d'un bloc, et où passe le temps entre l'application et la carte.
+
+**Budget du callback physique.** Sur chaque fenêtre de cinq secondes, le moteur publie `bufferHealth` dans `GET /api/v1/state` : le callback le plus lent (*Slowest callback*), le temps disponible pour un bloc (*Time available*, soit `bufferFrames / sampleRate`), la marge restante ou le dépassement (*Time left* / *Over time*), le nombre de démarrages retardés (*Delayed starts*), de dépassements de traitement (*Processing overruns*) et de callbacks observés. L'état vaut `healthy`, `warning` ou `insufficient` quand la fenêtre n'a pas assez de callbacks. Un démarrage retardé est une observation d'ordonnancement, pas la preuve d'une coupure audible. Rien n'est ajusté automatiquement : augmenter la taille de buffer reste une décision de l'utilisateur.
+
+**Durées par étape.** La case *Enable stage measurements* envoie la commande WebSocket `performance.measurements.set`. La collecte est désactivée au démarrage du moteur ; une fois activée, elle échantillonne au plus un callback sur seize et publie, pour la dernière fenêtre complète de cinq secondes, la moyenne, le maximum et le nombre d'échantillons de chaque étape :
+
+| Étape | Ce qui est mesuré |
+| --- | --- |
+| *Host callback* | L'appel `bufferSwitch` de l'application ASIO, c'est-à-dire tout le travail qu'elle fait pendant cet appel. |
+| *Virtual ring write* | La copie des sorties de l'application dans l'anneau partagé. |
+| *Ring wait* | L'attente entre la publication d'un bloc complet et sa lecture par le moteur. |
+| *Client read* | La lecture des anneaux des clients par le callback physique. |
+| *Routing* | L'application des routes, gains et mutes. |
+| *Physical output copy* | La copie vers le tampon du pilote physique. |
+
+Une étape sans observation reste vide. La copie physique s'arrête à la remise au pilote : ces durées ne mesurent ni la latence du matériel ni le moment où le son est entendu, et les maxima de plusieurs étapes ne s'additionnent pas en une latence totale.
+
+```json
+{ "id": "mesures-1", "command": "performance.measurements.set", "payload": { "enabled": true } }
+```
+
+La commande est idempotente ; `false` arrête la collecte et efface la fenêtre. `GET /api/v1/state` expose `performanceMeasurements` avec `enabled`, `sampleEveryCallbacks` (16) et `window` (`null` tant qu'aucune fenêtre n'est complète). En PowerShell :
+
+```powershell
+$state = Invoke-RestMethod 'http://127.0.0.1:52525/api/v1/state'
+$state.bufferHealth | Format-List state, callbackCount, delayedStartCount, processingOverrunCount
+$state.performanceMeasurements.window.physical | Format-List
+```
+
 ## Console API intégrée et exemples de programmation
 
-Ouvrez **API et Swagger**. Swagger décrit les routes HTTP, les commandes WebSocket et leurs schémas. La **Console API** offre des modèles de requêtes, un éditeur JSON et une zone de réponse. Les commandes `configuration.apply` et `engine.stop` demandent une confirmation dans l’interface.
+Ouvrez **API and Swagger**. Swagger décrit les routes HTTP, les commandes WebSocket et leurs schémas. La **Console API** offre des modèles de requêtes, un éditeur JSON et une zone de réponse. Les commandes `configuration.apply` et `engine.stop` demandent une confirmation dans l’interface.
 
 Pour lire l’état sans modifier le moteur, sélectionnez **Requête HTTP** et utilisez :
 
@@ -104,7 +138,7 @@ Pour lire l’état sans modifier le moteur, sélectionnez **Requête HTTP** et 
 { "method": "GET", "path": "/api/v1/state" }
 ```
 
-La même lecture en PowerShell :
+La même lecture en PowerShell (`52525` est le port par défaut ; si le moteur en a choisi un autre, Control l’affiche) :
 
 ```powershell
 $state = Invoke-RestMethod 'http://127.0.0.1:52525/api/v1/state'
