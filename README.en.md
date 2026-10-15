@@ -94,7 +94,7 @@ The [API quick start](docs/API_QUICKSTART.en.md) has PowerShell and Node.js exam
 - [ARCHITECTURE.en.md](docs/ARCHITECTURE.en.md): technical overview
 - [BUILD_DRIVERS.en.md](docs/BUILD_DRIVERS.en.md): build and test the components
 - [ASIO_CONFORMITE.en.md](docs/ASIO_CONFORMITE.en.md): ASIO SDK conformance
-- [docs/ROADMAP.md](docs/ROADMAP.md): planned work
+- [docs/ROADMAP.en.md](docs/ROADMAP.en.md): planned work
 
 ## License
 

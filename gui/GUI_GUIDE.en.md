@@ -28,6 +28,10 @@ The axes show only endpoints published by the API. To show physical ports, selec
 
 A configuration change interrupts the stream while the graph is rebuilt. Engine status and structured errors appear in the interface.
 
+## Performance
+
+The “Performance” view reads `bufferHealth` from `GET /api/v1/state`: slowest physical callback, time available for one block, margin or overrun, delayed starts, processing overruns and observed callbacks over the last five-second window. The “Enable stage measurements” checkbox sends `performance.measurements.set`; collection, off at engine start, samples at most one callback in sixteen and publishes the mean, worst value and sample count of each stage (application call, ring write, ring wait, client read, routing, physical copy). Nothing is adjusted automatically. The [feature guide](../docs/FONCTIONS.en.md) explains how to read these values.
+
 ## API, logs, and engine lifecycle
 
 The “API and Swagger” view shows the OpenAPI specification and WebSocket commands/events. Swagger UI, its styles, and the OpenAPI schemas are bundled with the application; display does not depend on a CDN. The WebSocket description comes from the `x-websocket` field in `openapi-v1.json`.
