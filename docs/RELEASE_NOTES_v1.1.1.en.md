@@ -11,7 +11,7 @@ This release updates the Timox VASIO Control interface and rebuilds the Windows 
 | `Timox.VASIO.Control.1.1.1.exe` | Portable Control with the bundled audio engine. |
 | `MANIFEST.json` | Version, source commit, and SHA-256 values of the validated files. |
 
-The driver ZIP is separate from the Control installers. Extract it and run `Installer TimoxVasio.bat` as administrator. Restart any audio application that has the older driver DLL open. See the [installation guide](https://github.com/timox/TimoxVasio/blob/main/INSTALL.en.md).
+The driver ZIP is separate from the Control installers. Extract it and run `Installer TimoxVasio.bat` as administrator. Restart any audio application that has the older driver DLL open. See the [installation guide](https://github.com/timox/TimoxVasio/blob/main/docs/INSTALL.en.md).
 
 ## Windows compatibility
 
@@ -33,4 +33,4 @@ ASIO4ALL v2 can be selected as the physical ASIO driver when its 64-bit driver a
 
 The release process checks the React tests and production build, native builds, binary version metadata, and SHA-256 identity between the built engine and packaged engine and between the built driver and ZIP contents. The graphical routing changes are UI changes; this release does not claim a new physical audio hardware validation.
 
-See the [Windows downloads guide](https://github.com/timox/TimoxVasio/blob/main/docs/RELEASE_WINDOWS_1.1.1.en.md) and [UI design audit](https://github.com/timox/TimoxVasio/blob/main/docs/2026-10-06-control-ui-design-audit.md).
+See the [Windows downloads guide](https://github.com/timox/TimoxVasio/blob/main/docs/RELEASE_WINDOWS_1.1.1.en.md) and [UI design audit](https://github.com/timox/TimoxVasio/blob/main/docs/archive/2026-10-06-control-ui-design-audit.md).

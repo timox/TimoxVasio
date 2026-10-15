@@ -30,10 +30,10 @@ Channel profiles take effect the next time each affected audio application start
 |---|---|
 | `Timox.VASIO.Control.Setup.1.0.0.exe` | Per-user installer for **Timox VASIO Control**. Installs the Electron interface and its packaged engine. It neither installs nor registers the `TimoxVasio.dll` ASIO driver. |
 | `Timox.VASIO.Control.1.0.0.exe` | Portable application: Electron interface and packaged engine, without installing the interface. The ASIO driver must be installed separately. |
-| `TimoxVasio.dll` | Virtual ASIO driver loaded by audio hosts. This file alone does not install itself: also download the release source code and follow “Install the downloaded DLL” in [INSTALL.en.md](https://github.com/timox/TimoxVasio/blob/main/INSTALL.en.md). |
+| `TimoxVasio.dll` | Virtual ASIO driver loaded by audio hosts. This file alone does not install itself: also download the release source code and follow “Install the downloaded DLL” in [INSTALL.en.md](https://github.com/timox/TimoxVasio/blob/main/docs/INSTALL.en.md). |
 | `TimoxVirtualAsioEngine.exe` | Audio engine executable used by the interface. The packaged version is included in both applications above; this separate asset is for manual deployment or diagnosis. |
 | `SHA256SUMS.txt` | SHA-256 sums of the four binaries above, for integrity checking after download. |
 
-For a normal installation, first install **Timox VASIO Control** with the Setup, then install and register `TimoxVasio.dll` separately following [INSTALL.en.md](https://github.com/timox/TimoxVasio/blob/main/INSTALL.en.md). ASIO hosts load the DLL; the interface configures the engine launched with it.
+For a normal installation, first install **Timox VASIO Control** with the Setup, then install and register `TimoxVasio.dll` separately following [INSTALL.en.md](https://github.com/timox/TimoxVasio/blob/main/docs/INSTALL.en.md). ASIO hosts load the DLL; the interface configures the engine launched with it.
 
 This release is published in the public [timox/TimoxVasio](https://github.com/timox/TimoxVasio) repository.
