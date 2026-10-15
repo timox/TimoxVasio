@@ -1,5 +1,7 @@
 # Physical ASIO buffer health
 
+[Français](ASIO_BUFFER_HEALTH.md) | **English**
+
 Timox VASIO Control shows the latest five-second physical ASIO callback observation in **Performance → Physical ASIO buffer**. The same values are available as `bufferHealth` in `GET /api/v1/state`.
 
 The block period is `bufferFrames / sampleRate`. The engine measures processing time around sample conversion and routing, counts callbacks that take longer than a block, and counts starts separated by more than 1.5 block periods. The worst margin is the block period minus the longest processing call in the window. A negative margin means at least one callback took longer than its nominal block period.

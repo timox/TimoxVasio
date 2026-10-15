@@ -1,5 +1,7 @@
 # Changement de fréquence et de buffer pendant une session ASIO
 
+> **ARCHIVE** — Document historique conservé pour référence. Il ne décrit pas l'état courant de TimoxVasio (1.2.1). Voir le [README](../../README.md) et la documentation courante qu'il référence.
+
 ## Résultat observé
 
 Le mode 6 avec deux clients a changé le moteur de 48 kHz / 1 024 trames à

@@ -1,5 +1,7 @@
 # Mise à jour des routes sans interrompre l'horloge ASIO
 
+**Français** | [English](ENGINE_ROUTE_HOT_SWAP.en.md)
+
 ## Constat
 
 Le mode `multiclient` du 9 octobre 2026 a mesuré des pauses communes de

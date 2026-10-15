@@ -68,7 +68,7 @@ this is a heuristic, so confirm the selected endpoint in the driver's panel.
 For TimoxVasio, `cadenceSource` identifies the physical ASIO driver selected by
 the engine and whether its callback is active. The virtual callbacks follow
 that physical callback; the profile does not infer the selected device's
-oscillator from its name alone. See `docs/VASIO_CLOCK_SOURCE_TRACE.md`.
+oscillator from its name alone. See `docs/archive/VASIO_CLOCK_SOURCE_TRACE.md`.
 The USB isochronous endpoint descriptors and
 independent cross-driver comparison are not both guaranteed; the conclusion is
 explicitly `indéterminée` until enough evidence exists. The separate

@@ -1,5 +1,7 @@
 # Vérification de TimoxVasio dans des hôtes réels
 
+> **ARCHIVE** — Document historique conservé pour référence. Il ne décrit pas l'état courant de TimoxVasio (1.2.1). Voir le [README](../../README.md) et la documentation courante qu'il référence.
+
 Cette fiche complète les mesures automatiques de `vasio-probe`. Noter la date, la version du pilote et du moteur, le modèle de carte physique, son pilote, Windows, la fréquence, le buffer et les routes actives. Conserver les journaux du moteur, une capture de la configuration et le rapport LatencyMon avec chaque session.
 
 Avant tout essai, sauvegarder `%LOCALAPPDATA%\TimoxVasio\configuration.json` et `%LOCALAPPDATA%\TimoxVasio\application-profiles.json`. Fermer les autres hôtes ASIO. Ne changer qu'un paramètre à la fois. Un test est « non exécuté » tant que sa durée complète et ses observations ne sont pas consignées.
