@@ -65,7 +65,7 @@ Prérequis : Windows 10 ou 11 x64, des applications ASIO 64 bits, les droits adm
 3. **Interface et moteur** : installer `Timox.VASIO.Control.Setup.<version>.exe`, ou lancer la version portable.
 4. Démarrer Timox VASIO Control **avant** d'ouvrir TimoxVasio dans une application audio, puis choisir la carte physique.
 
-Détails et désinstallation : [INSTALL.md](INSTALL.md).
+Détails et désinstallation : [INSTALL.md](docs/INSTALL.md).
 
 ## Utilisation rapide
 
@@ -79,7 +79,7 @@ Lire l'état depuis PowerShell (le port est celui choisi par le moteur à son d�
 Invoke-RestMethod 'http://127.0.0.1:<port>/api/v1/state'
 ```
 
-Le [quick start API](docs/API_QUICKSTART.md) donne des exemples PowerShell et Node.js. Le contrat complet est dans [API.md](API.md) et [openapi-v1.json](openapi-v1.json).
+Le [quick start API](docs/API_QUICKSTART.md) donne des exemples PowerShell et Node.js. Le contrat complet est dans [API.md](docs/API.md) et [openapi-v1.json](api/openapi-v1.json).
 
 ## Limites connues
 
@@ -91,13 +91,13 @@ Le [quick start API](docs/API_QUICKSTART.md) donne des exemples PowerShell et No
 
 ## Documentation
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) : vue d'ensemble technique
-- [BUILD_DRIVERS.md](BUILD_DRIVERS.md) : compiler et tester les composants
-- [ASIO_CONFORMITE.md](ASIO_CONFORMITE.md) : conformité au SDK ASIO
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) : vue d'ensemble technique
+- [BUILD_DRIVERS.md](docs/BUILD_DRIVERS.md) : compiler et tester les composants
+- [ASIO_CONFORMITE.md](docs/ASIO_CONFORMITE.md) : conformité au SDK ASIO
 - [docs/ROADMAP.md](docs/ROADMAP.md) : travaux prévus
 
 ## Licence
 
-Code original sous [GPL-3.0-only](LICENSE). Le SDK ASIO 2.3.4 de Steinberg est utilisé selon son option GPLv3. Les autres dépendances tierces gardent leurs propres licences : voir [LICENSING.md](LICENSING.md).
+Code original sous [GPL-3.0-only](LICENSE). Le SDK ASIO 2.3.4 de Steinberg est utilisé selon son option GPLv3. Les autres dépendances tierces gardent leurs propres licences : voir [LICENSING.md](docs/LICENSING.md).
 
 Le projet peut être soutenu via [GitHub Sponsors](https://github.com/sponsors/timox).

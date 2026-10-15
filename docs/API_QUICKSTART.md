@@ -4,9 +4,9 @@
 
 Ce guide présente les composants et les premières requêtes utiles pour
 intégrer un outil au moteur. Pour le contrat complet, les schémas et la liste
-des erreurs, voir la [référence API](../API.md), le
-[contrat OpenAPI](../openapi-v1.json) et les
-[schémas JSON](../schemas/api-v1.json). Les vues et mesures de la version 1.1.0
+des erreurs, voir la [référence API](API.md), le
+[contrat OpenAPI](../api/openapi-v1.json) et les
+[schémas JSON](../api/schemas/api-v1.json). Les vues et mesures de la version 1.1.0
 sont illustrées dans le [guide des fonctions](FONCTIONS_1.1.0.md).
 
 ## Architecture complète
@@ -195,7 +195,7 @@ socket.on('open', () => {
 `sampleRate: null` demande le taux courant du pilote choisi et
 `bufferFrames: null` sa taille préférée. On peut fournir des valeurs explicites
 annoncées par le pilote. Les types de routes autorisés sont décrits dans la
-[référence](../API.md#règles-de-routage).
+[référence](API.md#règles-de-routage).
 
 `configuration.apply` remplace le pilote, les paramètres et la liste entière
 des routes : incluez toutes celles à conserver. Une répétition ne duplique pas

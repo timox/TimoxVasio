@@ -4,8 +4,8 @@ const swaggerUi = require.resolve('swagger-ui-dist/swagger-ui-bundle.js');
 const swaggerCss = require.resolve('swagger-ui-dist/swagger-ui.css');
 
 const guiRoot = path.resolve(__dirname, '..');
-const document = JSON.parse(fs.readFileSync(path.resolve(guiRoot, '../openapi-v1.json'), 'utf8'));
-const schemas = JSON.parse(fs.readFileSync(path.resolve(guiRoot, '../schemas/api-v1.json'), 'utf8'));
+const document = JSON.parse(fs.readFileSync(path.resolve(guiRoot, '../api/openapi-v1.json'), 'utf8'));
+const schemas = JSON.parse(fs.readFileSync(path.resolve(guiRoot, '../api/schemas/api-v1.json'), 'utf8'));
 
 function resolveSchema(value, stack = new Set()) {
     if (Array.isArray(value)) return value.map(item => resolveSchema(item, stack));
@@ -27,7 +27,7 @@ function embed(value) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, embed(item)]));
 }
 
-const output = `// Generated from ../openapi-v1.json and ../schemas/api-v1.json. Do not edit.\nmodule.exports = ${JSON.stringify(embed(document))};\n`;
+const output = `// Generated from ../api/openapi-v1.json and ../api/schemas/api-v1.json. Do not edit.\nmodule.exports = ${JSON.stringify(embed(document))};\n`;
 fs.writeFileSync(path.join(guiRoot, 'src/openapi-spec.generated.js'), output);
 const publicRoot = path.join(guiRoot, 'public');
 fs.mkdirSync(publicRoot, { recursive: true });

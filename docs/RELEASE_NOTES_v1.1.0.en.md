@@ -13,7 +13,7 @@ This release includes the virtual ASIO driver, audio engine, and Timox VASIO Con
 | `Timox.VASIO.Control.1.1.0.exe` | Portable Control and audio engine. |
 | `MANIFEST.json` | Published files' SHA-256 hashes, versions, and commit. |
 
-Install the driver from the ZIP, then install or launch Timox VASIO Control. Open Control before the ASIO application so the engine and its local API are available. See the [installation procedure](../INSTALL.en.md).
+Install the driver from the ZIP, then install or launch Timox VASIO Control. Open Control before the ASIO application so the engine and its local API are available. See the [installation procedure](INSTALL.en.md).
 
 ## Changes
 

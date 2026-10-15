@@ -91,8 +91,8 @@ dérogations et applique le défaut 256/256. Le profil initial `mixxx.exe`
 255/255 est fourni par défaut lorsque le fichier de profils n'existe pas. Les
 modifications enregistrées sont partagées par l'API et la DLL via
 `%LOCALAPPDATA%\TimoxVasio\application-profiles.json`. L'API et ses schémas
-OpenAPI normatifs sont décrits dans [API.md](../API.md) et
-[`openapi-v1.json`](../openapi-v1.json).
+OpenAPI normatifs sont décrits dans [API.md](API.md) et
+[`openapi-v1.json`](../api/openapi-v1.json).
 
 Les comptes valides sont de 1 à 256 inclusivement. Chaque profil contient
 `processName`, `inputChannels` et `outputChannels`. L'API renvoie

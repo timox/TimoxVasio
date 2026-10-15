@@ -72,7 +72,7 @@ sequenceDiagram
     S-->>D: New effective count
 ```
 
-The `PUT` route replaces the complete list; sending `profiles: []` removes overrides and applies the 256/256 default. The initial 255/255 `mixxx.exe` profile is provided by default when the profile file does not exist. Saved changes are shared by the API and DLL through `%LOCALAPPDATA%\TimoxVasio\application-profiles.json`. The API and its normative OpenAPI schemas are described in [API.en.md](../API.en.md) and [`openapi-v1.json`](../openapi-v1.json).
+The `PUT` route replaces the complete list; sending `profiles: []` removes overrides and applies the 256/256 default. The initial 255/255 `mixxx.exe` profile is provided by default when the profile file does not exist. Saved changes are shared by the API and DLL through `%LOCALAPPDATA%\TimoxVasio\application-profiles.json`. The API and its normative OpenAPI schemas are described in [API.en.md](API.en.md) and [`openapi-v1.json`](../api/openapi-v1.json).
 
 Valid counts range from 1 through 256 inclusive. Each profile contains `processName`, `inputChannels`, and `outputChannels`. The API returns `restartRequiredClients` to identify connected clients whose effective capability changes. Host restart is manual; the API does not close any process.
 

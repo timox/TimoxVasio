@@ -90,8 +90,8 @@ Require-ProductVersion $driverPath 'pilote ASIO'
 Require-Directory (Join-Path $engineDir 'config')
 Require-File (Join-Path $engineDir 'openapi-v1.json')
 Require-File (Join-Path $engineDir 'schemas\api-v1.json')
-Require-SameHash (Join-Path $repoRoot 'openapi-v1.json') (Join-Path $engineDir 'openapi-v1.json') 'OpenAPI moteur/source'
-Require-SameHash (Join-Path $repoRoot 'schemas\api-v1.json') (Join-Path $engineDir 'schemas\api-v1.json') 'schéma moteur/source'
+Require-SameHash (Join-Path $repoRoot 'api\openapi-v1.json') (Join-Path $engineDir 'openapi-v1.json') 'OpenAPI moteur/source'
+Require-SameHash (Join-Path $repoRoot 'api\schemas\api-v1.json') (Join-Path $engineDir 'schemas\api-v1.json') 'schéma moteur/source'
 Require-SameHash $driverPath $driverBundle 'DLL du dossier pilote/build'
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem

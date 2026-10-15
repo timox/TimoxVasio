@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $asioRoot = Split-Path -Parent $PSScriptRoot
-$apiPath = Join-Path $asioRoot 'API.md'
-$schemaPath = Join-Path $asioRoot 'schemas\api-v1.json'
-$openApiPath = Join-Path $asioRoot 'openapi-v1.json'
+$apiPath = Join-Path $asioRoot 'docs\API.md'
+$schemaPath = Join-Path $asioRoot 'api\schemas\api-v1.json'
+$openApiPath = Join-Path $asioRoot 'api\openapi-v1.json'
 $engineSourcePath = Join-Path $asioRoot 'src\main.cpp'
 $api = Get-Content -LiteralPath $apiPath -Raw
 $engineSource = Get-Content -LiteralPath $engineSourcePath -Raw

@@ -11,7 +11,7 @@ The project's first public release, organized around three components: the `Timo
 - Configuration interface using the documented API, with per-application channel profiles, routing matrix, Swagger, and `info`/`debug` logs.
 - Portable Electron package and Windows x64 installer.
 - GPL-3.0-only license, project license notice, and ASIO SDK license included in the Electron package's legal resources.
-- UX/UI review based on five configuration and routing screenshots, published in [UX_UI_REVIEW.en.md](UX_UI_REVIEW.en.md).
+- UX/UI review based on five configuration and routing screenshots, published in [UX_UI_REVIEW.en.md](archive/UX_UI_REVIEW.en.md).
 - Getting-started guide with a complete architecture diagram and API examples: [quick start](https://github.com/timox/TimoxVasio/blob/main/docs/API_QUICKSTART.en.md).
 - Development support through [GitHub Sponsors](https://github.com/sponsors/timox), described in [Support the project](https://github.com/timox/TimoxVasio/blob/main/docs/FUNDING.en.md).
 

@@ -65,7 +65,7 @@ Requirements: Windows 10 or 11 x64, 64-bit ASIO applications, administrator righ
 3. **Interface and engine**: install `Timox.VASIO.Control.Setup.<version>.exe`, or run the portable version.
 4. Start Timox VASIO Control **before** opening TimoxVasio in an audio application, then select the physical interface.
 
-Details and uninstallation: [INSTALL.en.md](INSTALL.en.md).
+Details and uninstallation: [INSTALL.en.md](docs/INSTALL.en.md).
 
 ## Quick start
 
@@ -79,7 +79,7 @@ Read the state from PowerShell (the port is the one chosen by the engine at star
 Invoke-RestMethod 'http://127.0.0.1:<port>/api/v1/state'
 ```
 
-The [API quick start](docs/API_QUICKSTART.en.md) has PowerShell and Node.js examples. The full contract is in [API.en.md](API.en.md) and [openapi-v1.json](openapi-v1.json).
+The [API quick start](docs/API_QUICKSTART.en.md) has PowerShell and Node.js examples. The full contract is in [API.en.md](docs/API.en.md) and [openapi-v1.json](api/openapi-v1.json).
 
 ## Known limitations
 
@@ -91,13 +91,13 @@ The [API quick start](docs/API_QUICKSTART.en.md) has PowerShell and Node.js exam
 
 ## Documentation
 
-- [ARCHITECTURE.en.md](ARCHITECTURE.en.md): technical overview
-- [BUILD_DRIVERS.en.md](BUILD_DRIVERS.en.md): build and test the components
-- [ASIO_CONFORMITE.en.md](ASIO_CONFORMITE.en.md): ASIO SDK conformance
+- [ARCHITECTURE.en.md](docs/ARCHITECTURE.en.md): technical overview
+- [BUILD_DRIVERS.en.md](docs/BUILD_DRIVERS.en.md): build and test the components
+- [ASIO_CONFORMITE.en.md](docs/ASIO_CONFORMITE.en.md): ASIO SDK conformance
 - [docs/ROADMAP.md](docs/ROADMAP.md): planned work
 
 ## License
 
-Original code under [GPL-3.0-only](LICENSE). Steinberg's ASIO SDK 2.3.4 is used under its GPLv3 option. Other third-party dependencies keep their own licenses: see [LICENSING.en.md](LICENSING.en.md).
+Original code under [GPL-3.0-only](LICENSE). Steinberg's ASIO SDK 2.3.4 is used under its GPLv3 option. Other third-party dependencies keep their own licenses: see [LICENSING.en.md](docs/LICENSING.en.md).
 
 The project can be supported through [GitHub Sponsors](https://github.com/sponsors/timox).

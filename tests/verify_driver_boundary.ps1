@@ -25,7 +25,7 @@ if ($forbidden.Count) {
     throw "TimoxVasio.dll imports disk-write APIs: $($forbidden -join ', ')"
 }
 
-$cmake = Get-Content -LiteralPath (Join-Path $repoRoot 'CMakeLists_VASIO_Drivers.txt') -Raw
+$cmake = Get-Content -LiteralPath (Join-Path $repoRoot 'cmake\CMakeLists_VASIO_Drivers.txt') -Raw
 $sources = [regex]::Match($cmake, '(?s)set\(COMMON_SOURCES(?<body>.*?)\r?\n\)')
 if (-not $sources.Success) { throw 'The driver source list could not be audited.' }
 if ($sources.Groups['body'].Value -match 'application_profile_store_write') {

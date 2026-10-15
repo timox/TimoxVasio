@@ -20,11 +20,11 @@
       "to": "backend/config"
     },
     {
-      "from": "../openapi-v1.json",
+      "from": "../api/openapi-v1.json",
       "to": "backend/openapi-v1.json"
     },
     {
-      "from": "../schemas",
+      "from": "../api/schemas",
       "to": "backend/schemas"
     },
     {
@@ -32,7 +32,7 @@
       "to": "legal/LICENSE.txt"
     },
     {
-      "from": "../LICENSING.md",
+      "from": "../docs/LICENSING.md",
       "to": "legal/LICENSING.md"
     },
     {

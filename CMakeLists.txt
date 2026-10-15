@@ -12,7 +12,7 @@ option(VASIO_BUILD_DRIVERS "Build the TimoxVasio ASIO driver DLL" OFF)
 option(VASIO_ENABLE_CRASH_DUMP "Write a local minidump when the engine terminates on an unhandled exception" OFF)
 
 if(VASIO_BUILD_DRIVERS)
-    include(${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists_VASIO_Drivers.txt)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CMakeLists_VASIO_Drivers.txt)
     return()
 endif()
 
@@ -341,19 +341,19 @@ add_custom_command(TARGET TimoxVirtualAsioEngine POST_BUILD
 )
 add_custom_command(TARGET TimoxVirtualAsioEngine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    ${CMAKE_SOURCE_DIR}/openapi-v1.json
+    ${CMAKE_SOURCE_DIR}/api/openapi-v1.json
     $<TARGET_FILE_DIR:TimoxVirtualAsioEngine>/openapi-v1.json
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/schemas
+    ${CMAKE_SOURCE_DIR}/api/schemas
     $<TARGET_FILE_DIR:TimoxVirtualAsioEngine>/schemas
     COMMENT "Copie du contrat OpenAPI et des schémas..."
 )
 add_custom_command(TARGET ApplicationProfilesApiTests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    ${CMAKE_SOURCE_DIR}/openapi-v1.json
+    ${CMAKE_SOURCE_DIR}/api/openapi-v1.json
     $<TARGET_FILE_DIR:ApplicationProfilesApiTests>/openapi-v1.json
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/schemas
+    ${CMAKE_SOURCE_DIR}/api/schemas
     $<TARGET_FILE_DIR:ApplicationProfilesApiTests>/schemas
     COMMENT "Copie du contrat OpenAPI pour le test API..."
 )
