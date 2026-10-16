@@ -2,7 +2,7 @@
 
 **Français** | [English](ROADMAP.en.md)
 
-Travaux envisagés après la version 1.2.1. Aucun n'est daté ni engagé ; l'ordre ne reflète pas une priorité.
+Travaux envisagés après la version 1.2.2. Aucun n'est daté ni engagé ; l'ordre ne reflète pas une priorité.
 
 - **Valider la compatibilité avec ASIO4ALL.** ASIO4ALL peut être sélectionné comme pilote physique, mais aucune version de TimoxVasio n'a été validée avec lui. Tester l'ouverture, la reconfiguration et le routage avec un périphérique WDM derrière ASIO4ALL, et documenter les limites.
 - **Corriger la dérive d'une horloge MIDI à partir de l'horloge de la carte son.** Utiliser la position d'échantillons du pilote physique, qui sert déjà d'horloge maître, comme référence de temps pour une horloge MIDI, afin que celle-ci ne dérive pas par rapport à l'audio.

@@ -2,7 +2,7 @@
 
 [Français](FONCTIONS.md) | **English**
 
-This guide describes Timox VASIO Control in [TimoxVasio 1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1). The application has six views:
+This guide describes Timox VASIO Control in [TimoxVasio 1.2.2](https://github.com/timox/TimoxVasio/releases/tag/v1.2.2). The application has six views:
 
 | View | Main use |
 | --- | --- |

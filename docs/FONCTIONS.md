@@ -2,7 +2,7 @@
 
 **Français** | [English](FONCTIONS.en.md)
 
-Cette page décrit les fonctions de Timox VASIO Control dans [TimoxVasio 1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1). L’interface est en anglais ; elle réunit six vues :
+Cette page décrit les fonctions de Timox VASIO Control dans [TimoxVasio 1.2.2](https://github.com/timox/TimoxVasio/releases/tag/v1.2.2). L’interface est en anglais ; elle réunit six vues :
 
 | Vue | Usage principal |
 | --- | --- |

@@ -6,7 +6,7 @@ Virtual ASIO driver and audio routing engine for Windows x64.
 
 TimoxVasio moves audio between several ASIO applications, and to a physical audio interface, without cables or a mixing desk. Routes are set up from a graphical interface or through a local API.
 
-Current release: **[1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1)**. See the [release notes](docs/RELEASE_NOTES_v1.2.1.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.2.1.en.md).
+Current release: **[1.2.2](https://github.com/timox/TimoxVasio/releases/tag/v1.2.2)**. See the [release notes](docs/RELEASE_NOTES_v1.2.2.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.2.2.en.md).
 
 ![TimoxVasio at a glance: one driver, 256 inputs and outputs per application, no channel locks, one master clock, persistent routes, local API, meters and analysis, free software](docs/images/timoxvasio-features-en.svg)
 
