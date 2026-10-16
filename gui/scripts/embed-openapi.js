@@ -27,12 +27,28 @@ function embed(value) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, embed(item)]));
 }
 
-const output = `// Generated from ../api/openapi-v1.json and ../api/schemas/api-v1.json. Do not edit.\nmodule.exports = ${JSON.stringify(embed(document))};\n`;
+const embedded = embed(document);
+function resolveLocal(value, stack = new Set()) {
+    if (Array.isArray(value)) return value.map(item => resolveLocal(item, stack));
+    if (!value || typeof value !== 'object') return value;
+    if (typeof value.$ref === 'string' && value.$ref.startsWith('#/')) {
+        const ref = value.$ref;
+        if (stack.has(ref)) throw new Error(`Circular OpenAPI reference: ${ref}`);
+        const target = ref.slice(2).split('/').reduce((part, key) =>
+            part?.[key.replace(/~1/g, '/').replace(/~0/g, '~')], embedded);
+        if (target === undefined) throw new Error(`Missing OpenAPI reference: ${ref}`);
+        return resolveLocal(target, new Set(stack).add(ref));
+    }
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolveLocal(item, stack)]));
+}
+
+const bundled = resolveLocal(embedded);
+const output = `// Generated from ../api/openapi-v1.json and ../api/schemas/api-v1.json. Do not edit.\nmodule.exports = ${JSON.stringify(bundled)};\n`;
 fs.writeFileSync(path.join(guiRoot, 'src/openapi-spec.generated.js'), output);
 const publicRoot = path.join(guiRoot, 'public');
 fs.mkdirSync(publicRoot, { recursive: true });
 fs.copyFileSync(swaggerUi, path.join(publicRoot, 'swagger-ui-bundle.js'));
 fs.copyFileSync(swaggerCss, path.join(publicRoot, 'swagger-ui.css'));
-const spec = JSON.stringify(embed(document)).replace(/</g, '\\u003c');
+const spec = JSON.stringify(bundled).replace(/</g, '\\u003c');
 const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TimoxVasio API</title><link rel="stylesheet" href="swagger-ui.css"></head><body><div id="swagger-ui"></div><script src="swagger-ui-bundle.js"></script><script>window.onload=()=>SwaggerUIBundle({spec:${spec},dom_id:'#swagger-ui',deepLinking:true,docExpansion:'list',defaultModelsExpandDepth:-1});</script></body></html>`;
 fs.writeFileSync(path.join(publicRoot, 'swagger.html'), html);

@@ -81,6 +81,11 @@ Invoke-RestMethod 'http://127.0.0.1:<port>/api/v1/state'
 
 Le [quick start API](docs/API_QUICKSTART.md) donne des exemples PowerShell et Node.js. Le contrat complet est dans [API.md](docs/API.md) et [openapi-v1.json](api/openapi-v1.json).
 
+Pour voir les échanges HTTP et WebSocket dans une petite interface hors ligne,
+ouvrir l'[exemple web de l'API](examples/api-web/README.md). L'[exemple
+SuperCollider](examples/supercollider/README.md) montre comment un client ASIO
+utilise le pilote pour traiter le son.
+
 ## Limites connues
 
 - Windows x64 uniquement ; 32 bits, ARM et Windows 7/8 ne sont pas validés.

@@ -73,8 +73,10 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .meter-track i { background: linear-gradient(90deg, #5b8e83 0 72%, #b59458 86%, #b76161 100%); }
 .save-profiles, .apply-configuration { background: var(--accent); border-color: var(--accent); color: #fff; }
 .save-profiles:hover:not(:disabled), .apply-configuration:hover:not(:disabled) { background: #285966; }
-.apply-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border: 1px solid var(--border-subtle); border-radius: 5px; background: #fff; }
+.apply-bar { position: sticky; top: 0; z-index: 8; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border: 1px solid var(--border-subtle); border-radius: 5px; background: #fff; }
+.apply-bar.pending { border-color: #ba801e; background: #fff1d2; }
 .apply-bar span { color: var(--text-secondary); font-size: 13px; }
+.apply-bar.pending span { color: #593c0b; font-weight: 650; }
 .apply-bar .apply-configuration { flex: 0 0 auto; min-width: 0; }
 .notice { background: var(--accent-surface); border-left: 2px solid var(--accent); color: var(--text-primary); }
 .error-panel { background: #f8e9e9; border-left: 2px solid var(--danger); color: #7f3032; }
@@ -99,6 +101,11 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .route-cell:hover:not(:disabled) { background: var(--accent-surface); }
 .route-cell.active { background: var(--accent-surface); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .route-cell.active:hover { background: #d1e5e9; }
+.route-cell.active.pending-add, .route-cell.active.pending-edit { background: #ffecbc; color: #663b00; box-shadow: inset 0 0 0 2px #ae6d00; font-weight: 750; }
+.route-cell.pending-remove { background: #fbe0d8; color: #8f3521; box-shadow: inset 0 0 0 2px #b94d32; font-weight: 750; }
+.route-cell.active.pending-add:hover, .route-cell.active.pending-edit:hover { background: #ffdf91; }
+.route-cell.pending-remove:hover:not(:disabled) { background: #f7c9bc; }
+.matrix-status-legend { margin: 4px 0 9px; color: var(--text-secondary); font-size: 12px; }
 .route-legend, .configured-mark { color: var(--accent); }
 .matrix-scroll { scrollbar-color: #adb8c1 #edf1f3; }
 .matrix-scroll::-webkit-scrollbar-track { background: #edf1f3; border-color: #fff; }

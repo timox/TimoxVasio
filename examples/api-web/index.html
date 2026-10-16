@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TimoxVasio — exemple API locale</title>
+  <style>
+    :root { color-scheme: light; font-family: "Segoe UI", Arial, sans-serif; background: #eef2f6; color: #172c43; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    :focus-visible { outline: 3px solid #f1a33c; outline-offset: 3px; }
+    .shell { max-width: 1160px; padding: 28px 24px 64px; margin: auto; }
+    .topline { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 2px solid #173c60; }
+    .brand { font-size: 1.1rem; font-weight: 750; letter-spacing: -.025em; }
+    .brand span { color: #176f91; }
+    .edition { color: #48627a; font-size: .88rem; }
+    h1 { font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1.04; letter-spacing: -.045em; margin: 36px 0 12px; max-width: 750px; }
+    .intro { color: #425d75; line-height: 1.55; max-width: 690px; margin: 0 0 28px; }
+    .signal-path { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #adc4d4; background: #dce9f1; margin-bottom: 28px; }
+    .signal-path div { padding: 16px 18px; border-right: 1px solid #adc4d4; }
+    .signal-path div:last-child { border-right: 0; }
+    .signal-path strong { display: block; color: #143a5b; }
+    .signal-path small { display: block; color: #526c81; margin-top: 4px; }
+    .panel { background: #fff; border: 1px solid #c3d2de; border-radius: 8px; padding: 22px; }
+    .panel h2 { font-size: 1.2rem; margin: 0 0 16px; letter-spacing: -.02em; }
+    .connection { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; }
+    .connection label { display: grid; gap: 5px; color: #405b72; font-weight: 600; font-size: .92rem; }
+    .connection input { width: 124px; padding: 10px 12px; border: 1px solid #8da5b7; border-radius: 5px; background: #f9fbfd; color: #172c43; }
+    .primary { border: 1px solid #134b70; background: #175a80; color: white; padding: 10px 17px; border-radius: 5px; font-weight: 700; }
+    .secondary { border: 1px solid #8aa4b8; background: #f4f8fb; color: #173c60; padding: 10px 17px; border-radius: 5px; font-weight: 700; }
+    #connection-status { margin: 0 0 2px auto; color: #536b7d; font-size: .93rem; }
+    .grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 18px; margin-top: 18px; }
+    .engine-state { font-size: 2rem; font-weight: 750; letter-spacing: -.035em; margin: 0 0 8px; }
+    .details { margin: 0 0 20px; }
+    .details div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #e4ebf0; }
+    .details dt { color: #5a7082; }
+    .details dd { margin: 0; font-weight: 650; text-align: right; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .section-note { margin: -8px 0 14px; color: #617689; font-size: .88rem; }
+    ul { padding: 0; margin: 0; list-style: none; }
+    .item { padding: 11px 0; border-top: 1px solid #e4ebf0; overflow-wrap: anywhere; }
+    .item:first-child { border-top: 0; }
+    .item strong { display: block; }
+    .item small { display: block; color: #607688; margin-top: 4px; }
+    .empty { color: #637a8d; padding: 8px 0; }
+    .stack { display: grid; gap: 18px; }
+    .meter { display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 12px; padding: 8px 0; align-items: center; }
+    .meter-name { overflow-wrap: anywhere; font-size: .88rem; }
+    .meter-track { grid-column: 1 / -1; background: #e5edf2; height: 7px; border-radius: 7px; overflow: hidden; }
+    .meter-track span { display: block; background: #1687a5; height: 100%; }
+    .meter-value { text-align: right; font-variant-numeric: tabular-nums; font-size: .88rem; }
+    .log { background: #102f49; color: #d9e9f2; border-radius: 5px; padding: 8px 14px; max-height: 240px; overflow: auto; font: .82rem/1.5 Consolas, "Courier New", monospace; }
+    .log li { border-bottom: 1px solid #31516a; padding: 8px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .log li:last-child { border: 0; }
+    .footer { margin-top: 22px; color: #5c7387; font-size: .86rem; line-height: 1.5; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .signal-path { grid-template-columns: 1fr; } .signal-path div { border-right: 0; border-bottom: 1px solid #adc4d4; } .signal-path div:last-child { border-bottom: 0; } #connection-status { width: 100%; margin: 0; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topline"><div class="brand">Timox<span>Vasio</span> / API</div><div class="edition">Exemple local · sans installation web</div></header>
+    <h1>Piloter le moteur depuis une page.</h1>
+    <p class="intro">Cette interface lit l’état de TimoxVasio par HTTP et envoie deux commandes par WebSocket. Les applications ASIO continuent à transporter le son par le pilote.</p>
+    <div class="signal-path" aria-label="Chemin des commandes">
+      <div><strong>Cette page</strong><small>Commandes et affichage</small></div>
+      <div><strong>API locale</strong><small>127.0.0.1 · HTTP + WebSocket</small></div>
+      <div><strong>Moteur TimoxVasio</strong><small>État, routes et niveaux</small></div>
+    </div>
+
+    <section class="panel" aria-labelledby="connection-title">
+      <h2 id="connection-title">Connexion</h2>
+      <div class="connection">
+        <label for="port">Port de l’API <input id="port" type="number" min="1" max="65535" value="52525" inputmode="numeric"></label>
+        <button id="connect" class="primary" type="button">Se connecter</button>
+        <p id="connection-status" role="status" aria-live="polite">Lancez Timox VASIO Control, puis connectez cette page.</p>
+      </div>
+    </section>
+
+    <div class="grid">
+      <div class="stack">
+        <section class="panel" aria-labelledby="engine-title">
+          <h2 id="engine-title">Moteur audio</h2>
+          <p id="engine-state" class="engine-state">—</p>
+          <dl class="details">
+            <div><dt>Carte physique</dt><dd id="driver">—</dd></div>
+            <div><dt>Format</dt><dd id="format">—</dd></div>
+          </dl>
+          <div class="actions">
+            <button id="start" class="primary" type="button" disabled>Démarrer le moteur</button>
+            <button id="stop" class="secondary" type="button" disabled>Arrêter le moteur</button>
+          </div>
+        </section>
+        <section class="panel" aria-labelledby="clients-title">
+          <h2 id="clients-title">Applications ASIO</h2>
+          <p class="section-note">Clients qui ont ouvert le pilote virtuel.</p>
+          <ul id="clients"><li class="empty">Connectez la page pour lire les clients.</li></ul>
+        </section>
+      </div>
+      <div class="stack">
+        <section class="panel" aria-labelledby="routes-title">
+          <h2 id="routes-title">Routes actives</h2>
+          <ul id="routes"><li class="empty">Connectez la page pour lire les routes.</li></ul>
+        </section>
+        <section class="panel" aria-labelledby="meters-title">
+          <h2 id="meters-title">Niveaux</h2>
+          <p class="section-note">Les événements arrivent seulement pour les points routés qui reçoivent du son.</p>
+          <div id="meters" aria-live="off"><p class="empty">En attente de signal.</p></div>
+        </section>
+        <section class="panel" aria-labelledby="log-title">
+          <h2 id="log-title">Échanges avec l’API</h2>
+          <ul id="exchange-log" class="log" aria-live="polite"><li>En attente de connexion.</li></ul>
+        </section>
+      </div>
+    </div>
+    <p class="footer">Ce fichier fonctionne hors ligne. Le moteur et le pilote doivent être installés sur ce PC pour piloter de vraies applications ASIO. Le navigateur ne transporte pas d’échantillons audio vers le pilote.</p>
+  </main>
+
+  <script>
+    (() => {
+      const $ = selector => document.querySelector(selector);
+      const view = {
+        port: $('#port'), status: $('#connection-status'), engine: $('#engine-state'),
+        driver: $('#driver'), format: $('#format'), clients: $('#clients'), routes: $('#routes'),
+        meters: $('#meters'), log: $('#exchange-log'), start: $('#start'), stop: $('#stop')
+      };
+      let socket = null;
+      let snapshot = null;
+      let pending = null;
+      let sequence = 0;
+      const meters = new Map();
+
+      function addLog(direction, data) {
+        if (view.log.firstElementChild?.textContent === 'En attente de connexion.') view.log.replaceChildren();
+        const line = document.createElement('li');
+        line.textContent = `${new Date().toLocaleTimeString('fr-FR')}  ${direction}  ${JSON.stringify(data)}`;
+        view.log.prepend(line);
+        while (view.log.children.length > 20) view.log.lastElementChild.remove();
+      }
+
+      function addItem(list, title, detail) {
+        const item = document.createElement('li');
+        item.className = 'item';
+        const name = document.createElement('strong');
+        name.textContent = title;
+        item.append(name);
+        if (detail) {
+          const description = document.createElement('small');
+          description.textContent = detail;
+          item.append(description);
+        }
+        list.append(item);
+      }
+
+      function showEmpty(list, message) {
+        const item = document.createElement('li');
+        item.className = 'empty';
+        item.textContent = message;
+        list.append(item);
+      }
+
+      function updateButtons() {
+        const connected = socket?.readyState === WebSocket.OPEN;
+        const state = snapshot?.engine?.state;
+        view.start.disabled = !connected || !!pending || state === 'running' || state === 'reconfiguring';
+        view.stop.disabled = !connected || !!pending || state !== 'running';
+      }
+
+      function renderState() {
+        if (!snapshot) return;
+        const engine = snapshot.engine;
+        view.engine.textContent = ({ stopped: 'Arrêté', running: 'En marche', reconfiguring: 'Reconfiguration', error: 'Erreur' })[engine.state] || engine.state;
+        view.driver.textContent = snapshot.physicalDrivers.find(driver => driver.id === engine.physicalDriverId)?.name || 'Aucune sélectionnée';
+        view.format.textContent = engine.sampleRate && engine.bufferFrames ? `${engine.sampleRate} Hz / ${engine.bufferFrames} images` : 'Non défini';
+        view.clients.replaceChildren();
+        const clients = snapshot.virtualDrivers.flatMap(driver => driver.clients || []);
+        if (clients.length === 0) showEmpty(view.clients, 'Aucune application ASIO connectée.');
+        for (const client of clients) addItem(view.clients, client.processName, `PID ${client.pid} · sorties ${client.outputChannels.join(', ') || 'aucune'}`);
+        view.routes.replaceChildren();
+        if (snapshot.routes.length === 0) showEmpty(view.routes, 'Aucune route active.');
+        for (const route of snapshot.routes) addItem(view.routes, `${route.gainDb} dB${route.mute ? ' · muet' : ''}`, `${route.sourceEndpointId} → ${route.destinationEndpointId}`);
+        updateButtons();
+      }
+
+      function renderMeters() {
+        view.meters.replaceChildren();
+        if (meters.size === 0) {
+          const empty = document.createElement('p');
+          empty.className = 'empty';
+          empty.textContent = 'En attente de signal.';
+          view.meters.append(empty);
+          return;
+        }
+        for (const meter of [...meters.values()].slice(-8)) {
+          const row = document.createElement('div');
+          row.className = 'meter';
+          const name = document.createElement('span');
+          name.className = 'meter-name';
+          name.textContent = meter.endpointId;
+          const value = document.createElement('span');
+          value.className = 'meter-value';
+          value.textContent = `${meter.peakDbfs.toFixed(1)} dBFS`;
+          const track = document.createElement('div');
+          track.className = 'meter-track';
+          const fill = document.createElement('span');
+          fill.style.width = `${Math.max(0, Math.min(100, (meter.peakDbfs + 60) / 60 * 100))}%`;
+          track.append(fill);
+          row.append(name, value, track);
+          view.meters.append(row);
+        }
+      }
+
+      function handleMessage(event) {
+        let message;
+        try { message = JSON.parse(event.data); }
+        catch { view.status.textContent = 'Réponse WebSocket illisible.'; return; }
+        if (message.event === 'audio.meter') {
+          meters.set(message.payload.endpointId, message.payload);
+          renderMeters();
+          return;
+        }
+        addLog('←', message);
+        if (message.event === 'engine.status') {
+          snapshot.engine = message.payload;
+          renderState();
+        } else if (message.event === 'routes.changed') {
+          snapshot.routes = message.payload.routes;
+          renderState();
+        } else if (message.event === 'engine.error') {
+          view.status.textContent = message.payload.message;
+        } else if (message.id && pending?.id === message.id) {
+          pending = null;
+          if (!message.success) view.status.textContent = message.error?.message || 'Commande refusée par le moteur.';
+          updateButtons();
+        }
+      }
+
+      async function connect() {
+        const port = Number(view.port.value);
+        if (!Number.isInteger(port) || port < 1 || port > 65535 || !view.port.value.trim()) {
+          view.status.textContent = 'Indiquez un port entre 1 et 65535.';
+          return;
+        }
+        if (socket) { const previous = socket; socket = null; previous.close(); }
+        pending = null;
+        meters.clear();
+        renderMeters();
+        updateButtons();
+        view.status.textContent = 'Connexion en cours…';
+        try {
+          const response = await fetch(`http://127.0.0.1:${port}/api/v1/state`, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const state = await response.json();
+          if (state.apiVersion !== '1.0' || !Array.isArray(state.virtualDrivers)) throw new Error('Ce port ne répond pas comme l’API TimoxVasio v1.');
+          snapshot = state;
+          renderState();
+          addLog('GET', { path: '/api/v1/state', engine: state.engine.state });
+          const current = new WebSocket(`ws://127.0.0.1:${port}/api/v1/ws`, 'vasio.api.v1');
+          socket = current;
+          current.onopen = () => {
+            if (socket !== current) return;
+            view.status.textContent = `Connecté à 127.0.0.1:${port}`;
+            updateButtons();
+          };
+          current.onmessage = event => { if (socket === current) handleMessage(event); };
+          current.onerror = () => { if (socket === current) view.status.textContent = 'Connexion WebSocket impossible.'; };
+          current.onclose = () => {
+            if (socket !== current) return;
+            socket = null;
+            pending = null;
+            view.status.textContent = 'Déconnecté de l’API locale. Vérifiez que le moteur tourne.';
+            updateButtons();
+          };
+        } catch (error) {
+          view.status.textContent = `Connexion impossible : ${error.message}`;
+          updateButtons();
+        }
+      }
+
+      function command(name) {
+        if (socket?.readyState !== WebSocket.OPEN || pending) return;
+        const request = { id: `web-example-${Date.now()}-${++sequence}`, command: name };
+        pending = request;
+        updateButtons();
+        addLog('→', request);
+        try { socket.send(JSON.stringify(request)); }
+        catch (error) {
+          pending = null;
+          view.status.textContent = `Envoi impossible : ${error.message}`;
+          updateButtons();
+        }
+      }
+
+      $('#connect').addEventListener('click', connect);
+      view.start.addEventListener('click', () => command('engine.start'));
+      view.stop.addEventListener('click', () => command('engine.stop'));
+    })();
+  </script>
+</body>
+</html>

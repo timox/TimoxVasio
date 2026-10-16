@@ -62,7 +62,21 @@ function commandeApi(command, payload) {
 // ---------- OSC minimal vers scsynth ----------
 
 function padOsc(buf) {
-  return Buffer.concat([buf, Buffer.alloc((4 - (buf.length % 4)) % 4 || 4)]);
+  return Buffer.concat([buf, Buffer.alloc((4 - (buf.length % 4)) % 4)]);
+}
+
+const PARAMETRES = {
+  inDb: [-24, 24], outDb: [-24, 24],
+  xo1: [60, 800], xo2: [800, 8000],
+  loThr: [-60, 0], midThr: [-60, 0], hiThr: [-60, 0],
+  loRatio: [1, 20], midRatio: [1, 20], hiRatio: [1, 20],
+};
+
+function nombreFini(texte) {
+  if (texte === undefined || texte.trim() === '') throw new Error('valeur numérique requise');
+  const valeur = Number(texte);
+  if (!Number.isFinite(valeur)) throw new Error('valeur numérique finie requise');
+  return valeur;
 }
 
 // Encode un message OSC : adresse, tags de type, arguments (string, entier ou flottant).
@@ -89,10 +103,21 @@ function encoderOsc(adresse, args) {
 function envoyerOsc(adresse, args) {
   return new Promise((resoudre, rejeter) => {
     const socket = dgram.createSocket('udp4');
-    socket.send(encoderOsc(adresse, args), SC_PORT, SC_HOTE, (err) => {
+    let fini = false;
+    const terminer = (erreur) => {
+      if (fini) return;
+      fini = true;
+      clearTimeout(delai);
       socket.close();
-      err ? rejeter(err) : resoudre();
+      erreur ? rejeter(erreur) : resoudre();
+    };
+    const delai = setTimeout(() => terminer(new Error(`scsynth ne répond pas sur ${SC_HOTE}:${SC_PORT}`)), 1500);
+    socket.on('error', terminer);
+    socket.on('message', (reponse) => {
+      if (reponse.toString('ascii', 0, 13) !== '/status.reply') return;
+      socket.send(encoderOsc(adresse, args), SC_PORT, SC_HOTE, terminer);
     });
+    socket.send(encoderOsc('/status', []), SC_PORT, SC_HOTE, err => { if (err) terminer(err); });
   });
 }
 
@@ -108,9 +133,16 @@ const actions = {
   'sc-regler': () => {
     const [cle, valeur] = args;
     if (!cle || valeur === undefined) throw new Error('usage : sc-regler <clé> <valeur>');
-    return envoyerOsc('/n_set', [NOEUD_SC, cle, Number(valeur)]);
+    if (!Object.hasOwn(PARAMETRES, cle)) throw new Error(`paramètre inconnu : ${cle}`);
+    const plage = PARAMETRES[cle];
+    const nombre = nombreFini(valeur);
+    if (nombre < plage[0] || nombre > plage[1]) throw new Error(`${cle} hors plage : ${plage[0]} à ${plage[1]}`);
+    return envoyerOsc('/n_set', [NOEUD_SC, cle, nombre]);
   },
-  'sc-bypass': () => envoyerOsc('/n_set', [NOEUD_SC, 'bypass', Number(args[0] ?? 0) ? 1 : 0]),
+  'sc-bypass': () => {
+    if (!['0', '1'].includes(args[0])) throw new Error('usage : sc-bypass <0|1>');
+    return envoyerOsc('/n_set', [NOEUD_SC, 'bypass', Number(args[0])]);
+  },
   'sc-arreter': () => envoyerOsc('/n_free', [NOEUD_SC]),
 };
 
@@ -121,7 +153,7 @@ if (!actions[commande]) {
 
 try {
   await actions[commande]();
-  if (commande.startsWith('sc-')) console.log(`OK : ${commande} ${args.join(' ')}`);
+  if (commande.startsWith('sc-')) console.log(`Commande envoyée : ${commande} ${args.join(' ')}`);
 } catch (err) {
   console.error('Erreur :', err.message);
   process.exit(1);

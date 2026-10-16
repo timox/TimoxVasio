@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="890" viewBox="0 0 1280 890" role="img" aria-labelledby="title desc">
+  <title id="title">Maquette de la vue globale des branchements Timox VASIO</title>
+  <desc id="desc">Vue compacte des canaux physiques de la SSL, avec canaux disponibles et réservés par les routes, branchement rapide et routes enregistrées repliables.</desc>
+  <defs>
+    <style>
+      text { font-family: Segoe UI, Arial, sans-serif; fill: #20313e; }
+      .small { font-size: 13px; }
+      .tiny { font-size: 11px; }
+      .label { font-size: 14px; font-weight: 600; }
+      .heading { font-size: 20px; font-weight: 700; }
+      .muted { fill: #5c6e7b; }
+      .white { fill: #fff; }
+      .orange { fill: #a44d12; }
+      .blue { fill: #3554a8; }
+      .green { fill: #276b55; }
+    </style>
+  </defs>
+  <rect width="1280" height="890" fill="#f4f7f9"/>
+  <rect x="0" y="0" width="1280" height="64" fill="#fff"/>
+  <rect x="0" y="62" width="1280" height="2" fill="#d8e2e8"/>
+  <text x="32" y="39" font-size="20" font-weight="700">Timox VASIO Control</text>
+  <text x="1080" y="38" class="small muted">Moteur actif  ●</text>
+  <text x="32" y="101" class="small muted">Configuration</text>
+  <text x="153" y="101" class="small" font-weight="700">Channels</text>
+  <rect x="151" y="113" width="68" height="3" fill="#2b6974"/>
+  <text x="252" y="101" class="small muted">Analysis</text>
+  <text x="343" y="101" class="small muted">Performance</text>
+  <text x="455" y="101" class="small muted">API and Swagger</text>
+  <rect x="24" y="133" width="1232" height="58" rx="8" fill="#fff" stroke="#d8e2e8"/>
+  <text x="45" y="159" class="small" font-weight="700">Vue globale</text>
+  <rect x="40" y="171" width="86" height="3" fill="#2b6974"/>
+  <text x="156" y="159" class="small muted">Branchement rapide</text>
+  <text x="331" y="159" class="small muted">Connections</text>
+  <text x="447" y="159" class="small muted">Matrix</text>
+  <text x="1092" y="160" class="tiny muted">Maquette · état fictif</text>
+
+  <rect x="24" y="208" width="770" height="430" rx="10" fill="#fff" stroke="#d8e2e8"/>
+  <text x="46" y="244" class="heading">Interface physique · SSL ASIO Driver</text>
+  <text x="46" y="268" class="small muted">Canaux mentionnés par les routes enregistrées. Les autres sont disponibles pour une proposition.</text>
+  <rect x="636" y="222" width="136" height="30" rx="15" fill="#e7f5ee"/>
+  <text x="655" y="242" class="small green" font-weight="700">Moteur connecté</text>
+
+  <text x="46" y="307" class="label">↗ Sorties physiques</text>
+  <text x="608" y="307" class="small green" font-weight="700">28 disponibles / 32</text>
+  <text x="46" y="331" class="tiny muted">1–16</text>
+  <g font-size="12" text-anchor="middle" font-weight="700">
+    <rect x="92" y="315" width="38" height="38" rx="5" fill="#fbead8" stroke="#dfae7e"/><text x="111" y="339" class="orange">1</text>
+    <rect x="135" y="315" width="38" height="38" rx="5" fill="#fbead8" stroke="#dfae7e"/><text x="154" y="339" class="orange">2</text>
+    <rect x="178" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="197" y="339" class="green">3</text>
+    <rect x="221" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="240" y="339" class="green">4</text>
+    <rect x="264" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="283" y="339" class="green">5</text>
+    <rect x="307" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="326" y="339" class="green">6</text>
+    <rect x="350" y="315" width="38" height="38" rx="5" fill="#e5eafb" stroke="#9eaddf"/><text x="369" y="339" class="blue">7</text>
+    <rect x="393" y="315" width="38" height="38" rx="5" fill="#e5eafb" stroke="#9eaddf"/><text x="412" y="339" class="blue">8</text>
+    <rect x="436" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="455" y="339" class="green">9</text>
+    <rect x="479" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="498" y="339" class="green">10</text>
+    <rect x="522" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="541" y="339" class="green">11</text>
+    <rect x="565" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="584" y="339" class="green">12</text>
+    <rect x="608" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="627" y="339" class="green">13</text>
+    <rect x="651" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="670" y="339" class="green">14</text>
+    <rect x="694" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="713" y="339" class="green">15</text>
+    <rect x="737" y="315" width="38" height="38" rx="5" fill="#e7f5ee"/><text x="756" y="339" class="green">16</text>
+  </g>
+  <rect x="46" y="368" width="726" height="38" rx="5" fill="#f5faf7"/>
+  <text x="60" y="392" class="small green" font-weight="700">17–32</text>
+  <text x="140" y="392" class="small muted">16 canaux disponibles</text>
+  <text x="588" y="392" class="small muted">Afficher les numéros ▾</text>
+
+  <line x1="46" x2="772" y1="428" y2="428" stroke="#e1e9ed"/>
+  <text x="46" y="463" class="label">↘ Entrées physiques</text>
+  <text x="609" y="463" class="small green" font-weight="700">14 disponibles / 16</text>
+  <text x="46" y="486" class="tiny muted">1–8</text>
+  <g font-size="12" text-anchor="middle" font-weight="700">
+    <rect x="92" y="470" width="44" height="38" rx="5" fill="#e5eafb" stroke="#9eaddf"/><text x="114" y="494" class="blue">1</text>
+    <rect x="142" y="470" width="44" height="38" rx="5" fill="#e5eafb" stroke="#9eaddf"/><text x="164" y="494" class="blue">2</text>
+    <rect x="192" y="470" width="44" height="38" rx="5" fill="#e7f5ee"/><text x="214" y="494" class="green">3</text>
+    <rect x="242" y="470" width="44" height="38" rx="5" fill="#e7f5ee"/><text x="264" y="494" class="green">4</text>
+    <rect x="292" y="470" width="44" height="38" rx="5" fill="#e7f5ee"/><text x="314" y="494" class="green">5</text>
+    <rect x="342" y="470" width="44" height="38" rx="5" fill="#e7f5ee"/><text x="364" y="494" class="green">6</text>
+    <rect x="392" y="470" width="44" height="38" rx="5" fill="#e7f5ee"/><text x="414" y="494" class="green">7</text>
+    <rect x="442" y="470" width="44" height="38" rx="5" fill="#e7f5ee"/><text x="464" y="494" class="green">8</text>
+  </g>
+  <rect x="46" y="523" width="726" height="38" rx="5" fill="#f5faf7"/>
+  <text x="60" y="547" class="small green" font-weight="700">9–16</text>
+  <text x="140" y="547" class="small muted">8 canaux disponibles</text>
+  <text x="588" y="547" class="small muted">Afficher les numéros ▾</text>
+  <rect x="46" y="584" width="14" height="14" rx="3" fill="#e7f5ee"/><text x="69" y="595" class="tiny muted">Disponible = aucune route enregistrée</text>
+  <rect x="335" y="584" width="14" height="14" rx="3" fill="#fbead8" stroke="#dfae7e"/><text x="358" y="595" class="tiny muted">Mentionné par une route · Renoise</text>
+  <rect x="612" y="584" width="14" height="14" rx="3" fill="#e5eafb" stroke="#9eaddf"/><text x="635" y="595" class="tiny muted">SuperCollider</text>
+
+  <rect x="810" y="208" width="446" height="430" rx="10" fill="#fff" stroke="#d8e2e8"/>
+  <text x="833" y="244" class="heading">Branchement rapide</text>
+  <text x="833" y="269" class="small muted">Choisir où faire passer le son.</text>
+  <text x="833" y="307" class="small muted">Source</text>
+  <rect x="833" y="317" width="400" height="50" rx="6" fill="#fff" stroke="#b9c8d0"/>
+  <rect x="846" y="329" width="8" height="26" rx="4" fill="#df8841"/>
+  <text x="867" y="346" class="label">▣ Renoise · sortie virtuelle</text>
+  <text x="1200" y="346" class="small muted">▾</text>
+  <text x="833" y="399" class="small muted">Destination</text>
+  <rect x="833" y="409" width="400" height="50" rx="6" fill="#fff" stroke="#b9c8d0"/>
+  <rect x="846" y="421" width="8" height="26" rx="4" fill="#609d7b"/>
+  <text x="867" y="439" class="label">◉ SSL · sortie physique</text>
+  <text x="1200" y="439" class="small muted">▾</text>
+  <rect x="833" y="480" width="116" height="36" rx="5" fill="#e8f0f3" stroke="#2b6974"/>
+  <text x="858" y="503" class="small" font-weight="700">Stéréo  ●</text>
+  <text x="967" y="503" class="small muted">Mono  ○</text>
+  <rect x="833" y="537" width="400" height="51" rx="6" fill="#eef7f0" stroke="#b5d9c1"/>
+  <text x="848" y="558" class="small green" font-weight="700">Paire disponible dans les routes</text>
+  <text x="848" y="578" class="small muted">Proposition : Renoise 3–4 → SSL 3–4</text>
+  <text x="837" y="614" class="tiny muted">Les applications doivent être réglées sur ces numéros.</text>
+
+  <rect x="24" y="654" width="1232" height="178" rx="10" fill="#fff" stroke="#d8e2e8"/>
+  <text x="46" y="690" class="heading">Branchements enregistrés</text>
+  <text x="1123" y="690" class="small muted">2 groupes ▾</text>
+  <line x1="46" x2="1234" y1="706" y2="706" stroke="#e1e9ed"/>
+  <rect x="46" y="722" width="1188" height="44" rx="6" fill="#f7f9fb"/>
+  <rect x="57" y="731" width="7" height="26" rx="3" fill="#df8841"/>
+  <text x="77" y="749" class="small" font-weight="700">▣ Renoise</text>
+  <text x="187" y="749" class="small muted">→</text>
+  <rect x="216" y="731" width="7" height="26" rx="3" fill="#609d7b"/>
+  <text x="235" y="749" class="small" font-weight="700">◉ SSL sorties physiques</text>
+  <text x="739" y="749" class="small muted">1–2 → 1–2 · stéréo</text>
+  <text x="1021" y="749" class="small green">● Appliqué</text>
+  <text x="1205" y="749" class="small muted">▾</text>
+  <rect x="46" y="777" width="1188" height="42" rx="6" fill="#f7f9fb"/>
+  <rect x="57" y="786" width="7" height="24" rx="3" fill="#5d77c6"/>
+  <text x="77" y="804" class="small" font-weight="700">▣ SuperCollider</text>
+  <text x="212" y="804" class="small muted">→</text>
+  <rect x="239" y="786" width="7" height="24" rx="3" fill="#609d7b"/>
+  <text x="258" y="804" class="small" font-weight="700">◉ SSL sorties physiques</text>
+  <text x="739" y="804" class="small muted">1–2 → 7–8 · stéréo</text>
+  <text x="1021" y="804" class="small green">● Appliqué</text>
+  <text x="1205" y="804" class="small muted">▾</text>
+  <text x="27" y="864" class="tiny muted">Disponibilité indicative : les routes ne verrouillent aucun canal. Les vues Connections et Matrix restent accessibles.</text>
+</svg>
