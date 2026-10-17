@@ -2,12 +2,12 @@
 
 **Français** | [English](FONCTIONS.en.md)
 
-Cette page décrit les fonctions de Timox VASIO Control dans [TimoxVasio 1.2.2](https://github.com/timox/TimoxVasio/releases/tag/v1.2.2). L’interface est en anglais ; elle réunit six vues :
+Cette page décrit les fonctions de Timox VASIO Control dans [TimoxVasio 1.2.3](https://github.com/timox/TimoxVasio/releases/tag/v1.2.3). L’interface est en anglais ; elle réunit six vues :
 
 | Vue | Usage principal |
 | --- | --- |
 | **Configuration** | Choisir le pilote ASIO physique, sa fréquence et son tampon; régler les profils de canaux par application. |
-| **Channels** | Voir les applications connectées, les canaux ouverts et routés, leurs niveaux, puis modifier les routes dans le patchbay graphique ou la matrice. |
+| **Channels** | Voir les applications connectées, les canaux ouverts et routés, leurs niveaux, puis modifier les routes dans l'ajout rapide, le patchbay graphique ou la matrice. |
 | **Analysis** | Suivre la corrélation des sorties gauche et droite d’une paire stéréo ouverte et routée. |
 | **Performance** | Vérifier que le callback du pilote physique tient dans le temps d’un bloc et mesurer la durée de chaque étape du trajet audio. |
 | **API and Swagger** | Lire le contrat embarqué et envoyer des requêtes HTTP ou commandes WebSocket depuis la console intégrée. |
@@ -30,7 +30,7 @@ Les échantillons suivent le chemin du haut. L’interface, Swagger et la consol
 
 Une application peut recevoir un profil annonçant jusqu’à 256 entrées et 256 sorties. Seuls les canaux qu’elle ouvre avec ASIO deviennent des extrémités actives. Un canal ouvert n’est pas automatiquement routé. Dans **Channels**, les vumètres sont affichés uniquement pour les canaux de cette application qui sont à la fois ouverts et présents dans une route active.
 
-Les routes se créent dans le **patchbay** graphique (ports groupés par application, câbles visibles, inspecteur de connexion) ou dans la **matrice**, mieux adaptée aux routages denses. Une ou plusieurs connexions sélectionnées peuvent recevoir un libellé et une couleur ; ces choix n’existent que dans la vue de câblage et ne changent ni les routes du moteur ni le traitement audio.
+L'onglet **Overview** résume les canaux physiques utilisés ou disponibles et les flux par application. **Quick routing** propose un branchement mono ou stéréo entre groupes source et destination, avec des canaux suggérés que l'on peut changer. Les routes se créent aussi dans le **patchbay** graphique (ports groupés par application, câbles visibles, inspecteur de connexion) ou dans la **matrice**, mieux adaptée aux routages denses. La liste des connexions enregistrées est regroupée par couple source/destination ; chaque groupe affiche une plage de canaux et l'état appliqué ou en attente, et peut être déplié pour régler les routes. Ces modifications restent en brouillon jusqu'à **Apply configuration**. Une ou plusieurs connexions sélectionnées peuvent recevoir un libellé et une couleur ; ces choix n’existent que dans la vue de câblage et ne changent ni les routes du moteur ni le traitement audio.
 
 ```mermaid
 flowchart LR

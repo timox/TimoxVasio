@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css';
 import './ProfessionalTheme.css';
 import RoutingPatchbay from './RoutingPatchbay';
+import QuickRouting from './QuickRouting';
+import RoutingOverview from './RoutingOverview';
+import { groupRoutes } from './route-groups';
 import { DEFAULT_ROUTE_COLOR, readRouteVisuals, routeVisualKey, saveRouteVisuals } from './route-visuals';
 const { configurationFromState } = require('./api-contract');
 const openApiDocument = require('./openapi-spec.generated');
@@ -282,6 +285,8 @@ function App() {
     const confirmedRoutes = apiState ? configurationFromState(apiState).routes : [];
     const confirmedRouteByKey = new Map(confirmedRoutes.map(route => [routeKey(route), route]));
     const draftRouteByKey = new Map((configuration?.routes || []).map(route => [routeKey(route), route]));
+    const savedRouteGroups = groupRoutes(configuration?.routes || [], patchbayGroups.sources,
+        patchbayGroups.destinations, confirmedRoutes);
     const sourceGroup = endpoints.sourceGroups.find(group => group.id === sourceZone);
     const destinationGroup = endpoints.destinationGroups.find(group => group.id === destinationZone);
     const pageEndpoints = (group, search) => (group?.endpoints || []).filter(endpoint =>
@@ -356,6 +361,12 @@ function App() {
             mute: false
         }] };
     });
+    const addRoutes = routes => updateDraft(current => ({ ...current,
+        routes: [...current.routes, ...routes.map((route, index) => ({
+            id: `route-${Date.now()}-${current.routes.length + index}`,
+            ...route, gainDb: 0, mute: false
+        }))]
+    }));
     const editRoute = (id, field, value) => updateDraft(current => ({
         ...current, routes: current.routes.map(route => route.id === id ? { ...route, [field]: value } : route)
     }));
@@ -790,12 +801,22 @@ function App() {
                     <h2>Routing</h2>
                     <details className="routing-details" open><summary>Edit routes · {(configuration?.routes || []).length} configured</summary>
                     <div className="routing-view-switch" role="group" aria-label="Routing view">
+                        <button type="button" data-routing-view="overview" aria-pressed={routingView === 'overview'}
+                            className={routingView === 'overview' ? 'selected' : ''} onClick={() => setRoutingView('overview')}>Overview</button>
+                        <button type="button" data-routing-view="quick" aria-pressed={routingView === 'quick'}
+                            className={routingView === 'quick' ? 'selected' : ''} onClick={() => setRoutingView('quick')}>Quick routing</button>
                         <button type="button" data-routing-view="patchbay" aria-pressed={routingView === 'patchbay'}
                             className={routingView === 'patchbay' ? 'selected' : ''} onClick={() => setRoutingView('patchbay')}>Connections</button>
                         <button type="button" data-routing-view="matrix" aria-pressed={routingView === 'matrix'}
                             className={routingView === 'matrix' ? 'selected' : ''} onClick={() => setRoutingView('matrix')}>Matrix</button>
                     </div>
-                    {routingView === 'patchbay' ? <RoutingPatchbay sourceGroups={patchbayGroups.sources}
+                    {routingView === 'overview' ? <RoutingOverview physicalDriver={selectedPhysical}
+                        virtualClients={virtualDriver?.clients || []} routes={configuration?.routes || []}
+                        routeGroups={savedRouteGroups} /> :
+                    routingView === 'quick' ? <QuickRouting sourceGroups={patchbayGroups.sources}
+                        destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
+                        onAddRoutes={addRoutes} disabled={configurationLocked} /> :
+                    routingView === 'patchbay' ? <RoutingPatchbay sourceGroups={patchbayGroups.sources}
                         destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
                         onToggleRoute={toggleRoute} selectedRouteId={selectedRouteId}
                         routeVisuals={routeVisuals} onChangeRouteVisual={updateRouteVisual}
@@ -905,8 +926,15 @@ function App() {
                         </div>
                     </div>
                     </>}
-                    {(configuration?.routes || []).length === 0 ? <p className="hint">No routes configured.</p> : <ul className="configured-routes">
-                        {(configuration?.routes || []).map(route => <li key={route.id} className={`custom-route-row${selectedRouteId === route.id ? ' route-highlighted' : ''}`}
+                    <h3>Saved connections</h3>
+                    {savedRouteGroups.length === 0 ? <p className="hint">No routes configured.</p> : <div className="saved-route-groups">
+                        {savedRouteGroups.map(group => <details className="saved-route-group" key={group.key}>
+                            <summary><span className="saved-route-group-name">{group.sourceLabel} → {group.destinationLabel}</span>
+                                <span className="saved-route-group-channels">{group.channelSummary} · {group.routes.length} {group.routes.length === 1 ? 'route' : 'routes'}</span>
+                                <span className={`saved-route-group-status${group.applied ? ' applied' : ' pending'}`}>
+                                    {group.applied ? 'Applied' : 'Pending changes'}</span></summary>
+                            <ul className="configured-routes">
+                        {group.routes.map(route => <li key={route.id} className={`custom-route-row${selectedRouteId === route.id ? ' route-highlighted' : ''}`}
                             style={{ '--route-color': routeVisuals[routeVisualKey(route)]?.color || DEFAULT_ROUTE_COLOR }}>
                             <span className="route-list-description">
                                 {routeVisuals[routeVisualKey(route)]?.label && <strong className="route-custom-label">{routeVisuals[routeVisualKey(route)].label}</strong>}
@@ -921,7 +949,9 @@ function App() {
                             <label><input disabled={configurationLocked} type="checkbox" checked={route.mute} onChange={event => editRoute(route.id, 'mute', event.target.checked)} /> Muted</label>
                             <button disabled={configurationLocked} onClick={() => removeRoute(route.id)} aria-label="Remove route">Remove</button>
                         </li>)}
-                    </ul>}
+                            </ul>
+                        </details>)}
+                    </div>}
                     </details>
                 </section>}
                 {activeView === 'channels' && <section className="section">

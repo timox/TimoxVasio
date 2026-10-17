@@ -88,6 +88,37 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .routing-view-switch button { border: 0; border-right: 1px solid var(--border-subtle); border-radius: 0; min-width: 102px; }
 .routing-view-switch button:last-child { border-right: 0; }
 .routing-view-switch button.selected { background: var(--accent-surface); color: var(--accent); font-weight: 600; }
+.quick-routing { display: grid; gap: 14px; max-width: 760px; padding: 16px; background: var(--surface-inset); border: 1px solid var(--border-subtle); border-radius: 6px; }
+.quick-routing .hint { margin: 0; }
+.quick-routing-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.quick-routing-fields .field select { width: 100%; }
+.quick-routing-mode { display: inline-flex; width: fit-content; gap: 6px; }
+.quick-routing-mode button.selected { background: var(--accent-surface); border-color: var(--accent); color: var(--accent); font-weight: 650; }
+.quick-routing-preview { margin: 0; padding: 12px; background: #e8f3ed; border: 1px solid #b9d9c7; border-radius: 5px; color: #285640; font-weight: 600; }
+.quick-routing-add { justify-self: start; background: var(--accent); border-color: var(--accent); color: #fff; }
+.saved-route-groups { display: grid; gap: 9px; margin-top: 10px; }
+.saved-route-group { border: 1px solid var(--border-subtle); border-radius: 5px; background: #fff; }
+.saved-route-group > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding: 12px; cursor: pointer; }
+.saved-route-group > summary::marker { color: var(--accent); }
+.saved-route-group-name { flex: 1 1 250px; font-weight: 650; }
+.saved-route-group-channels { flex: 1 1 230px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.saved-route-group-status { font-size: 12px; font-weight: 650; }
+.saved-route-group-status.applied { color: #26754d; }
+.saved-route-group-status.pending { color: #8a641e; }
+.saved-route-group .configured-routes { margin: 0; padding: 0 12px 12px; }
+.routing-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 8px; }
+.routing-overview-card { min-width: 0; padding: 15px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface-inset); }
+.routing-overview-card h3 { margin: 0 0 8px; }
+.physical-availability { margin-top: 16px; }
+.physical-availability-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.physical-availability-head span { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.physical-channel-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.physical-channel { padding: 6px 8px; border: 1px solid #b9d9c7; border-radius: 4px; background: #e8f3ed; color: #285640; font-size: 12px; }
+.physical-channel.used { border-color: #dfae7e; background: #fbead8; color: #8b4f1d; }
+.physical-availability button { margin-top: 8px; }
+.application-flow-list, .flow-summaries { display: grid; gap: 7px; margin-top: 10px; }
+.application-flow, .flow-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 5px; background: #fff; }
+.application-flow span, .flow-summary span { color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
 .view-navigation button, .api-subnavigation button { border-color: var(--border-subtle); background: #fff; color: var(--text-secondary); }
 .view-navigation button.selected, .api-subnavigation button.selected { border-color: var(--accent); background: var(--accent-surface); color: var(--accent); }
 .route-matrix { background: var(--border-subtle); font-size: 12px; }
@@ -274,9 +305,11 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
     .performance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .clock-flow, .transport-steps { display: flex; flex-direction: column; }
     .clock-flow > span { transform: rotate(90deg); }
+    .routing-overview { grid-template-columns: 1fr; }
 }
 @media (max-width: 520px) {
     .performance-metrics { grid-template-columns: 1fr; }
+    .quick-routing-fields { grid-template-columns: 1fr; }
 }
 .transport-table-wrap { overflow-x: auto; margin-top: 12px; }
 .transport-table { width: 100%; border-collapse: collapse; }
