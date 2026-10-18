@@ -8,11 +8,11 @@ Requirements: Windows 10 or 11 x64, 64-bit ASIO applications, administrator righ
 
 ## Install from a release
 
-1. Download `Timox VASIO Control Setup <version>.exe` from the [latest release](https://github.com/timox/TimoxVasio/releases/latest).
+1. Download `Timox.VASIO.Control.Setup.<version>.exe` from the [latest release](https://github.com/timox/TimoxVasio/releases/latest).
 2. Run Setup and accept the Windows administrator prompt. It copies the driver to `C:\Program Files\Steinberg\VirtualASIO\<version>\` and registers it as `TimoxVasio`. The versioned folder preserves an older DLL still loaded by an application.
 3. Restart any audio application that had loaded an older DLL.
 
-The portable `Timox VASIO Control <version>.exe` runs the interface and engine without installing the driver. If needed, extract `TimoxVasio Driver <version>.zip` and run `Installer TimoxVasio.bat` as administrator to install the driver separately.
+The portable `Timox.VASIO.Control.<version>.exe` runs the interface and engine without installing the driver. If needed, extract `TimoxVasio.Driver.<version>.zip` and run `Installer TimoxVasio.bat` as administrator to install the driver separately.
 
 To register the DLL by hand from the extracted folder, in an administrator PowerShell:
 

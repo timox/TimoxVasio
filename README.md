@@ -60,7 +60,7 @@ Sous Linux, [PipeWire](https://pipewire.org) et [JACK](https://jackaudio.org) co
 
 Prérequis : Windows 10 ou 11 x64, des applications ASIO 64 bits, les droits administrateur et, pour sortir du son, un pilote ASIO physique.
 
-1. Télécharger `Timox VASIO Control Setup <version>.exe` depuis la [dernière release](https://github.com/timox/TimoxVasio/releases/latest).
+1. Télécharger `Timox.VASIO.Control.Setup.<version>.exe` depuis la [dernière release](https://github.com/timox/TimoxVasio/releases/latest).
 2. Lancer le Setup et accepter l'élévation administrateur : il installe l'interface, le moteur et le pilote ASIO.
 3. Relancer les applications audio, puis démarrer Timox VASIO Control et choisir la carte physique.
 

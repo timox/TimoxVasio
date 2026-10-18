@@ -13,4 +13,4 @@ The 1.2.4 Apply configuration fix is included. Existing routes are preserved. Th
 
 ## Installation
 
-Download and run [Timox VASIO Control Setup 1.2.5.exe](https://github.com/timox/TimoxVasio/releases/tag/v1.2.5). Then restart audio applications still using the older DLL. See the [Windows downloads guide](RELEASE_WINDOWS_1.2.5.en.md) and [installation guide](INSTALL.en.md).
+Download and run [Timox.VASIO.Control.Setup.1.2.5.exe](https://github.com/timox/TimoxVasio/releases/tag/v1.2.5). Then restart audio applications still using the older DLL. See the [Windows downloads guide](RELEASE_WINDOWS_1.2.5.en.md) and [installation guide](INSTALL.en.md).

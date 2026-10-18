@@ -7,6 +7,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not [Environment]::Is64BitProcess) {
+    throw 'Le pilote ASIO x64 doit être enregistré depuis PowerShell 64 bits.'
+}
 if (-not $InstallRoot) {
     $InstallRoot = if ($env:ProgramW6432) { $env:ProgramW6432 } else { [Environment]::GetFolderPath('ProgramFiles') }
 }

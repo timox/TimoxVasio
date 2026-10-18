@@ -97,6 +97,10 @@ if ($installerSource -notmatch [regex]::Escape('${PROJECT_DIR}\..\build_driver_1
     $installerSource -notmatch [regex]::Escape('register_drivers.ps1')) {
     throw 'Le Setup ne référence pas les ressources canoniques du pilote.'
 }
+if ($installerSource -notmatch [regex]::Escape('Sysnative\WindowsPowerShell\v1.0\powershell.exe') -or
+    (Get-Content -LiteralPath $installerHelper -Raw) -notmatch [regex]::Escape('[Environment]::Is64BitProcess')) {
+    throw 'Le Setup doit enregistrer le pilote depuis PowerShell 64 bits.'
+}
 
 Require-File $enginePath
 Require-File $driverPath

@@ -60,7 +60,7 @@ On Linux, [PipeWire](https://pipewire.org) and [JACK](https://jackaudio.org) hav
 
 Requirements: Windows 10 or 11 x64, 64-bit ASIO applications, administrator rights and, to output sound, a physical ASIO driver.
 
-1. Download `Timox VASIO Control Setup <version>.exe` from the [latest release](https://github.com/timox/TimoxVasio/releases/latest).
+1. Download `Timox.VASIO.Control.Setup.<version>.exe` from the [latest release](https://github.com/timox/TimoxVasio/releases/latest).
 2. Run Setup and accept the administrator prompt; it installs the interface, engine and ASIO driver.
 3. Restart audio applications, then start Timox VASIO Control and select the physical interface.
 
