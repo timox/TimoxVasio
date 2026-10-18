@@ -2,7 +2,7 @@
 
 [Français](FONCTIONS.md) | **English**
 
-This guide describes Timox VASIO Control in [TimoxVasio 1.2.3](https://github.com/timox/TimoxVasio/releases/tag/v1.2.3). The application has six views:
+This guide describes Timox VASIO Control in [TimoxVasio 1.2.4](https://github.com/timox/TimoxVasio/releases/tag/v1.2.4). The application has six views:
 
 | View | Main use |
 | --- | --- |
@@ -30,7 +30,7 @@ Samples follow the audio path. Control, Swagger, and the console use the local A
 
 An application profile can advertise up to 256 inputs and 256 outputs. Only channels it opens through ASIO become active endpoints. An open channel is not automatically routed. In **Channels**, meters appear only for the application's channels that are both open and part of an active route.
 
-**Overview** summarizes used and available physical channels and application flows. **Quick routing** suggests a mono or stereo connection between source and destination groups; you can change the proposed channels. Routes can also be created in the graphical **patchbay** (ports grouped by application, visible cables, a connection inspector) or in the **matrix**, which suits dense routing. Saved connections are grouped by source/destination pair; each expandable group shows a compact channel range and applied or pending status, with controls for individual routes inside. Audio changes remain in the draft until **Apply configuration**. One or more selected connections can receive a label and a color; these choices exist only in the cabling view and change neither the engine's routes nor the audio processing.
+**Overview** summarizes used and available physical channels and application flows. **Quick routing** suggests a mono or stereo connection between source and destination groups; you can change the proposed channels. Routes can also be created in the graphical **patchbay** (ports grouped by application, visible cables, a connection inspector) or in the **matrix**, which suits dense routing. Saved connections are grouped by source/destination pair; each expandable group shows a compact channel range, applied or pending status, and an active route count, with controls for individual routes inside. An applied route becomes active only when both ASIO channels are open. Audio changes remain in the draft until **Apply configuration**. One or more selected connections can receive a label and a color; these choices exist only in the cabling view and change neither the engine's routes nor the audio processing.
 
 ```mermaid
 flowchart LR

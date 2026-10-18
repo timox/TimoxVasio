@@ -21,6 +21,35 @@ const state = {
     routes: []
 };
 
+test('route updates from the engine keep unapplied edits available to Apply', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    let onEvent;
+    const applyConfiguration = jest.fn().mockResolvedValue({ accepted: true });
+    window.vasio = { getState: jest.fn().mockResolvedValue(state),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(callback => { onEvent = callback; return () => {}; }),
+        onDisconnect: jest.fn(() => () => {}), applyConfiguration };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await act(async () => Simulate.click(container.querySelector('.route-cell')));
+        expect(container.querySelector('.apply-bar button').disabled).toBe(false);
+        await act(async () => { onEvent({ event: 'routes.changed', payload: { routes: [] } }); await Promise.resolve(); });
+        expect(container.querySelector('.apply-bar button').disabled).toBe(false);
+        expect(container.querySelectorAll('.saved-route-group')).toHaveLength(1);
+        await act(async () => Simulate.click(container.querySelector('.apply-bar button')));
+        expect(applyConfiguration.mock.calls[0][0].routes).toHaveLength(1);
+    } finally {
+        await act(async () => root.unmount());
+        container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
 test('quick routing suggests the next free stereo pair and stages both channels for apply', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const channels = [1, 2, 3, 4];
@@ -79,7 +108,7 @@ test('saved connections are summarized by source and destination with channel ra
         inputEndpoints: [], outputEndpoints: channels.map(channel => ({
             id: `virtual:TimoxVasio:42:output:${channel}`, name: `AudioApp Out ${channel}`,
             direction: 'output', channel })) }],
-    routes: channels.map(channel => ({ id: `saved-${channel}`,
+    routes: [], configuredRoutes: channels.map(channel => ({ id: `saved-${channel}`,
         sourceEndpointId: `virtual:TimoxVasio:42:output:${channel}`,
         destinationEndpointId: `physical:interface-1:output:${channel}`,
         gainDb: 0, mute: false })) };
@@ -100,6 +129,7 @@ test('saved connections are summarized by source and destination with channel ra
         expect(groups[0].querySelector('summary').textContent)
             .toContain('AudioApp.exe · PID 42 → Interface réelle · Outputs');
         expect(groups[0].querySelector('summary').textContent).toContain('1–2 → 1–2 · 2 routes');
+        expect(groups[0].querySelector('summary').textContent).toContain('0/2 active');
         expect(groups[0].querySelectorAll('.configured-routes li')).toHaveLength(2);
     } finally {
         await act(async () => root.unmount());

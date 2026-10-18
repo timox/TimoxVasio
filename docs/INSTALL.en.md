@@ -2,7 +2,7 @@
 
 [Français](INSTALL.md) | **English**
 
-TimoxVasio ships as two separate downloads: the ASIO driver `TimoxVasio.dll` (`TimoxVasio.Driver.<version>.zip`) and the Timox VASIO Control application, which bundles the `TimoxVirtualAsioEngine.exe` engine (`Timox.VASIO.Control.Setup.<version>.exe` or the portable build). The Setup does not install the driver; the driver archive does not install the application. The DLL and the engine must share the same version: the 1.2.3 shared transport rejects an older DLL.
+TimoxVasio ships as two separate downloads: the ASIO driver `TimoxVasio.dll` (`TimoxVasio.Driver.<version>.zip`) and the Timox VASIO Control application, which bundles the `TimoxVirtualAsioEngine.exe` engine (`Timox.VASIO.Control.Setup.<version>.exe` or the portable build). The Setup does not install the driver; the driver archive does not install the application. The DLL and the engine must share the same version: the 1.2.4 shared transport rejects an older DLL.
 
 Requirements: Windows 10 or 11 x64, 64-bit ASIO applications, administrator rights to register the driver and, to hear anything, a physical ASIO driver.
 
@@ -16,7 +16,7 @@ Requirements: Windows 10 or 11 x64, 64-bit ASIO applications, administrator righ
 To register the DLL by hand from the extracted folder, in an administrator PowerShell:
 
 ```powershell
-$driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.2.3'
+$driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.2.4'
 New-Item -ItemType Directory -Force -Path $driverDir | Out-Null
 Copy-Item -LiteralPath '.\TimoxVasio.dll' -Destination (Join-Path $driverDir 'TimoxVasio.dll') -Force
 pwsh -NoProfile -File '.\register_drivers.ps1' install -DllDirectory $driverDir
@@ -30,7 +30,7 @@ From the extracted folder (or `install\` in the repository):
 
 ```powershell
 pwsh -NoProfile -File .\register_drivers.ps1 list
-Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\1.2.3\TimoxVasio.dll"
+Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\1.2.4\TimoxVasio.dll"
 ```
 
 The expected driver is `TimoxVasio`. It advertises 256 inputs and 256 outputs; each application only exposes the channels it actually allocates with `createBuffers`.
@@ -49,7 +49,7 @@ From an administrator terminal at the repository root:
 .\install\build_and_install.bat
 ```
 
-The script builds the `TimoxVasio` target in `build_driver_110`, copies `TimoxVasio.dll` to `C:\Program Files\Steinberg\VirtualASIO\1.2.3`, removes old VASIO1–VASIO4 entries and registers the driver. If an older DLL is still locked by an application, it says so; that DLL is no longer registered as a driver.
+The script builds the `TimoxVasio` target in `build_driver_110`, copies `TimoxVasio.dll` to `C:\Program Files\Steinberg\VirtualASIO\1.2.4`, removes old VASIO1–VASIO4 entries and registers the driver. If an older DLL is still locked by an application, it says so; that DLL is no longer registered as a driver.
 
 The engine and the application are built separately: see [BUILD_DRIVERS.en.md](BUILD_DRIVERS.en.md) and [gui/README.en.md](../gui/README.en.md).
 

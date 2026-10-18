@@ -22,11 +22,12 @@ const summarizeChannels = entries => {
     return `${shown.join(', ')}${runs.length > 3 ? `, +${runs.length - 3} more` : ''}`;
 };
 
-export function groupRoutes(routes, sourceGroups, destinationGroups, confirmedRoutes) {
+export function groupRoutes(routes, sourceGroups, destinationGroups, confirmedRoutes, activeRoutes = []) {
     const sources = endpointGroups(sourceGroups);
     const destinations = endpointGroups(destinationGroups);
     const confirmed = new Map(confirmedRoutes.map(route =>
         [`${route.sourceEndpointId}\u0000${route.destinationEndpointId}`, route]));
+    const activeIds = new Set(activeRoutes.map(route => route.id));
     const groups = new Map();
     for (const route of routes) {
         const source = sources.get(route.sourceEndpointId);
@@ -35,9 +36,11 @@ export function groupRoutes(routes, sourceGroups, destinationGroups, confirmedRo
         const destinationId = destination?.group.id || route.destinationEndpointId;
         const key = `${sourceId}\u0000${destinationId}`;
         if (!groups.has(key)) groups.set(key, { key, sourceLabel: source?.group.label || sourceId,
-            destinationLabel: destination?.group.label || destinationId, routes: [], channels: [], applied: true });
+            destinationLabel: destination?.group.label || destinationId, routes: [], channels: [],
+            applied: true, activeCount: 0 });
         const group = groups.get(key);
         group.routes.push(route);
+        if (activeIds.has(route.id)) group.activeCount++;
         group.channels.push({ source: source?.channel, destination: destination?.channel });
         const saved = confirmed.get(`${route.sourceEndpointId}\u0000${route.destinationEndpointId}`);
         if (!saved || saved.gainDb !== route.gainDb || saved.mute !== route.mute) group.applied = false;

@@ -55,6 +55,7 @@ function App() {
     const [consoleConfirmation, setConsoleConfirmation] = useState('');
     const confirmationDialog = useRef(null);
     const initialMatrixRouteShown = useRef(false);
+    const lastConfirmedConfiguration = useRef(null);
 
     useEffect(() => { saveRouteVisuals(routeVisuals); }, [routeVisuals]);
 
@@ -104,11 +105,16 @@ function App() {
         finally { setEngineAction(''); }
     };
 
-    const refreshState = useCallback(async () => {
+    const refreshState = useCallback(async ({ resetDraft = false } = {}) => {
         const state = await window.vasio.getState();
+        const confirmedConfiguration = configurationFromState(state);
+        const previousConfirmed = lastConfirmedConfiguration.current;
         setApiState(state);
         setEngine(state.engine);
-        setConfiguration(configurationFromState(state));
+        setConfiguration(current => resetDraft || !current || !previousConfirmed ||
+            JSON.stringify(current) === JSON.stringify(previousConfirmed)
+            ? confirmedConfiguration : current);
+        lastConfirmedConfiguration.current = confirmedConfiguration;
         setSelectedStereoPairId(current => state.stereoPairs?.some(pair => pair.id === current) ? current : '');
         return state;
     }, []);
@@ -286,7 +292,7 @@ function App() {
     const confirmedRouteByKey = new Map(confirmedRoutes.map(route => [routeKey(route), route]));
     const draftRouteByKey = new Map((configuration?.routes || []).map(route => [routeKey(route), route]));
     const savedRouteGroups = groupRoutes(configuration?.routes || [], patchbayGroups.sources,
-        patchbayGroups.destinations, confirmedRoutes);
+        patchbayGroups.destinations, confirmedRoutes, apiState?.routes || []);
     const sourceGroup = endpoints.sourceGroups.find(group => group.id === sourceZone);
     const destinationGroup = endpoints.destinationGroups.find(group => group.id === destinationZone);
     const pageEndpoints = (group, search) => (group?.endpoints || []).filter(endpoint =>
@@ -415,7 +421,7 @@ function App() {
         setNotice('Applying configuration…');
         try {
             await window.vasio.applyConfiguration(configuration);
-            const confirmed = await refreshState();
+            const confirmed = await refreshState({ resetDraft: true });
             setNotice(configuration.routes.length === 0
                 ? 'Physical driver configured. The audio engine remains stopped until a route is defined.'
                 : confirmed.engine.state === 'stopped' && !confirmed.routes.length
@@ -791,8 +797,8 @@ function App() {
 
                 {activeView === 'channels' && <div className={`apply-bar${configurationDirty ? ' pending' : ''}`} role="status" aria-live="polite">
                     <span>{configurationDirty
-                        ? 'Pending changes — the matrix shows a draft. Apply configuration to activate it; audio routing will briefly pause.'
-                        : 'Configuration applied — the matrix matches the engine.'}</span>
+                        ? 'Pending changes — Apply configuration to activate the draft; audio routing will briefly pause.'
+                        : 'Configuration applied — saved routes match the engine. Check active counts below.'}</span>
                     <button className="apply-configuration" onClick={applyConfiguration}
                         disabled={!apiState || !configuration || !configurationDirty || configurationLocked}>Apply configuration</button>
                 </div>}
@@ -927,12 +933,13 @@ function App() {
                     </div>
                     </>}
                     <h3>Saved connections</h3>
+                    <p className="hint">A saved route carries audio when both endpoints have opened their ASIO channels.</p>
                     {savedRouteGroups.length === 0 ? <p className="hint">No routes configured.</p> : <div className="saved-route-groups">
                         {savedRouteGroups.map(group => <details className="saved-route-group" key={group.key}>
                             <summary><span className="saved-route-group-name">{group.sourceLabel} → {group.destinationLabel}</span>
                                 <span className="saved-route-group-channels">{group.channelSummary} · {group.routes.length} {group.routes.length === 1 ? 'route' : 'routes'}</span>
                                 <span className={`saved-route-group-status${group.applied ? ' applied' : ' pending'}`}>
-                                    {group.applied ? 'Applied' : 'Pending changes'}</span></summary>
+                                    {group.applied ? `Applied · ${group.activeCount}/${group.routes.length} active` : 'Pending changes'}</span></summary>
                             <ul className="configured-routes">
                         {group.routes.map(route => <li key={route.id} className={`custom-route-row${selectedRouteId === route.id ? ' route-highlighted' : ''}`}
                             style={{ '--route-color': routeVisuals[routeVisualKey(route)]?.color || DEFAULT_ROUTE_COLOR }}>
