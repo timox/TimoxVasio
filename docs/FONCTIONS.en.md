@@ -2,12 +2,12 @@
 
 [Français](FONCTIONS.md) | **English**
 
-This guide describes Timox VASIO Control in [TimoxVasio 1.2.1](https://github.com/timox/TimoxVasio/releases/tag/v1.2.1). The application has six views:
+This guide describes Timox VASIO Control in [TimoxVasio 1.2.5](https://github.com/timox/TimoxVasio/releases/tag/v1.2.5). The application has six views:
 
 | View | Main use |
 | --- | --- |
 | **Configuration** | Select the physical ASIO driver, sample rate, and buffer size; configure per-application channel profiles. |
-| **Channels** | Inspect connected applications, open and routed channels, and meters; edit routes in the graphical patchbay or the matrix. |
+| **Channels** | Inspect connected applications, open and routed channels, and meters; edit routes with Quick routing, the graphical patchbay, or the matrix. |
 | **Analysis** | Follow L/R correlation for an open, routed stereo output pair. |
 | **Performance** | Check that the physical driver callback fits within one block and measure each stage of the audio path. |
 | **API and Swagger** | Read the embedded contract and send HTTP requests or WebSocket commands from the integrated console. |
@@ -30,7 +30,7 @@ Samples follow the audio path. Control, Swagger, and the console use the local A
 
 An application profile can advertise up to 256 inputs and 256 outputs. Only channels it opens through ASIO become active endpoints. An open channel is not automatically routed. In **Channels**, meters appear only for the application's channels that are both open and part of an active route.
 
-Routes are created in the graphical **patchbay** (ports grouped by application, visible cables, a connection inspector) or in the **matrix**, which suits dense routing. One or more selected connections can receive a label and a color; these choices exist only in the cabling view and change neither the engine's routes nor the audio processing.
+**Overview** summarizes used and available physical channels and application flows. **Quick routing** suggests a mono or stereo connection between source and destination groups; you can change the proposed channels. Routes can also be created in the graphical **patchbay** (ports grouped by application, visible cables, a connection inspector) or in the **matrix**, which suits dense routing. Saved connections are grouped by source/destination pair; each group shows a channel range, applied or pending status, and an active route count. Opening a group reveals a small matrix of the channels in use, with per-connection gain, mute, and removal controls. Routes for disconnected applications remain grouped under their executable name. An applied route becomes active only when both ASIO channels are open. Audio changes remain in the draft until **Apply configuration**. One or more selected connections can receive a label and a color; these choices exist only in the cabling view and change neither the engine's routes nor the audio processing.
 
 ```mermaid
 flowchart LR

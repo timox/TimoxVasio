@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $guiRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent $guiRoot
-$bundle = Join-Path $guiRoot 'dist\driver_bundle_1_2_1'
-$archive = Join-Path $guiRoot 'dist\TimoxVasio Driver 1.2.1.zip'
+$bundle = Join-Path $guiRoot 'dist\driver_bundle_1_2_5'
+$archive = Join-Path $guiRoot 'dist\TimoxVasio Driver 1.2.5.zip'
 $driver = Join-Path $repoRoot 'build_driver_110\Release\TimoxVasio.dll'
 $readmeSource = Join-Path $repoRoot 'install\driver-archive-README.md'
 $englishReadmeSource = Join-Path $repoRoot 'install\driver-archive-README.en.md'
@@ -20,7 +20,8 @@ Copy-Item -LiteralPath $driver -Destination (Join-Path $bundle 'TimoxVasio.dll')
 Copy-Item -LiteralPath $readmeSource -Destination $readme -Force
 Copy-Item -LiteralPath $englishReadmeSource -Destination $englishReadme -Force
 foreach ($name in @('Installer TimoxVasio.bat', 'register_drivers.ps1', 'LICENSE')) {
-    Copy-Item -LiteralPath (Join-Path $repoRoot $name) -Destination (Join-Path $bundle $name) -Force
+    $source = if ($name -eq 'LICENSE') { Join-Path $repoRoot $name } else { Join-Path $repoRoot "install\$name" }
+    Copy-Item -LiteralPath $source -Destination (Join-Path $bundle $name) -Force
 }
 Compress-Archive -LiteralPath @(
     (Join-Path $bundle 'Installer TimoxVasio.bat'),

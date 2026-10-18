@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860" role="img" aria-labelledby="title desc">
+  <title id="title">Maquette de routage dense Renoise et SuperCollider</title>
+  <desc id="desc">Vue globale qui garde les disponibilités de la carte SSL visibles et résume 64 routes virtuelles pour huit pistes Renoise et trois retours stéréo par piste.</desc>
+  <defs>
+    <style>
+      text { font-family: Segoe UI, Arial, sans-serif; fill: #20313e; }
+      .heading { font-size: 20px; font-weight: 700; }
+      .label { font-size: 14px; font-weight: 700; }
+      .small { font-size: 13px; }
+      .tiny { font-size: 11px; }
+      .muted { fill: #60727e; }
+      .green { fill: #276b55; }
+      .orange { fill: #a44d12; }
+      .blue { fill: #3554a8; }
+    </style>
+  </defs>
+  <rect width="1280" height="860" fill="#f4f7f9"/>
+  <rect x="0" y="0" width="1280" height="64" fill="#fff"/>
+  <rect x="0" y="62" width="1280" height="2" fill="#d8e2e8"/>
+  <text x="32" y="39" font-size="20" font-weight="700">Timox VASIO Control</text>
+  <text x="1080" y="38" class="small muted">Moteur actif  ●</text>
+  <text x="32" y="101" class="small muted">Configuration</text>
+  <text x="153" y="101" class="small" font-weight="700">Channels</text>
+  <rect x="151" y="113" width="68" height="3" fill="#2b6974"/>
+  <text x="252" y="101" class="small muted">Analysis</text>
+  <text x="343" y="101" class="small muted">Performance</text>
+  <text x="455" y="101" class="small muted">API and Swagger</text>
+  <rect x="24" y="133" width="1232" height="58" rx="8" fill="#fff" stroke="#d8e2e8"/>
+  <text x="45" y="159" class="small" font-weight="700">Vue globale</text>
+  <rect x="40" y="171" width="86" height="3" fill="#2b6974"/>
+  <text x="156" y="159" class="small muted">Branchement rapide</text>
+  <text x="331" y="159" class="small muted">Connections</text>
+  <text x="447" y="159" class="small muted">Matrix</text>
+  <text x="1070" y="160" class="tiny muted">Maquette · scénario chargé</text>
+
+  <rect x="24" y="208" width="1232" height="188" rx="10" fill="#fff" stroke="#d8e2e8"/>
+  <text x="46" y="244" class="heading">◉ SSL · interface physique</text>
+  <text x="46" y="270" class="small muted">Disponibilité visible même avec beaucoup de routes entre applications</text>
+  <text x="46" y="310" class="label">↗ Sorties</text>
+  <rect x="132" y="289" width="66" height="34" rx="5" fill="#fbead8" stroke="#dfae7e"/>
+  <text x="151" y="311" class="small orange" font-weight="700">1–2</text>
+  <rect x="207" y="289" width="448" height="34" rx="5" fill="#e7f5ee"/>
+  <text x="224" y="311" class="small green" font-weight="700">3–32  ·  30 canaux disponibles</text>
+  <text x="1010" y="311" class="small muted">Voir les numéros ▾</text>
+  <text x="46" y="353" class="label">↘ Entrées</text>
+  <rect x="132" y="331" width="523" height="34" rx="5" fill="#e7f5ee"/>
+  <text x="150" y="353" class="small green" font-weight="700">1–16  ·  16 canaux disponibles</text>
+  <text x="1010" y="353" class="small muted">Voir les numéros ▾</text>
+  <text x="46" y="382" class="tiny muted">Disponible signifie sans route enregistrée. Une autre application peut quand même ouvrir ou utiliser ce canal.</text>
+
+  <rect x="24" y="414" width="1232" height="174" rx="10" fill="#fff" stroke="#d8e2e8"/>
+  <text x="46" y="450" class="heading">Vue d’ensemble des flux</text>
+  <text x="46" y="474" class="small muted">Les flux virtuels sont regroupés par application et par sens. Aucun canal vide n’est affiché.</text>
+  <rect x="46" y="495" width="287" height="66" rx="7" fill="#fff8f1" stroke="#e6bd96"/>
+  <rect x="46" y="495" width="7" height="66" rx="3" fill="#df8841"/>
+  <text x="64" y="520" class="label">▣ Renoise</text>
+  <text x="64" y="543" class="small muted">8 pistes · 16 sorties · 48 entrées</text>
+  <text x="352" y="525" class="small orange" font-weight="700">16 canaux →</text>
+  <text x="352" y="549" class="small blue" font-weight="700">← 48 canaux</text>
+  <line x1="465" y1="525" x2="650" y2="525" stroke="#df8841" stroke-width="4"/>
+  <polygon points="650,525 640,519 640,531" fill="#df8841"/>
+  <line x1="465" y1="549" x2="650" y2="549" stroke="#5d77c6" stroke-width="4"/>
+  <polygon points="465,549 475,543 475,555" fill="#5d77c6"/>
+  <rect x="675" y="495" width="287" height="66" rx="7" fill="#f3f5ff" stroke="#aeb9e7"/>
+  <rect x="675" y="495" width="7" height="66" rx="3" fill="#5d77c6"/>
+  <text x="693" y="520" class="label">▣ SuperCollider</text>
+  <text x="693" y="543" class="small muted">16 entrées · 48 sorties (3 bandes)</text>
+  <line x1="985" y1="530" x2="1053" y2="530" stroke="#778b96" stroke-width="3"/>
+  <polygon points="1053,530 1043,524 1043,536" fill="#778b96"/>
+  <rect x="1070" y="499" width="162" height="58" rx="7" fill="#f3f9f5" stroke="#b5d9c1"/>
+  <text x="1085" y="524" class="label">◉ SSL</text>
+  <text x="1085" y="546" class="small muted">Sorties 1–2</text>
+
+  <rect x="24" y="606" width="1232" height="214" rx="10" fill="#fff" stroke="#d8e2e8"/>
+  <text x="46" y="642" class="heading">Branchements enregistrés</text>
+  <text x="1000" y="642" class="small muted">Rechercher un numéro de canal</text>
+  <rect x="46" y="660" width="1188" height="64" rx="6" fill="#f7f9fb"/>
+  <rect x="56" y="670" width="7" height="44" rx="3" fill="#df8841"/>
+  <text x="77" y="685" class="label">▣ Renoise sorties → ▣ SuperCollider entrées</text>
+  <text x="77" y="706" class="small muted">1–16 → 1–16 · 8 paires stéréo · 16 routes</text>
+  <text x="1040" y="689" class="small green">● Appliqué</text>
+  <text x="1178" y="689" class="small muted">▾</text>
+  <rect x="46" y="736" width="1188" height="64" rx="6" fill="#f7f9fb"/>
+  <rect x="56" y="746" width="7" height="44" rx="3" fill="#5d77c6"/>
+  <text x="77" y="761" class="label">▣ SuperCollider sorties → ▣ Renoise entrées</text>
+  <text x="77" y="782" class="small muted">1–48 → 1–48 · Low / Medium / High · 48 routes</text>
+  <text x="1040" y="765" class="small green">● Appliqué</text>
+  <text x="1178" y="765" class="small muted">▾</text>
+  <text x="27" y="846" class="tiny muted">Les noms des pistes et des bandes ne sont pas déduits des routes actuelles ; seuls les applications, canaux et sens sont connus.</text>
+</svg>

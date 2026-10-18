@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { launchEngine, releaseEngine } = require('./engine-process');
 const WebSocket = require('ws');
 const { ApiClient } = require('./api-client');
 
@@ -37,7 +37,7 @@ function startEngine() {
         notify('engine-connection', { connected: false, error: error.message });
         return readiness.promise;
     }
-    engineProcess = spawn(enginePath, [], { stdio: ['ignore', 'pipe', 'pipe'], detached: false, cwd: path.dirname(enginePath) });
+    engineProcess = launchEngine(enginePath, [], path.dirname(enginePath));
     engineProcess.on('spawn', () => console.log(`VASIO engine started: ${enginePath} (PID ${engineProcess.pid})`));
     let stdoutBuffer = '';
     engineProcess.stdout.on('data', data => {
@@ -164,11 +164,7 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 app.on('activate', () => { if (!mainWindow) createWindow(); });
 app.on('before-quit', () => {
     if (apiClient) apiClient.close();
-    if (engineProcess) {
-        engineProcess.unref();
-        if (engineProcess.stdout?._handle) engineProcess.stdout._handle.unref();
-        if (engineProcess.stderr?._handle) engineProcess.stderr._handle.unref();
-    }
+    if (engineProcess) releaseEngine(engineProcess);
 });
 
 Menu.setApplicationMenu(Menu.buildFromTemplate([

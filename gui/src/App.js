@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css';
 import './ProfessionalTheme.css';
 import RoutingPatchbay from './RoutingPatchbay';
+import QuickRouting from './QuickRouting';
+import RoutingOverview from './RoutingOverview';
+import SavedRouteMatrices from './SavedRouteMatrices';
+import { groupRoutes } from './route-groups';
 import { DEFAULT_ROUTE_COLOR, readRouteVisuals, routeVisualKey, saveRouteVisuals } from './route-visuals';
 const { configurationFromState } = require('./api-contract');
 const openApiDocument = require('./openapi-spec.generated');
@@ -52,6 +56,7 @@ function App() {
     const [consoleConfirmation, setConsoleConfirmation] = useState('');
     const confirmationDialog = useRef(null);
     const initialMatrixRouteShown = useRef(false);
+    const lastConfirmedConfiguration = useRef(null);
 
     useEffect(() => { saveRouteVisuals(routeVisuals); }, [routeVisuals]);
 
@@ -101,11 +106,16 @@ function App() {
         finally { setEngineAction(''); }
     };
 
-    const refreshState = useCallback(async () => {
+    const refreshState = useCallback(async ({ resetDraft = false } = {}) => {
         const state = await window.vasio.getState();
+        const confirmedConfiguration = configurationFromState(state);
+        const previousConfirmed = lastConfirmedConfiguration.current;
         setApiState(state);
         setEngine(state.engine);
-        setConfiguration(configurationFromState(state));
+        setConfiguration(current => resetDraft || !current || !previousConfirmed ||
+            JSON.stringify(current) === JSON.stringify(previousConfirmed)
+            ? confirmedConfiguration : current);
+        lastConfirmedConfiguration.current = confirmedConfiguration;
         setSelectedStereoPairId(current => state.stereoPairs?.some(pair => pair.id === current) ? current : '');
         return state;
     }, []);
@@ -278,8 +288,12 @@ function App() {
             ]
         };
     }, [apiState, endpoints.profiled]);
-    const activeRouteKeys = useMemo(() => new Set((configuration?.routes || []).map(route =>
-        `${route.sourceEndpointId}\u0000${route.destinationEndpointId}`)), [configuration?.routes]);
+    const routeKey = route => `${route.sourceEndpointId}\u0000${route.destinationEndpointId}`;
+    const confirmedRoutes = apiState ? configurationFromState(apiState).routes : [];
+    const confirmedRouteByKey = new Map(confirmedRoutes.map(route => [routeKey(route), route]));
+    const draftRouteByKey = new Map((configuration?.routes || []).map(route => [routeKey(route), route]));
+    const savedRouteGroups = groupRoutes(configuration?.routes || [], patchbayGroups.sources,
+        patchbayGroups.destinations, confirmedRoutes, apiState?.routes || []);
     const sourceGroup = endpoints.sourceGroups.find(group => group.id === sourceZone);
     const destinationGroup = endpoints.destinationGroups.find(group => group.id === destinationZone);
     const pageEndpoints = (group, search) => (group?.endpoints || []).filter(endpoint =>
@@ -294,8 +308,8 @@ function App() {
         visibleSourceIds.has(route.sourceEndpointId) && visibleDestinationIds.has(route.destinationEndpointId)).length;
     const sourcePageCount = Math.max(1, Math.ceil(matchingSources.length / channelPageSize));
     const destinationPageCount = Math.max(1, Math.ceil(matchingDestinations.length / channelPageSize));
-    const routedSources = new Set((configuration?.routes || []).map(route => route.sourceEndpointId));
-    const routedDestinations = new Set((configuration?.routes || []).map(route => route.destinationEndpointId));
+    const routedSources = new Set(confirmedRoutes.map(route => route.sourceEndpointId));
+    const routedDestinations = new Set(confirmedRoutes.map(route => route.destinationEndpointId));
 
     useEffect(() => {
         if (!['physical-input', 'virtual-output'].includes(sourceZone)) setSourceZone('virtual-output');
@@ -354,6 +368,12 @@ function App() {
             mute: false
         }] };
     });
+    const addRoutes = routes => updateDraft(current => ({ ...current,
+        routes: [...current.routes, ...routes.map((route, index) => ({
+            id: `route-${Date.now()}-${current.routes.length + index}`,
+            ...route, gainDb: 0, mute: false
+        }))]
+    }));
     const editRoute = (id, field, value) => updateDraft(current => ({
         ...current, routes: current.routes.map(route => route.id === id ? { ...route, [field]: value } : route)
     }));
@@ -402,7 +422,7 @@ function App() {
         setNotice('Applying configuration…');
         try {
             await window.vasio.applyConfiguration(configuration);
-            const confirmed = await refreshState();
+            const confirmed = await refreshState({ resetDraft: true });
             setNotice(configuration.routes.length === 0
                 ? 'Physical driver configured. The audio engine remains stopped until a route is defined.'
                 : confirmed.engine.state === 'stopped' && !confirmed.routes.length
@@ -776,16 +796,34 @@ function App() {
                     </>}
                 </section>}
 
+                {activeView === 'channels' && <div className={`apply-bar${configurationDirty ? ' pending' : ''}`} role="status" aria-live="polite">
+                    <span>{configurationDirty
+                        ? 'Pending changes — Apply configuration to activate the draft; audio routing will briefly pause.'
+                        : 'Configuration applied — saved routes match the engine. Check active counts below.'}</span>
+                    <button className="apply-configuration" onClick={applyConfiguration}
+                        disabled={!apiState || !configuration || !configurationDirty || configurationLocked}>Apply configuration</button>
+                </div>}
+
                 {activeView === 'channels' && <section className="section">
                     <h2>Routing</h2>
                     <details className="routing-details" open><summary>Edit routes · {(configuration?.routes || []).length} configured</summary>
                     <div className="routing-view-switch" role="group" aria-label="Routing view">
+                        <button type="button" data-routing-view="overview" aria-pressed={routingView === 'overview'}
+                            className={routingView === 'overview' ? 'selected' : ''} onClick={() => setRoutingView('overview')}>Overview</button>
+                        <button type="button" data-routing-view="quick" aria-pressed={routingView === 'quick'}
+                            className={routingView === 'quick' ? 'selected' : ''} onClick={() => setRoutingView('quick')}>Quick routing</button>
                         <button type="button" data-routing-view="patchbay" aria-pressed={routingView === 'patchbay'}
                             className={routingView === 'patchbay' ? 'selected' : ''} onClick={() => setRoutingView('patchbay')}>Connections</button>
                         <button type="button" data-routing-view="matrix" aria-pressed={routingView === 'matrix'}
                             className={routingView === 'matrix' ? 'selected' : ''} onClick={() => setRoutingView('matrix')}>Matrix</button>
                     </div>
-                    {routingView === 'patchbay' ? <RoutingPatchbay sourceGroups={patchbayGroups.sources}
+                    {routingView === 'overview' ? <RoutingOverview physicalDriver={selectedPhysical}
+                        virtualClients={virtualDriver?.clients || []} routes={configuration?.routes || []}
+                        routeGroups={savedRouteGroups} /> :
+                    routingView === 'quick' ? <QuickRouting sourceGroups={patchbayGroups.sources}
+                        destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
+                        onAddRoutes={addRoutes} disabled={configurationLocked} /> :
+                    routingView === 'patchbay' ? <RoutingPatchbay sourceGroups={patchbayGroups.sources}
                         destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
                         onToggleRoute={toggleRoute} selectedRouteId={selectedRouteId}
                         routeVisuals={routeVisuals} onChangeRouteVisual={updateRouteVisual}
@@ -823,9 +861,10 @@ function App() {
                             <span>{sourceGroup?.label || 'Source'} · {matchingSources.length} channels</span>
                             <span>{destinationGroup?.label || 'Destination'} · {matchingDestinations.length} channels</span>
                             <span className={`route-legend${visibleRouteCount === 0 ? ' empty' : ''}`}>
-                                {(configuration?.routes || []).length} configured overall · {visibleRouteCount} on these pages
+                                Draft: {(configuration?.routes || []).length} {(configuration?.routes || []).length === 1 ? 'route' : 'routes'} · {visibleRouteCount} on these pages
                             </span>
                         </div>
+                        <p className="matrix-status-legend">● Applied &nbsp; + Pending addition &nbsp; − Pending removal &nbsp; ◆ Pending settings</p>
                         {visibleRouteCount === 0 && (configuration?.routes || []).length > 0 &&
                             <p className="hint">Routes exist on other zones or pages. Use “Show in matrix” next to a route below to jump to it.</p>}
                         <div className="matrix-scroll" role="region" aria-label="Paginated routing matrix" tabIndex="0">
@@ -851,14 +890,28 @@ function App() {
                                             {routedSources.has(source.id) ? <span className="configured-mark" aria-label="Routed source">● </span> : null}{source.name}
                                         </th>
                                         {visibleDestinations.map(destination => {
-                                            const route = activeRouteKeys.has(`${source.id}\u0000${destination.id}`);
+                                            const key = `${source.id}\u0000${destination.id}`;
+                                            const draftRoute = draftRouteByKey.get(key);
+                                            const confirmedRoute = confirmedRouteByKey.get(key);
+                                            const route = !!draftRoute;
+                                            const status = draftRoute && !confirmedRoute ? 'pending-add'
+                                                : !draftRoute && confirmedRoute ? 'pending-remove'
+                                                : draftRoute && confirmedRoute &&
+                                                    (draftRoute.gainDb !== confirmedRoute.gainDb || draftRoute.mute !== confirmedRoute.mute) ? 'pending-edit'
+                                                : draftRoute ? 'applied' : 'inactive';
+                                            const statusLabel = {
+                                                'pending-add': 'route pending application',
+                                                'pending-remove': 'route pending removal',
+                                                'pending-edit': 'route settings pending application',
+                                                applied: 'route applied', inactive: 'route inactive'
+                                            }[status];
                                             return <td key={destination.id}>
-                                                <button type="button" className={`route-cell${route ? ' active' : ''}`}
+                                                <button type="button" className={`route-cell ${status}${route ? ' active' : ''}`}
                                                     disabled={configurationLocked}
-                                                    aria-label={`${source.name} to ${destination.name}${route ? ', route configured' : ', route inactive'}`}
-                                                    aria-pressed={route} title={`${source.name} → ${destination.name}`}
+                                                    aria-label={`${source.name} to ${destination.name}, ${statusLabel}`}
+                                                    aria-pressed={route} title={`${source.name} → ${destination.name} · ${statusLabel}`}
                                                     onClick={() => toggleRoute(source.id, destination.id)}>
-                                                    {route ? '●' : ''}
+                                                    {{ 'pending-add': '+', 'pending-remove': '−', 'pending-edit': '◆', applied: '●', inactive: '' }[status]}
                                                 </button>
                                             </td>;
                                         })}
@@ -880,31 +933,18 @@ function App() {
                         </div>
                     </div>
                     </>}
-                    {(configuration?.routes || []).length === 0 ? <p className="hint">No routes configured.</p> : <ul className="configured-routes">
-                        {(configuration?.routes || []).map(route => <li key={route.id} className={`custom-route-row${selectedRouteId === route.id ? ' route-highlighted' : ''}`}
-                            style={{ '--route-color': routeVisuals[routeVisualKey(route)]?.color || DEFAULT_ROUTE_COLOR }}>
-                            <span className="route-list-description">
-                                {routeVisuals[routeVisualKey(route)]?.label && <strong className="route-custom-label">{routeVisuals[routeVisualKey(route)].label}</strong>}
-                                {endpointName(route.sourceEndpointId)} → {endpointName(route.destinationEndpointId)}
-                            </span>
-                            <button type="button" className="highlight-route" aria-pressed={selectedRouteId === route.id}
-                                onClick={() => { setRoutingView('patchbay'); setSelectedRouteId(current => current === route.id ? null : route.id); }}>
-                                {selectedRouteId === route.id ? 'Clear highlight' : 'Highlight connection'}
-                            </button>
-                            <button type="button" onClick={() => showRouteInMatrix(route)}>Show in matrix</button>
-                            <label>Gain (dB) <input disabled={configurationLocked} type="number" min="-120" max="24" step="0.1" value={route.gainDb} onChange={event => editRoute(route.id, 'gainDb', Number(event.target.value))} /></label>
-                            <label><input disabled={configurationLocked} type="checkbox" checked={route.mute} onChange={event => editRoute(route.id, 'mute', event.target.checked)} /> Muted</label>
-                            <button disabled={configurationLocked} onClick={() => removeRoute(route.id)} aria-label="Remove route">Remove</button>
-                        </li>)}
-                    </ul>}
+                    <h3>Saved connections</h3>
+                    <p className="hint">A saved route carries audio when both endpoints have opened their ASIO channels.</p>
+                    {savedRouteGroups.length === 0 ? <p className="hint">No routes configured.</p> :
+                        <SavedRouteMatrices groups={savedRouteGroups} endpointName={endpointName}
+                            confirmedRoutes={confirmedRoutes} activeRoutes={apiState?.routes || []}
+                            routeVisuals={routeVisuals} selectedRouteId={selectedRouteId}
+                            onHighlight={route => { setRoutingView('patchbay');
+                                setSelectedRouteId(current => current === route.id ? null : route.id); }}
+                            onShowMatrix={showRouteInMatrix} onEdit={editRoute} onRemove={removeRoute}
+                            disabled={configurationLocked} />}
                     </details>
                 </section>}
-                {activeView === 'channels' && <div className="apply-bar">
-                    <span>{configurationDirty ? 'Pending changes · applying briefly interrupts audio routing.' : 'No pending changes.'}</span>
-                    <button className="apply-configuration" onClick={applyConfiguration}
-                        disabled={!apiState || !configuration || configurationLocked}>Apply configuration</button>
-                </div>}
-
                 {activeView === 'channels' && <section className="section">
                     <h2>Application channels</h2>
                     <p className="hint">“Open” shows channels advertised by the application. “Routed” shows channels connected in the displayed configuration. Open channels are not routed automatically.</p>

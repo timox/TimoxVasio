@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RenoiseScriptingTool doc_version="0">
+  <Id>com.timoxvasio.routing</Id>
+  <ApiVersion>6.2</ApiVersion>
+  <Version>1.0</Version>
+  <Author>TimoxVasio contributors</Author>
+  <Name>TimoxVasio Routing Demo</Name>
+  <Category>Integration, MIDI, Mixing</Category>
+  <Description>Configure les routes audio Renoise vers SuperCollider et Ableton par l'API TimoxVasio, et pilote l'horloge MIDI de la démo par OSC.</Description>
+  <Platform>Windows</Platform>
+  <License>GPL-3.0-only</License>
+</RenoiseScriptingTool>
