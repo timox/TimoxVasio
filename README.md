@@ -6,7 +6,7 @@ Pilote ASIO virtuel et moteur de routage audio pour Windows x64.
 
 TimoxVasio permet de faire circuler l'audio entre plusieurs applications ASIO, et vers une carte son physique, sans câble ni table de mixage. Les routes se configurent depuis une interface graphique ou par une API locale.
 
-Version actuelle : **[1.2.4](https://github.com/timox/TimoxVasio/releases/tag/v1.2.4)**. Voir les [notes de version](docs/RELEASE_NOTES_v1.2.4.md) et le [guide des téléchargements Windows](docs/RELEASE_WINDOWS_1.2.4.md).
+Version actuelle : **[1.2.5](https://github.com/timox/TimoxVasio/releases/tag/v1.2.5)**. Voir les [notes de version](docs/RELEASE_NOTES_v1.2.5.md) et le [guide des téléchargements Windows](docs/RELEASE_WINDOWS_1.2.5.md).
 
 ![TimoxVasio en un coup d'œil : un seul pilote, 256 entrées et sorties par application, pas de verrou, une seule horloge, routes persistantes, API locale, niveaux et analyse, logiciel libre](docs/images/timoxvasio-features-fr.svg)
 
@@ -60,10 +60,11 @@ Sous Linux, [PipeWire](https://pipewire.org) et [JACK](https://jackaudio.org) co
 
 Prérequis : Windows 10 ou 11 x64, des applications ASIO 64 bits, les droits administrateur et, pour sortir du son, un pilote ASIO physique.
 
-1. Télécharger les fichiers de la [dernière release](https://github.com/timox/TimoxVasio/releases/latest).
-2. **Pilote** : extraire `TimoxVasio.Driver.<version>.zip` et lancer `Installer TimoxVasio.bat` en administrateur.
-3. **Interface et moteur** : installer `Timox.VASIO.Control.Setup.<version>.exe`, ou lancer la version portable.
-4. Démarrer Timox VASIO Control **avant** d'ouvrir TimoxVasio dans une application audio, puis choisir la carte physique.
+1. Télécharger `Timox VASIO Control Setup <version>.exe` depuis la [dernière release](https://github.com/timox/TimoxVasio/releases/latest).
+2. Lancer le Setup et accepter l'élévation administrateur : il installe l'interface, le moteur et le pilote ASIO.
+3. Relancer les applications audio, puis démarrer Timox VASIO Control et choisir la carte physique.
+
+La version portable ne procède pas à l'installation du pilote. L'archive du pilote reste disponible pour une installation manuelle.
 
 Détails et désinstallation : [INSTALL.md](docs/INSTALL.md).
 

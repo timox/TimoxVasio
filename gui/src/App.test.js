@@ -80,7 +80,7 @@ test('quick routing suggests the next free stereo pair and stages both channels 
         await act(async () => Simulate.click(container.querySelector('.quick-routing-add')));
         expect(container.querySelector('.quick-routing-preview').textContent).toContain('3–4 → Interface réelle · Outputs 3–4');
         await act(async () => Simulate.click(container.querySelector('.quick-routing-add')));
-        expect(container.querySelectorAll('.routing-details .configured-routes li')).toHaveLength(4);
+        expect(container.querySelectorAll('.routing-details .saved-route-connection')).toHaveLength(4);
         expect(applyConfiguration).not.toHaveBeenCalled();
         await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
         expect(applyConfiguration.mock.calls[0][0].routes.map(route => [
@@ -130,7 +130,10 @@ test('saved connections are summarized by source and destination with channel ra
             .toContain('AudioApp.exe · PID 42 → Interface réelle · Outputs');
         expect(groups[0].querySelector('summary').textContent).toContain('1–2 → 1–2 · 2 routes');
         expect(groups[0].querySelector('summary').textContent).toContain('0/2 active');
-        expect(groups[0].querySelectorAll('.configured-routes li')).toHaveLength(2);
+        expect(groups[0].querySelectorAll('.saved-route-matrix tbody tr')).toHaveLength(2);
+        expect(groups[0].querySelectorAll('.saved-route-matrix thead th')).toHaveLength(3);
+        expect(groups[0].querySelectorAll('.saved-route-connection')).toHaveLength(2);
+        expect(groups[0].querySelector('.saved-route-connection summary').textContent).toContain('Waiting for channels');
     } finally {
         await act(async () => root.unmount());
         container.remove(); delete window.vasio; delete window.electronAPI;
@@ -194,7 +197,7 @@ test('graphical connections and matrix edit the same pending routing configurati
         expect(container.querySelector('.patchbay')).not.toBeNull();
         await act(async () => Simulate.click(container.querySelector('[data-port-id="virtual:TimoxVasio:42:output:1"]')));
         await act(async () => Simulate.click(container.querySelector('[data-port-id="physical:interface-1:output:1"]')));
-        await act(async () => Simulate.click(container.querySelector('.configured-routes .highlight-route')));
+        await act(async () => Simulate.click(container.querySelector('.saved-route-connection .highlight-route')));
         expect(container.querySelector('.patchbay-cables path.selected')).not.toBeNull();
         await act(async () => Simulate.click(container.querySelector('[data-routing-view="matrix"]')));
         expect(container.querySelector('.routing-matrix')).not.toBeNull();
@@ -210,7 +213,7 @@ test('graphical connections and matrix edit the same pending routing configurati
         expect(container.querySelector('.route-cell.pending-add')).toBeNull();
         expect(container.querySelector('.route-cell.applied')?.textContent).toBe('●');
         expect(container.textContent).toContain('Configuration applied');
-        const gainInput = container.querySelector('.configured-routes input[type="number"]');
+        const gainInput = container.querySelector('.saved-route-connection input[type="number"]');
         await act(async () => Simulate.change(gainInput, { target: { value: '-6' } }));
         expect(container.querySelector('.route-cell.pending-edit')?.textContent).toBe('◆');
         await act(async () => Simulate.change(gainInput, { target: { value: '0' } }));
@@ -537,7 +540,7 @@ test('a connection label and color persist locally without applying audio config
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
         await act(async () => Simulate.click(container.querySelector('[data-routing-view="patchbay"]')));
-        await act(async () => Simulate.click(container.querySelector('.configured-routes .highlight-route')));
+        await act(async () => Simulate.click(container.querySelector('.saved-route-connection .highlight-route')));
         await act(async () => Simulate.change(container.querySelector('.route-label-input'), { target: { value: 'Headphone' } }));
         await act(async () => Simulate.change(container.querySelector('.route-color-input'), { target: { value: '#bd3f47' } }));
         expect(container.querySelector('.patchbay-cables path.connection.selected').parentElement.getAttribute('style')).toContain('#bd3f47');

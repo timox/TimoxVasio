@@ -1,6 +1,17 @@
 const endpointGroups = groups => new Map(groups.flatMap(group =>
     group.endpoints.map(endpoint => [endpoint.id, { group, channel: endpoint.channel }])));
 
+const fallbackEndpoint = id => {
+    const virtual = /^virtual:TimoxVasio:app:([^:]+):(input|output):(\d+)$/.exec(id);
+    if (virtual) return { group: { id: `virtual-app:${virtual[1]}:${virtual[2]}`,
+        label: `${virtual[1]} · ${virtual[2] === 'output' ? 'Outputs' : 'Inputs'}` },
+    channel: Number(virtual[3]) };
+    const physical = /^physical:(.+):(input|output):(\d+)$/.exec(id);
+    if (physical) return { group: { id: `physical:${physical[1]}:${physical[2]}`,
+        label: `Physical ${physical[2]}s` }, channel: Number(physical[3]) };
+    return { group: { id, label: id }, channel: undefined };
+};
+
 const range = (first, last) => first === last ? String(first) : `${first}–${last}`;
 
 const summarizeChannels = entries => {
@@ -30,13 +41,13 @@ export function groupRoutes(routes, sourceGroups, destinationGroups, confirmedRo
     const activeIds = new Set(activeRoutes.map(route => route.id));
     const groups = new Map();
     for (const route of routes) {
-        const source = sources.get(route.sourceEndpointId);
-        const destination = destinations.get(route.destinationEndpointId);
-        const sourceId = source?.group.id || route.sourceEndpointId;
-        const destinationId = destination?.group.id || route.destinationEndpointId;
+        const source = sources.get(route.sourceEndpointId) || fallbackEndpoint(route.sourceEndpointId);
+        const destination = destinations.get(route.destinationEndpointId) || fallbackEndpoint(route.destinationEndpointId);
+        const sourceId = source.group.id;
+        const destinationId = destination.group.id;
         const key = `${sourceId}\u0000${destinationId}`;
-        if (!groups.has(key)) groups.set(key, { key, sourceLabel: source?.group.label || sourceId,
-            destinationLabel: destination?.group.label || destinationId, routes: [], channels: [],
+        if (!groups.has(key)) groups.set(key, { key, sourceLabel: source.group.label,
+            destinationLabel: destination.group.label, routes: [], channels: [],
             applied: true, activeCount: 0 });
         const group = groups.get(key);
         group.routes.push(route);

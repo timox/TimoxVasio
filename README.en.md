@@ -6,7 +6,7 @@ Virtual ASIO driver and audio routing engine for Windows x64.
 
 TimoxVasio moves audio between several ASIO applications, and to a physical audio interface, without cables or a mixing desk. Routes are set up from a graphical interface or through a local API.
 
-Current release: **[1.2.4](https://github.com/timox/TimoxVasio/releases/tag/v1.2.4)**. See the [release notes](docs/RELEASE_NOTES_v1.2.4.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.2.4.en.md).
+Current release: **[1.2.5](https://github.com/timox/TimoxVasio/releases/tag/v1.2.5)**. See the [release notes](docs/RELEASE_NOTES_v1.2.5.en.md) and [Windows downloads guide](docs/RELEASE_WINDOWS_1.2.5.en.md).
 
 ![TimoxVasio at a glance: one driver, 256 inputs and outputs per application, no channel locks, one master clock, persistent routes, local API, meters and analysis, free software](docs/images/timoxvasio-features-en.svg)
 
@@ -60,10 +60,11 @@ On Linux, [PipeWire](https://pipewire.org) and [JACK](https://jackaudio.org) hav
 
 Requirements: Windows 10 or 11 x64, 64-bit ASIO applications, administrator rights and, to output sound, a physical ASIO driver.
 
-1. Download the files from the [latest release](https://github.com/timox/TimoxVasio/releases/latest).
-2. **Driver**: extract `TimoxVasio.Driver.<version>.zip` and run `Installer TimoxVasio.bat` as administrator.
-3. **Interface and engine**: install `Timox.VASIO.Control.Setup.<version>.exe`, or run the portable version.
-4. Start Timox VASIO Control **before** opening TimoxVasio in an audio application, then select the physical interface.
+1. Download `Timox VASIO Control Setup <version>.exe` from the [latest release](https://github.com/timox/TimoxVasio/releases/latest).
+2. Run Setup and accept the administrator prompt; it installs the interface, engine and ASIO driver.
+3. Restart audio applications, then start Timox VASIO Control and select the physical interface.
+
+The portable build does not install the driver. The driver archive remains available for manual installation.
 
 Details and uninstallation: [INSTALL.en.md](docs/INSTALL.en.md).
 

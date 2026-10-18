@@ -98,14 +98,41 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .quick-routing-add { justify-self: start; background: var(--accent); border-color: var(--accent); color: #fff; }
 .saved-route-groups { display: grid; gap: 9px; margin-top: 10px; }
 .saved-route-group { border: 1px solid var(--border-subtle); border-radius: 5px; background: #fff; }
-.saved-route-group > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding: 12px; cursor: pointer; }
+.routing-details .saved-route-group > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; box-sizing: border-box; width: 100%; padding: 12px; cursor: pointer; }
 .saved-route-group > summary::marker { color: var(--accent); }
 .saved-route-group-name { flex: 1 1 250px; font-weight: 650; }
 .saved-route-group-channels { flex: 1 1 230px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .saved-route-group-status { font-size: 12px; font-weight: 650; }
 .saved-route-group-status.applied { color: #26754d; }
 .saved-route-group-status.pending { color: #8a641e; }
-.saved-route-group .configured-routes { margin: 0; padding: 0 12px 12px; }
+.saved-route-group[open] > summary { border-bottom: 1px solid var(--border-subtle); background: #f2f7f9; }
+.saved-route-matrix-scroll { max-height: 420px; margin: 10px; overflow: auto; border: 1px solid var(--border-subtle); }
+.saved-route-matrix { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.saved-route-matrix th, .saved-route-matrix td { border-right: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
+.saved-route-matrix tr > :last-child { border-right: 0; }
+.saved-route-matrix tbody tr:last-child > * { border-bottom: 0; }
+.saved-route-matrix th { position: sticky; z-index: 1; min-width: 95px; padding: 9px; background: var(--surface-inset); color: var(--text-primary); text-align: left; font-weight: 600; }
+.saved-route-matrix thead th { top: 0; z-index: 2; }
+.saved-route-matrix tbody th { left: 0; }
+.saved-route-matrix thead th:first-child { left: 0; z-index: 3; min-width: 150px; }
+.saved-route-matrix td { min-width: 140px; height: 60px; padding: 5px; vertical-align: top; }
+.saved-route-matrix td.empty { background: #f7fafb; }
+.saved-route-matrix td.connected { background: #e8f3ed; }
+.saved-route-connection { border: 1px solid #8dbca4; border-left: 3px solid var(--route-color, var(--success)); border-radius: 4px; background: #fff; }
+.saved-route-connection + .saved-route-connection { margin-top: 4px; }
+.routing-details .saved-route-connection > summary { display: flex; align-items: center; gap: 5px; box-sizing: border-box; width: 100%; min-height: 36px; padding: 6px; cursor: pointer; color: var(--text-primary); font-weight: 600; }
+.saved-route-connection > summary::marker { color: var(--accent); }
+.saved-route-link { color: var(--success); font-size: 16px; }
+.saved-route-cell-status { color: var(--text-secondary); font-weight: 500; }
+.saved-route-connection-detail { min-width: 230px; padding: 10px; border-top: 1px solid var(--border-subtle); background: #fff; }
+.saved-route-connection-detail p { margin: 0 0 8px; overflow-wrap: anywhere; color: var(--text-secondary); }
+.saved-route-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.saved-route-actions label { display: inline-flex; align-items: center; gap: 6px; }
+.saved-route-actions input[type='number'] { width: 76px; min-height: 34px; padding: 5px; border: 1px solid var(--border-control); border-radius: 4px; }
+.saved-route-dense-list { display: grid; gap: 6px; padding: 10px; }
+.saved-route-dense-list .hint { margin: 0 0 5px; }
+.saved-route-dense-list .saved-route-connection-detail { min-width: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .routing-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 8px; }
 .routing-overview-card { min-width: 0; padding: 15px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface-inset); }
 .routing-overview-card h3 { margin: 0 0 8px; }

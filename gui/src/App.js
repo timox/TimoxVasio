@@ -4,6 +4,7 @@ import './ProfessionalTheme.css';
 import RoutingPatchbay from './RoutingPatchbay';
 import QuickRouting from './QuickRouting';
 import RoutingOverview from './RoutingOverview';
+import SavedRouteMatrices from './SavedRouteMatrices';
 import { groupRoutes } from './route-groups';
 import { DEFAULT_ROUTE_COLOR, readRouteVisuals, routeVisualKey, saveRouteVisuals } from './route-visuals';
 const { configurationFromState } = require('./api-contract');
@@ -934,31 +935,14 @@ function App() {
                     </>}
                     <h3>Saved connections</h3>
                     <p className="hint">A saved route carries audio when both endpoints have opened their ASIO channels.</p>
-                    {savedRouteGroups.length === 0 ? <p className="hint">No routes configured.</p> : <div className="saved-route-groups">
-                        {savedRouteGroups.map(group => <details className="saved-route-group" key={group.key}>
-                            <summary><span className="saved-route-group-name">{group.sourceLabel} → {group.destinationLabel}</span>
-                                <span className="saved-route-group-channels">{group.channelSummary} · {group.routes.length} {group.routes.length === 1 ? 'route' : 'routes'}</span>
-                                <span className={`saved-route-group-status${group.applied ? ' applied' : ' pending'}`}>
-                                    {group.applied ? `Applied · ${group.activeCount}/${group.routes.length} active` : 'Pending changes'}</span></summary>
-                            <ul className="configured-routes">
-                        {group.routes.map(route => <li key={route.id} className={`custom-route-row${selectedRouteId === route.id ? ' route-highlighted' : ''}`}
-                            style={{ '--route-color': routeVisuals[routeVisualKey(route)]?.color || DEFAULT_ROUTE_COLOR }}>
-                            <span className="route-list-description">
-                                {routeVisuals[routeVisualKey(route)]?.label && <strong className="route-custom-label">{routeVisuals[routeVisualKey(route)].label}</strong>}
-                                {endpointName(route.sourceEndpointId)} → {endpointName(route.destinationEndpointId)}
-                            </span>
-                            <button type="button" className="highlight-route" aria-pressed={selectedRouteId === route.id}
-                                onClick={() => { setRoutingView('patchbay'); setSelectedRouteId(current => current === route.id ? null : route.id); }}>
-                                {selectedRouteId === route.id ? 'Clear highlight' : 'Highlight connection'}
-                            </button>
-                            <button type="button" onClick={() => showRouteInMatrix(route)}>Show in matrix</button>
-                            <label>Gain (dB) <input disabled={configurationLocked} type="number" min="-120" max="24" step="0.1" value={route.gainDb} onChange={event => editRoute(route.id, 'gainDb', Number(event.target.value))} /></label>
-                            <label><input disabled={configurationLocked} type="checkbox" checked={route.mute} onChange={event => editRoute(route.id, 'mute', event.target.checked)} /> Muted</label>
-                            <button disabled={configurationLocked} onClick={() => removeRoute(route.id)} aria-label="Remove route">Remove</button>
-                        </li>)}
-                            </ul>
-                        </details>)}
-                    </div>}
+                    {savedRouteGroups.length === 0 ? <p className="hint">No routes configured.</p> :
+                        <SavedRouteMatrices groups={savedRouteGroups} endpointName={endpointName}
+                            confirmedRoutes={confirmedRoutes} activeRoutes={apiState?.routes || []}
+                            routeVisuals={routeVisuals} selectedRouteId={selectedRouteId}
+                            onHighlight={route => { setRoutingView('patchbay');
+                                setSelectedRouteId(current => current === route.id ? null : route.id); }}
+                            onShowMatrix={showRouteInMatrix} onEdit={editRoute} onRemove={removeRoute}
+                            disabled={configurationLocked} />}
                     </details>
                 </section>}
                 {activeView === 'channels' && <section className="section">
