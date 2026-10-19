@@ -40,10 +40,12 @@ struct AudioControllerConfiguration {
 struct AudioControllerResult {
     bool success = false;
     std::string error;
+    bool conflict = false;
 };
 
 struct AudioControllerSnapshot {
     std::uint64_t revision = 0;
+    std::uint64_t configurationRevision = 0;
     std::string state = "stopped";
     std::optional<std::string> physicalDriverId;
     std::optional<std::uint32_t> sampleRate;
@@ -104,8 +106,10 @@ public:
     bool Start();
     void Stop() noexcept;
     std::vector<PhysicalAsioDriverInfo> EnumeratePhysicalDrivers();
-    AudioControllerResult ApplyConfiguration(const AudioControllerConfiguration& configuration);
+    AudioControllerResult ApplyConfiguration(const AudioControllerConfiguration& configuration,
+        std::optional<std::uint64_t> expectedConfigurationRevision = std::nullopt);
     AudioControllerResult StartAudio();
+    AudioControllerResult ResetAudio();
     AudioControllerResult StopAudio();
     AudioControllerResult StartCorrelation(const std::string& leftEndpointId,
                                            const std::string& rightEndpointId);
@@ -147,6 +151,7 @@ private:
     AudioConfigurationStore configurationStore_;
     ApplicationProfileStore applicationProfileStore_;
     AudioControllerConfiguration desiredConfiguration_;
+    std::uint64_t configurationRevision_ = 0; // Controller worker only.
     bool audioStoppedByCommand_ = false;
     std::vector<ApplicationProfile> applicationProfiles_ = ApplicationProfileStore::DefaultProfiles();
     std::string applicationProfilesError_;

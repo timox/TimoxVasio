@@ -122,6 +122,8 @@ Chaque commande est un message JSON :
 
 `id` est une chaîne non vide de 1 à 128 caractères et doit être unique parmi les commandes en attente sur cette connexion. La commande `configuration.apply` remplace le pilote physique, la fréquence, la taille de buffer et la liste complète des routes. L’objet complet est validé avant mutation. Une répétition ne duplique pas les routes; elle peut néanmoins interrompre brièvement le flux pendant la reconfiguration.
 
+`GET /api/v1/state` expose `configurationRevision`, incrémenté après chaque configuration enregistrée. Un client qui édite une copie de l'état peut envoyer `expectedConfigurationRevision` dans le payload de `configuration.apply`. Si une autre application a appliqué une configuration entre-temps, l'API répond `CONFIGURATION_CONFLICT` avant toute mutation. Les clients qui omettent ce champ conservent le comportement historique de remplacement complet ; ils doivent relire l'état et préserver les routes des autres applications.
+
 `sampleRate` et `bufferFrames` sont les valeurs du pilote physique choisi. `null` demande respectivement le taux courant et la taille préférée annoncés par ce pilote. Le moteur fixe le taux physique, relit ses capacités dépendantes du taux et refuse toute taille qu’il n’annonce pas. TimoxVasio reçoit exactement ces valeurs ; il n’a pas de réglage de fréquence ou de taille indépendant.
 
 `GET /api/v1/state` et `GET /api/v1/drivers` incluent `stereoPairs`. Ce sont
@@ -134,6 +136,8 @@ Les commandes `{ "id": "start-1", "command": "engine.start" }` et
 `{ "id": "stop-1", "command": "engine.stop" }` n’ont pas de payload.
 
 La commande `{ "id": "mesures-1", "command": "performance.measurements.set", "payload": { "enabled": true } }` active les mesures par étape ; `false` les arrête et efface la fenêtre précédente. Elle est idempotente. Les mesures sont désactivées à chaque démarrage du moteur. `GET /api/v1/state` expose toujours `performanceMeasurements` avec `enabled`, `sampleEveryCallbacks: 16` et `window`. La fenêtre vaut `null` avant cinq secondes complètes ou lorsque la collecte est désactivée. Une fenêtre complète porte `durationMs: 5000`, `clients` et `physical`. Chaque client identifié par `processId` et `driverId` expose `hostCallback`, `ringWrite`, `ringWait` et `ringWaitDiscardedBlocks` ; le moteur physique expose `clientRead`, `routing` et `outputCopy`. Chaque durée vaut `null` sans observation, ou contient `samples`, `meanNs`, `worstNs` en nanosecondes. L'attente de l'anneau mesure la publication jusqu'à la lecture d'un bloc entier correspondant ; les lectures partielles sont écartées. La remise au tampon physique ne mesure pas la latence matérielle ou acoustique. Cette collecte n'ajuste ni tampon ni phase.
+
+Chaque client de `virtualDrivers[].clients` dans `/api/v1/state` et `/api/v1/drivers` expose aussi `processCpuPercent` et `processCpuWindowMs`. Le pourcentage est le temps CPU du processus Windows divisé par le temps écoulé et le nombre de processeurs logiques actifs ; il vaut `null` avant le deuxième relevé ou si le processus ne peut pas être interrogé. La fenêtre vaut alors également `null`. La mesure est effectuée lors des requêtes API, hors du callback audio, et ne détaille pas les VST hébergés par l'application.
 `engine.start` réapplique la dernière configuration confirmée; la commande est
 idempotente et laisse le moteur arrêté si aucune route n’est configurée.
 `engine.stop` arrête le flux audio, ferme le pilote matériel et conserve la
@@ -143,6 +147,8 @@ TimoxVasio est connecté. Les deux commandes ne ferment pas le processus hôte n
 le serveur HTTP/WebSocket. Un programme externe peut donc contrôler le moteur
 tant que cet hôte API a déjà été lancé par Timox VASIO Control ou un
 superviseur; l’API ne peut pas démarrer un processus hôte qui n’existe pas.
+
+La commande `{ "id": "reset-1", "command": "engine.reset" }` rouvre le pilote physique avec la dernière configuration enregistrée, même si le moteur tourne déjà. Elle conserve les connexions et interrompt brièvement le son ; elle n'applique pas les modifications en attente dans l'interface.
 
 Un succès est acquitté avec le même identifiant :
 

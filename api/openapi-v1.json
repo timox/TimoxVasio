@@ -137,6 +137,7 @@
       "ClientCommand": { "$ref": "./schemas/api-v1.json#/definitions/clientCommand" },
       "EngineStartCommand": { "$ref": "./schemas/api-v1.json#/definitions/engineStartCommand" },
       "EngineStopCommand": { "$ref": "./schemas/api-v1.json#/definitions/engineStopCommand" },
+      "EngineResetCommand": { "$ref": "./schemas/api-v1.json#/definitions/engineResetCommand" },
       "CorrelationStartCommand": { "$ref": "./schemas/api-v1.json#/definitions/correlationStartCommand" },
       "CorrelationStopCommand": { "$ref": "./schemas/api-v1.json#/definitions/correlationStopCommand" },
       "PerformanceMeasurementsSetCommand": { "$ref": "./schemas/api-v1.json#/definitions/performanceMeasurementsSetCommand" },

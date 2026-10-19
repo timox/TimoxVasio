@@ -17,7 +17,7 @@ The portable `Timox.VASIO.Control.<version>.exe` runs the interface and engine w
 To register the DLL by hand from the extracted folder, in an administrator PowerShell:
 
 ```powershell
-$driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.2.5'
+$driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.2.6'
 New-Item -ItemType Directory -Force -Path $driverDir | Out-Null
 Copy-Item -LiteralPath '.\TimoxVasio.dll' -Destination (Join-Path $driverDir 'TimoxVasio.dll') -Force
 pwsh -NoProfile -File '.\register_drivers.ps1' install -DllDirectory $driverDir
@@ -31,7 +31,7 @@ From the extracted folder (or `install\` in the repository):
 
 ```powershell
 pwsh -NoProfile -File .\register_drivers.ps1 list
-Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\1.2.5\TimoxVasio.dll"
+Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\1.2.6\TimoxVasio.dll"
 ```
 
 The expected driver is `TimoxVasio`. It advertises 256 inputs and 256 outputs; each application only exposes the channels it actually allocates with `createBuffers`.
@@ -50,7 +50,7 @@ From an administrator terminal at the repository root:
 .\install\build_and_install.bat
 ```
 
-The script builds the `TimoxVasio` target in `build_driver_110`, copies `TimoxVasio.dll` to `C:\Program Files\Steinberg\VirtualASIO\1.2.5`, removes old VASIO1–VASIO4 entries and registers the driver. If an older DLL is still locked by an application, it says so; that DLL is no longer registered as a driver.
+The script builds the `TimoxVasio` target in `build_driver_110`, copies `TimoxVasio.dll` to `C:\Program Files\Steinberg\VirtualASIO\1.2.6`, removes old VASIO1–VASIO4 entries and registers the driver. If an older DLL is still locked by an application, it says so; that DLL is no longer registered as a driver.
 
 The engine and the application are built separately: see [BUILD_DRIVERS.en.md](BUILD_DRIVERS.en.md) and [gui/README.en.md](../gui/README.en.md).
 

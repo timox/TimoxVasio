@@ -4,11 +4,12 @@
 #include <cstdio>
 
 int main() {
-    auto mapping = AudioClientMapping::CreateClient(1, 123, 48000, 256);
+    const auto pid = GetCurrentProcessId();
+    auto mapping = AudioClientMapping::CreateClient(1, pid, 48000, 256);
     if (!mapping) return 2;
     mapping->SetEngineAttached(true);
-    VasioClientSnapshot client{{1, 123, L"Renoise.exe"}, std::shared_ptr<AudioClientMapping>(std::move(mapping))};
-    const AudioRoute route{"route-1", "virtual:TimoxVasio:123:output:1",
+    VasioClientSnapshot client{{1, pid, L"Renoise.exe"}, std::shared_ptr<AudioClientMapping>(std::move(mapping))};
+    const AudioRoute route{"route-1", "virtual:TimoxVasio:" + std::to_string(pid) + ":output:1",
         "physical:{driver}:output:1", 0.0, false};
     std::string error;
     const auto saved = PersistentRoutes::Encode({route}, {client}, error);
@@ -31,15 +32,15 @@ int main() {
         std::fputs("FAIL: active channel was not restored\n", stderr);
         return 1;
     }
-    auto replacement = AudioClientMapping::CreateClient(1, 124, 48000, 256);
+    auto replacement = AudioClientMapping::CreateClient(1, pid, 48000, 256);
     if (!replacement) return 2;
     replacement->SetEngineAttached(true);
     replacement->SetActiveChannels(inputs, outputs);
-    VasioClientSnapshot restarted{{1, 124, L"Renoise.exe"},
+    VasioClientSnapshot restarted{{1, pid + 1, L"Renoise.exe"},
         std::shared_ptr<AudioClientMapping>(std::move(replacement))};
     const auto reconnected = PersistentRoutes::Resolve(saved, {restarted});
     if (reconnected.size() != 1 || reconnected[0].sourceEndpointId !=
-        "virtual:TimoxVasio:124:output:1") {
+        "virtual:TimoxVasio:" + std::to_string(pid + 1) + ":output:1") {
         std::fputs("FAIL: route did not follow restarted application\n", stderr);
         return 1;
     }
@@ -55,6 +56,21 @@ int main() {
         PersistentRoutes::ProfiledEndpointType(
             "virtual:TimoxVasio:app:unknown.exe:output:1", profiles)) {
         std::fputs("FAIL: profiled pending route validation is incorrect\n", stderr);
+        return 1;
+    }
+    if (PersistentRoutes::KnownApplicationEndpointType(
+            "virtual:TimoxVasio:app:renoise.exe:output:9", {}, {client}, {}) !=
+            RoutingEndpointType::VirtualOutput ||
+        PersistentRoutes::KnownApplicationEndpointType(
+            "virtual:TimoxVasio:app:renoise.exe:output:9", {}, {}, saved) !=
+            RoutingEndpointType::VirtualOutput ||
+        PersistentRoutes::KnownApplicationEndpointType(
+            "virtual:TimoxVasio:app:unknown.exe:output:9", {}, {client}, saved) ||
+        PersistentRoutes::KnownApplicationEndpointType(
+            "virtual:TimoxVasio:app:renoise.exe:output:257", {}, {client}, saved) ||
+        PersistentRoutes::KnownApplicationEndpointType(
+            "virtual:TimoxVasio:app:renoise.exe:output:9", profiles, {client}, saved)) {
+        std::fputs("FAIL: known application pending endpoint validation is incorrect\n", stderr);
         return 1;
     }
     return 0;

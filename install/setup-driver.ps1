@@ -13,7 +13,7 @@ if (-not [Environment]::Is64BitProcess) {
 if (-not $InstallRoot) {
     $InstallRoot = if ($env:ProgramW6432) { $env:ProgramW6432 } else { [Environment]::GetFolderPath('ProgramFiles') }
 }
-$version = '1.2.5'
+$version = '1.2.6'
 $driverDirectory = Join-Path $InstallRoot "Steinberg\VirtualASIO\$version"
 $installedDll = Join-Path $driverDirectory 'TimoxVasio.dll'
 $registrationScript = Join-Path $PSScriptRoot 'register_drivers.ps1'

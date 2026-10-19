@@ -89,13 +89,19 @@ Each command is JSON:
 
 `id` is a nonempty 1–128-character string unique among pending commands on the connection. `configuration.apply` replaces the physical driver, sample rate, buffer size, and entire route list. The whole object is validated before mutation. Repeating the command does not duplicate routes, but reconfiguration may briefly interrupt audio.
 
+`GET /api/v1/state` exposes `configurationRevision`, incremented after each saved configuration. A client editing a state copy can send `expectedConfigurationRevision` in the `configuration.apply` payload. If another application applied a configuration in the meantime, the API returns `CONFIGURATION_CONFLICT` before changing audio. Clients omitting the field keep the historical full-replacement behavior and must refresh state to preserve other applications' routes.
+
 `sampleRate` and `bufferFrames` are values for the chosen physical driver. `null` requests its current rate and preferred size, respectively. The engine sets the physical rate, re-reads rate-dependent capabilities, and refuses an unadvertised size. TimoxVasio receives these exact values; it has no independent rate or size setting.
 
 `GET /api/v1/state` and `GET /api/v1/drivers` include `stereoPairs`: adjacent L/R output channels of one client, both open and routed. `audio.correlation.start` selects one by `stereoPairId`; `audio.correlation.stop` ends measurement. Selection is global to the engine; only one pair is measured at a time.
 
 `{ "id": "start-1", "command": "engine.start" }` and `{ "id": "stop-1", "command": "engine.stop" }` need no payload. `engine.start` reapplies the last confirmed configuration and is idempotent; the engine stays stopped if no route is configured. `engine.stop` stops audio, closes the physical driver, and retains configuration for a later `engine.start`. It is rejected with `ENGINE_CLIENTS_CONNECTED` while a TimoxVasio ASIO client is connected. Neither command terminates the host process or HTTP/WebSocket server. An external program can therefore control the engine once Control or a supervisor has started the API host; the API cannot launch a nonexistent host process.
 
+`{ "id": "reset-1", "command": "engine.reset" }` reopens the physical driver with the last saved configuration even while audio is running. It briefly interrupts audio, preserves saved connections, and does not apply pending UI edits.
+
 `{ "id": "measure-1", "command": "performance.measurements.set", "payload": { "enabled": true } }` enables stage timing; `false` stops it and clears the previous window. The command is idempotent. Measurements are off each time the engine starts. `GET /api/v1/state` always exposes `performanceMeasurements` with `enabled`, `sampleEveryCallbacks: 16` and `window`. The window is `null` before five complete seconds or while collection is off. A complete window carries `durationMs: 5000`, `clients` and `physical`. Each client, identified by `processId` and `driverId`, exposes `hostCallback`, `ringWrite`, `ringWait` and `ringWaitDiscardedBlocks`; the physical side exposes `clientRead`, `routing` and `outputCopy`. Each duration is `null` without observation, or holds `samples`, `meanNs` and `worstNs` in nanoseconds. Ring wait measures publication until a whole matching block is read; partial reads are discarded. The physical buffer handoff does not measure hardware or acoustic latency. This collection adjusts neither buffer nor phase.
+
+Each `virtualDrivers[].clients` entry in `/api/v1/state` and `/api/v1/drivers` also exposes `processCpuPercent` and `processCpuWindowMs`. CPU percentage is Windows process CPU time divided by elapsed time and the number of active logical processors. It is `null` until a second reading is available or when the process cannot be queried; the window is then also `null`. Measurement runs on API requests, outside the audio callback, and cannot break CPU usage down by hosted VST.
 
 Success is acknowledged under the same `id`:
 

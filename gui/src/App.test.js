@@ -3,6 +3,31 @@ import { createRoot } from 'react-dom/client';
 import { Simulate } from 'react-dom/test-utils';
 import App from './App';
 
+const chooseContextAction = async (target, label) => {
+    await act(async () => Simulate.contextMenu(target, { clientX: 100, clientY: 100 }));
+    const action = [...document.querySelectorAll('.patchbay-context-menu [role="menuitem"]')]
+        .find(button => button.textContent === label);
+    expect(action).toBeDefined();
+    await act(async () => Simulate.click(action));
+};
+
+const addFromMenu = async (container, sourceId, destinationId) => {
+    await chooseContextAction(container.querySelector('.patchbay-flow'), 'Create a new connection');
+    const q = selector => document.querySelector(selector);
+    await act(async () => Simulate.click([...document.querySelectorAll('.quick-routing button')].find(button => button.textContent === 'Mono')));
+    for (const [side, id] of [['source', sourceId], ['destination', destinationId]]) {
+        const groupSelect = q('[aria-label="Quick route ' + side + '"]');
+        for (const option of [...groupSelect.options]) {
+            await act(async () => Simulate.change(groupSelect, { target: { value: option.value } }));
+            if ([...q('[aria-label="Quick route ' + side + ' channels"]').options].some(item => item.value === id)) break;
+        }
+        await act(async () => Simulate.change(q('[aria-label="Quick route ' + side + ' channels"]'), { target: { value: id } }));
+    }
+    await act(async () => Simulate.click(q('.quick-routing-add')));
+    const dialog = q('.quick-routing').closest('[role="dialog"]');
+    await act(async () => Simulate.click([...dialog.querySelectorAll('button')].find(button => button.textContent === 'Close')));
+};
+
 const state = {
     apiVersion: '1.0',
     engine: { state: 'stopped', physicalDriverId: 'interface-1', sampleRate: 48000, bufferFrames: 512, lastError: null },
@@ -37,16 +62,73 @@ test('route updates from the engine keep unapplied edits available to Apply', as
     try {
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        await act(async () => Simulate.click(container.querySelector('.route-cell')));
+        await act(async () => Simulate.click([...container.querySelectorAll('.patchbay-toolbar-actions button')]
+            .find(button => button.textContent === 'Expand all')));
+        await addFromMenu(container, 'virtual:TimoxVasio:42:output:1', 'physical:interface-1:output:1');
         expect(container.querySelector('.apply-bar button').disabled).toBe(false);
         await act(async () => { onEvent({ event: 'routes.changed', payload: { routes: [] } }); await Promise.resolve(); });
         expect(container.querySelector('.apply-bar button').disabled).toBe(false);
-        expect(container.querySelectorAll('.saved-route-group')).toHaveLength(1);
+        expect(container.querySelector('.patchbay')).not.toBeNull();
         await act(async () => Simulate.click(container.querySelector('.apply-bar button')));
         expect(applyConfiguration.mock.calls[0][0].routes).toHaveLength(1);
     } finally {
         await act(async () => root.unmount());
         container.remove(); delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('pending edits can be discarded without applying or deleting saved connections', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const applyConfiguration = jest.fn();
+    window.vasio = { getState: jest.fn().mockResolvedValue(state),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}),
+        applyConfiguration };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div'); document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await act(async () => Simulate.click([...container.querySelectorAll('.patchbay-toolbar-actions button')]
+            .find(button => button.textContent === 'Expand all')));
+        await addFromMenu(container, 'virtual:TimoxVasio:42:output:1', 'physical:interface-1:output:1');
+        expect(container.querySelector('.discard-draft')).not.toBeNull();
+        await act(async () => Simulate.click(container.querySelector('.discard-draft')));
+        expect(applyConfiguration).not.toHaveBeenCalled();
+        expect(container.querySelector('.discard-draft')).toBeNull();
+        expect(container.textContent).toContain('Saved connections remain unchanged');
+    } finally {
+        await act(async () => root.unmount()); container.remove();
+        delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('routing graph retains saved application ports outside the live channel inventory', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const sourceId = 'virtual:TimoxVasio:app:traktor4.exe:output:9';
+    const route = { id: 'saved-traktor', sourceEndpointId: sourceId,
+        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false };
+    const savedState = { ...state, configuredRoutes: [route], routes: [],
+        virtualDrivers: [{ ...state.virtualDrivers[0], clients: [{
+            pid: 42, processName: 'Traktor Pro 4.exe', inputChannels: [], outputChannels: [1, 2] }] }] };
+    window.vasio = { getState: jest.fn().mockResolvedValue(savedState),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div'); document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        expect(container.querySelector(`[data-port-id="${sourceId}"]`)).not.toBeNull();
+        expect(container.textContent).toContain('traktor4.exe · Process not open');
+        expect(container.textContent).not.toContain('Out 9 (saved)');
+    } finally {
+        await act(async () => root.unmount()); container.remove();
+        delete window.vasio; delete window.electronAPI;
     }
 });
 
@@ -74,22 +156,23 @@ test('quick routing suggests the next free stereo pair and stages both channels 
     try {
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        await act(async () => Simulate.click(container.querySelector('[data-routing-view="quick"]')));
-        expect(container.querySelector('.quick-routing')).not.toBeNull();
-        expect(container.querySelector('.quick-routing-preview').textContent).toContain('1–2 → Interface réelle · Outputs 1–2');
-        await act(async () => Simulate.click(container.querySelector('.quick-routing-add')));
-        expect(container.querySelector('.quick-routing-preview').textContent).toContain('3–4 → Interface réelle · Outputs 3–4');
-        await act(async () => Simulate.click(container.querySelector('.quick-routing-add')));
-        expect(container.querySelectorAll('.routing-details .saved-route-connection')).toHaveLength(4);
+        await act(async () => Simulate.contextMenu(container.querySelector('.react-flow__pane'), { clientX: 100, clientY: 100 }));
+        await act(async () => Simulate.click(document.querySelector('.patchbay-context-menu [role="menuitem"]')));
+        expect(document.querySelector('.routing-dialog .quick-routing')).not.toBeNull();
+        expect(document.querySelector('.quick-routing-preview').textContent).toContain('1–2 → Interface réelle · Outputs 1–2');
+        await act(async () => Simulate.click(document.querySelector('.quick-routing-add')));
+        expect(document.querySelector('.quick-routing-preview').textContent).toContain('3–4 → Interface réelle · Outputs 3–4');
+        await act(async () => Simulate.click(document.querySelector('.quick-routing-add')));
+        expect(container.querySelector('.apply-bar').textContent).toContain('Pending changes');
         expect(applyConfiguration).not.toHaveBeenCalled();
         await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
         expect(applyConfiguration.mock.calls[0][0].routes.map(route => [
             route.sourceEndpointId, route.destinationEndpointId
         ])).toEqual([
-            ['virtual:TimoxVasio:42:output:1', 'physical:interface-1:output:1'],
-            ['virtual:TimoxVasio:42:output:2', 'physical:interface-1:output:2'],
-            ['virtual:TimoxVasio:42:output:3', 'physical:interface-1:output:3'],
-            ['virtual:TimoxVasio:42:output:4', 'physical:interface-1:output:4']
+            ['virtual:TimoxVasio:app:audioapp.exe:output:1', 'physical:interface-1:output:1'],
+            ['virtual:TimoxVasio:app:audioapp.exe:output:2', 'physical:interface-1:output:2'],
+            ['virtual:TimoxVasio:app:audioapp.exe:output:3', 'physical:interface-1:output:3'],
+            ['virtual:TimoxVasio:app:audioapp.exe:output:4', 'physical:interface-1:output:4']
         ]);
     } finally {
         await act(async () => root.unmount());
@@ -97,172 +180,9 @@ test('quick routing suggests the next free stereo pair and stages both channels 
     }
 });
 
-test('saved connections are summarized by source and destination with channel ranges', async () => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    const channels = [1, 2];
-    const groupedState = { ...state, physicalDrivers: [{ ...state.physicalDrivers[0],
-        outputEndpoints: channels.map(channel => ({ id: `physical:interface-1:output:${channel}`,
-            name: `Sortie ${channel}`, direction: 'output', channel })) }],
-    virtualDrivers: [{ ...state.virtualDrivers[0],
-        clients: [{ pid: 42, processName: 'AudioApp.exe', inputChannels: [], outputChannels: channels }],
-        inputEndpoints: [], outputEndpoints: channels.map(channel => ({
-            id: `virtual:TimoxVasio:42:output:${channel}`, name: `AudioApp Out ${channel}`,
-            direction: 'output', channel })) }],
-    routes: [], configuredRoutes: channels.map(channel => ({ id: `saved-${channel}`,
-        sourceEndpointId: `virtual:TimoxVasio:42:output:${channel}`,
-        destinationEndpointId: `physical:interface-1:output:${channel}`,
-        gainDb: 0, mute: false })) };
-    window.vasio = { getState: jest.fn().mockResolvedValue(groupedState),
-        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
-        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
-    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
-        onEngineDiagnostic: jest.fn(() => () => {}) };
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    try {
-        await act(async () => { root.render(<App />); await Promise.resolve(); });
-        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        const groups = container.querySelectorAll('.saved-route-group');
-        expect(groups).toHaveLength(1);
-        expect(groups[0].open).toBe(false);
-        expect(groups[0].querySelector('summary').textContent)
-            .toContain('AudioApp.exe · PID 42 → Interface réelle · Outputs');
-        expect(groups[0].querySelector('summary').textContent).toContain('1–2 → 1–2 · 2 routes');
-        expect(groups[0].querySelector('summary').textContent).toContain('0/2 active');
-        expect(groups[0].querySelectorAll('.saved-route-matrix tbody tr')).toHaveLength(2);
-        expect(groups[0].querySelectorAll('.saved-route-matrix thead th')).toHaveLength(3);
-        expect(groups[0].querySelectorAll('.saved-route-connection')).toHaveLength(2);
-        expect(groups[0].querySelector('.saved-route-connection summary').textContent).toContain('Waiting for channels');
-    } finally {
-        await act(async () => root.unmount());
-        container.remove(); delete window.vasio; delete window.electronAPI;
-    }
-});
 
-test('routing overview shows physical channel availability and application flow counts', async () => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    const route = { id: 'saved', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
-        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false };
-    window.vasio = { getState: jest.fn().mockResolvedValue({ ...state, routes: [route] }),
-        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
-        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
-    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
-        onEngineDiagnostic: jest.fn(() => () => {}) };
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    try {
-        await act(async () => { root.render(<App />); await Promise.resolve(); });
-        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        await act(async () => Simulate.click(container.querySelector('[data-routing-view="overview"]')));
-        expect(container.querySelector('.routing-overview')).not.toBeNull();
-        expect(container.querySelector('.physical-output-availability').textContent).toContain('0 available / 1');
-        expect(container.querySelector('.physical-input-availability').textContent).toContain('1 available / 1');
-        expect(container.querySelector('.routing-overview').textContent).toContain('AudioApp.exe');
-        expect(container.querySelector('.routing-overview').textContent).toContain('1 routed output');
-    } finally {
-        await act(async () => root.unmount());
-        container.remove(); delete window.vasio; delete window.electronAPI;
-    }
-});
 
-test('graphical connections and matrix edit the same pending routing configuration', async () => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    let confirmedState = state;
-    const applyConfiguration = jest.fn().mockImplementation(async draft => {
-        confirmedState = { ...state, routes: draft.routes, configuredRoutes: draft.routes };
-        return { accepted: true };
-    });
-    window.vasio = {
-        getState: jest.fn().mockImplementation(async () => confirmedState),
-        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
-        subscribeEvents: jest.fn(() => () => {}),
-        onDisconnect: jest.fn(() => () => {}),
-        applyConfiguration
-    };
-    window.electronAPI = {
-        onEngineConnection: jest.fn(() => () => {}), onEngineDiagnostic: jest.fn(() => () => {})
-    };
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    try {
-        await act(async () => { root.render(<App />); await Promise.resolve(); });
-        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        expect(container.querySelector('.routing-matrix')?.closest('section')?.querySelector('h2')?.textContent).toBe('Routing');
-        expect(container.querySelector('.routing-matrix')).not.toBeNull();
-        expect(container.querySelector('.patchbay')).toBeNull();
-        await act(async () => Simulate.click(container.querySelector('[data-routing-view="patchbay"]')));
-        expect(container.querySelector('.patchbay')).not.toBeNull();
-        await act(async () => Simulate.click(container.querySelector('[data-port-id="virtual:TimoxVasio:42:output:1"]')));
-        await act(async () => Simulate.click(container.querySelector('[data-port-id="physical:interface-1:output:1"]')));
-        await act(async () => Simulate.click(container.querySelector('.saved-route-connection .highlight-route')));
-        expect(container.querySelector('.patchbay-cables path.selected')).not.toBeNull();
-        await act(async () => Simulate.click(container.querySelector('[data-routing-view="matrix"]')));
-        expect(container.querySelector('.routing-matrix')).not.toBeNull();
-        expect(container.textContent).toContain('1 route');
-        expect(container.textContent).toContain('Pending changes');
-        expect(container.querySelector('.route-cell.pending-add')?.textContent).toBe('+');
-        expect(container.querySelector('.route-cell.pending-add')?.getAttribute('aria-label')).toContain('pending application');
-        await act(async () => { await Simulate.click(container.querySelector('.apply-configuration')); });
-        expect(applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({ routes: [expect.objectContaining({
-            sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
-            destinationEndpointId: 'physical:interface-1:output:1'
-        })] }));
-        expect(container.querySelector('.route-cell.pending-add')).toBeNull();
-        expect(container.querySelector('.route-cell.applied')?.textContent).toBe('●');
-        expect(container.textContent).toContain('Configuration applied');
-        const gainInput = container.querySelector('.saved-route-connection input[type="number"]');
-        await act(async () => Simulate.change(gainInput, { target: { value: '-6' } }));
-        expect(container.querySelector('.route-cell.pending-edit')?.textContent).toBe('◆');
-        await act(async () => Simulate.change(gainInput, { target: { value: '0' } }));
-        expect(container.querySelector('.route-cell.applied')?.textContent).toBe('●');
-        await act(async () => Simulate.click(container.querySelector('.route-cell.applied')));
-        expect(container.querySelector('.route-cell.pending-remove')?.textContent).toBe('−');
-        expect(container.textContent).toContain('Pending changes');
-    } finally {
-        await act(async () => root.unmount());
-        container.remove(); delete window.vasio; delete window.electronAPI;
-    }
-});
 
-test('an existing route opens on its matrix pages and can be revealed in connections', async () => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    const channels = Array.from({ length: 80 }, (_, index) => index + 1);
-    const route = { id: 'saved-route', sourceEndpointId: 'virtual:TimoxVasio:42:output:73',
-        destinationEndpointId: 'virtual:TimoxVasio:42:input:74', gainDb: 0, mute: false };
-    const routedState = { ...state, routes: [route], virtualDrivers: [{ ...state.virtualDrivers[0],
-        clients: [{ pid: 42, processName: 'AudioApp.exe', inputChannels: channels, outputChannels: channels }],
-        inputEndpoints: channels.map(channel => ({ id: `virtual:TimoxVasio:42:input:${channel}`,
-            name: `AudioApp In ${channel}`, direction: 'input', channel })),
-        outputEndpoints: channels.map(channel => ({ id: `virtual:TimoxVasio:42:output:${channel}`,
-            name: `AudioApp Out ${channel}`, direction: 'output', channel }))
-    }] };
-    window.vasio = { getState: jest.fn().mockResolvedValue(routedState),
-        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
-        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
-    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
-        onEngineDiagnostic: jest.fn(() => () => {}) };
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    try {
-        await act(async () => { root.render(<App />); await Promise.resolve(); });
-        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        expect(container.querySelector('.route-legend').textContent).toContain('Draft: 1 route · 1 on these pages');
-        expect(container.querySelectorAll('.route-cell.active')).toHaveLength(1);
-        expect(container.querySelector('.matrix-pagers').textContent).toContain('Sources : 65–80 / 80');
-        expect(container.querySelector('.matrix-pagers').textContent).toContain('Destinations : 65–80 / 80');
-        await act(async () => Simulate.click(container.querySelector('[data-routing-view="patchbay"]')));
-        await act(async () => Simulate.click([...container.querySelectorAll('.patchbay-toolbar-actions button')]
-            .find(button => button.textContent === 'Show a configured connection')));
-        expect(container.querySelector('.patchbay-cables path.connection.selected')).not.toBeNull();
-    } finally {
-        await act(async () => root.unmount());
-        container.remove(); delete window.vasio; delete window.electronAPI;
-    }
-});
 
 test('profiled virtual ports can be routed before their applications open channels', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -290,13 +210,11 @@ test('profiled virtual ports can be routed before their applications open channe
     try {
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        await act(async () => Simulate.click(container.querySelector('[data-routing-view="patchbay"]')));
+        await act(async () => Simulate.click([...container.querySelectorAll('.patchbay-toolbar-actions button')]
+            .find(button => button.textContent === 'Expand all')));
         const sourceId = 'virtual:TimoxVasio:app:mixxx.exe:output:1';
         const destinationId = 'virtual:TimoxVasio:app:scsynth.exe:input:1';
-        expect(container.querySelector(`[data-port-id="${sourceId}"]`)).not.toBeNull();
-        expect(container.querySelector(`[data-port-id="${destinationId}"]`)).not.toBeNull();
-        await act(async () => Simulate.click(container.querySelector(`[data-port-id="${sourceId}"]`)));
-        await act(async () => Simulate.click(container.querySelector(`[data-port-id="${destinationId}"]`)));
+        await addFromMenu(container, sourceId, destinationId);
         await act(async () => { await Simulate.click(container.querySelector('.apply-configuration')); });
         expect(applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
             sampleRate: 44100,
@@ -343,9 +261,35 @@ test('a configured but stopped driver can be released from the logs view', async
     }
 });
 
+test('resetting the physical driver keeps the saved configuration and does not apply the draft', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const executeCommand = jest.fn().mockResolvedValue({ accepted: true });
+    const getState = jest.fn().mockResolvedValue({ ...state,
+        engine: { ...state.engine, state: 'running', physicalDriverId: 'interface-1' } });
+    window.vasio = { getState, executeCommand,
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div'); document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        const reset = container.querySelector('.engine-reset');
+        expect(reset).not.toBeNull();
+        await act(async () => { Simulate.click(reset); await new Promise(resolve => setTimeout(resolve, 200)); });
+        expect(executeCommand).toHaveBeenCalledWith(expect.objectContaining({ command: 'engine.reset' }));
+        expect(container.textContent).toContain('Pending edits were not applied');
+    } finally {
+        await act(async () => root.unmount()); container.remove();
+        delete window.vasio; delete window.electronAPI;
+    }
+});
+
 test('performance view distinguishes measured ASIO buffer pressure from missing observations', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    const measured = { ...state, bufferHealth: { state: 'warning', sampleRate: 44100,
+    const measured = { ...state, engine: { ...state.engine, state: 'running', sampleRate: 44100, bufferFrames: 512 },
+        bufferHealth: { state: 'warning', sampleRate: 44100,
         bufferFrames: 512, windowDurationMs: 5000, callbackCount: 430,
         delayedStartCount: 7, processingOverrunCount: 6, blockPeriodNs: 11609977,
         worstProcessingNs: 12500000, worstMarginNs: -890023 } };
@@ -361,8 +305,10 @@ test('performance view distinguishes measured ASIO buffer pressure from missing 
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
             .find(button => button.textContent === 'Performance')));
-        expect(container.querySelector('main > section:first-child')).toBe(container.querySelector('.buffer-health'));
-        expect(container.querySelector('main > section:nth-child(2)')).toBe(container.querySelector('.transport-health'));
+        expect(container.querySelector('main > section:first-child')).toBe(container.querySelector('.buffer-concepts'));
+        expect(container.querySelector('main > section:nth-child(2)')).toBe(container.querySelector('.buffer-health'));
+        expect(container.querySelector('.buffer-concepts')?.textContent).toContain('512 frames ÷ 44,100 frames/s = 11.61 ms');
+        expect(container.querySelector('.buffer-concepts')?.textContent).toContain('A and B take turns at each callback');
         expect(container.querySelector('.performance-metrics')?.textContent).toContain('Slowest callback');
         expect(container.querySelector('.performance-metrics')?.textContent).toContain('Time available');
         expect(container.querySelector('.performance-metrics')?.textContent).toContain('Delayed starts');
@@ -381,11 +327,19 @@ test('performance view distinguishes measured ASIO buffer pressure from missing 
 test('performance view explains physical buffer measurements without suggesting another size', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     let onEvent;
-    const measured = { ...state, routes: [{ id: 'test-route', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
+    const measured = { ...state, engine: { ...state.engine, state: 'running', sampleRate: 48000, bufferFrames: 1024 },
+        virtualDrivers: [{ ...state.virtualDrivers[0], clients: [{ ...state.virtualDrivers[0].clients[0],
+            processCpuPercent: 6.25, processCpuWindowMs: 2000 }] }],
+        routes: [{ id: 'test-route', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
         destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false }], bufferHealth: { state: 'healthy', sampleRate: 48000,
         bufferFrames: 1024, windowDurationMs: 5000, callbackCount: 235,
         delayedStartCount: 0, processingOverrunCount: 0, blockPeriodNs: 21333333,
-        worstProcessingNs: 2500000, worstMarginNs: 18833333 } };
+        worstProcessingNs: 2500000, worstMarginNs: 18833333 },
+        performanceMeasurements: { enabled: true, sampleEveryCallbacks: 16,
+            window: { durationMs: 5000, clients: [{ processId: 42, driverId: 'TimoxVasio',
+                hostCallback: { samples: 2, meanNs: 5000000, worstNs: 24000000 },
+                ringWrite: null, ringWait: null, ringWaitDiscardedBlocks: 0 }],
+            physical: { clientRead: null, routing: null, outputCopy: null } } } };
     window.vasio = { getState: jest.fn().mockResolvedValue(measured),
         getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
         subscribeEvents: jest.fn(handler => { onEvent = handler; return () => {}; }), onDisconnect: jest.fn(() => () => {}) };
@@ -413,6 +367,10 @@ test('performance view explains physical buffer measurements without suggesting 
         expect(container.querySelector('.performance-flow')?.textContent).toContain('SuperCollider');
         expect(container.querySelector('.performance-flow')?.textContent).toContain('not measured');
         expect(container.querySelector('.transport-health')?.textContent).toContain('AudioApp.exe output');
+        expect(container.querySelector('.routed-app-cpu')?.textContent).toContain('AudioApp.exe');
+        expect(container.querySelector('.routed-app-cpu')?.textContent).toContain('6.3%');
+        expect(container.querySelector('.routed-app-cpu')?.textContent).toContain('112.5%');
+        expect(container.querySelector('.callback-over-budget')?.textContent).toContain('Audio deadline exceeded');
         expect(container.querySelector('.transport-health')?.textContent).toContain('—');
         await act(async () => onEvent({ event: 'audio.meter', payload: { endpointId: 'virtual:TimoxVasio:42:output:1', peakDbfs: -12, underruns: 2, overruns: 1 } }));
         expect(container.querySelector('.transport-table')?.textContent).toContain('AudioApp.exe output21');
@@ -449,7 +407,7 @@ test('performance view refreshes callback timing while it stays open', async () 
         await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
             .find(button => button.textContent === 'Performance')));
         expect(container.querySelector('.buffer-health')?.textContent).toContain('No callback observation yet');
-        await act(async () => { jest.advanceTimersByTime(2000); await Promise.resolve(); });
+        await act(async () => { jest.advanceTimersByTime(5000); await Promise.resolve(); });
         expect(container.querySelector('.performance-metrics')?.textContent).toContain('43.8 µs');
         expect(container.querySelector('.performance-metrics')?.textContent).toContain('Callbacks observed235');
     } finally {
@@ -459,62 +417,109 @@ test('performance view refreshes callback timing while it stays open', async () 
     }
 });
 
-test('switching physical drivers identifies old hardware routes before applying', async () => {
+test('switching physical drivers migrates existing hardware connections by channel', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    const physicalRoute = { id: 'master', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
-        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false };
+    window.localStorage.clear();
+    const physicalRoute = { id: 'hardware', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
+        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 3, mute: true };
     const virtualRoute = { id: 'virtual', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
         destinationEndpointId: 'virtual:TimoxVasio:42:input:1', gainDb: 0, mute: false };
-    const driverState = {
-        ...state,
-        engine: { ...state.engine, physicalDriverId: 'interface-1', sampleRate: 48000, bufferFrames: 512 },
-        physicalDrivers: [
-            { ...state.physicalDrivers[0], id: 'interface-1' },
+    const driverState = { ...state, engine: { ...state.engine, physicalDriverId: 'interface-1' },
+        physicalDrivers: [...state.physicalDrivers,
             { id: 'asio4all-1', name: 'ASIO4ALL v2', inputEndpoints: [], outputEndpoints: [],
-                sampleRates: [], bufferSizes: null, capabilitiesKnown: false }
-        ],
-        routes: [physicalRoute, virtualRoute]
-    };
-    const applyConfiguration = jest.fn().mockResolvedValue({ accepted: true });
-    window.vasio = {
-        getState: jest.fn().mockResolvedValue(driverState),
+                sampleRates: [], bufferSizes: null, capabilitiesKnown: false }],
+        routes: [physicalRoute, virtualRoute], configuredRoutes: [physicalRoute, virtualRoute] };
+    let currentState = driverState;
+    const applyConfiguration = jest.fn().mockImplementation(async draft => {
+        currentState = { ...currentState, engine: { ...currentState.engine, physicalDriverId: draft.physicalDriverId },
+            physicalDrivers: currentState.physicalDrivers.map(driver => driver.id === 'asio4all-1'
+                ? { ...driver, capabilitiesKnown: true, outputEndpoints: [
+                    { id: 'physical:asio4all-1:output:1', name: 'ASIO4ALL Out 1', direction: 'output', channel: 1 }
+                ] } : driver),
+            routes: draft.routes, configuredRoutes: draft.routes };
+        return { accepted: true };
+    });
+    window.vasio = { getState: jest.fn().mockImplementation(async () => currentState),
         getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
-        subscribeEvents: jest.fn(() => () => {}),
-        onDisconnect: jest.fn(() => () => {}),
-        applyConfiguration
-    };
-    window.electronAPI = {
-        onEngineConnection: jest.fn(() => () => {}),
-        onEngineDiagnostic: jest.fn(() => () => {})
-    };
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}),
+        applyConfiguration };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
     try {
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         const driverSelect = [...container.querySelectorAll('select')].find(select => select.value === 'interface-1');
-        await act(async () => Simulate.change(driverSelect, { target: { value: 'asio4all-1' } }));
-        expect(container.textContent).toContain('1 route still targets the previous physical driver');
-        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
-        expect(applyConfiguration).not.toHaveBeenCalled();
-        await act(async () => Simulate.click(container.querySelector('.remove-incompatible-routes')));
-        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
-        expect(applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
-            physicalDriverId: 'asio4all-1',
-            routes: [virtualRoute]
-        }));
-        await act(async () => Simulate.change(driverSelect, { target: { value: 'asio4all-1' } }));
-        await act(async () => Simulate.click(container.querySelector('.clear-all-routes')));
-        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
-        expect(applyConfiguration.mock.lastCall[0]).toEqual(expect.objectContaining({
-            physicalDriverId: 'asio4all-1',
-            routes: []
-        }));
+        await act(async () => Simulate.change(driverSelect, { target: { value: '' } }));
+        expect(container.querySelector('.driver-change-blocker').textContent).toContain('choose a driver below');
+        expect(container.querySelector('.migrate-hardware-routes').disabled).toBe(true);
+        expect(container.querySelector('.migrate-hardware-routes').textContent).toBe('Choose a replacement driver first');
+        await act(async () => Simulate.change(container.querySelector('[aria-label="Replacement physical ASIO driver"]'),
+            { target: { value: 'asio4all-1' } }));
+        expect(container.querySelector('.driver-change-blocker').textContent).toContain('Physical driver change not applied');
+        expect(container.querySelector('.migrate-hardware-routes').disabled).toBe(false);
+        expect(container.querySelector('.apply-configuration').disabled).toBe(true);
+        await act(async () => { Simulate.click(container.querySelector('.migrate-hardware-routes'));
+            await new Promise(resolve => setTimeout(resolve, 0)); });
+        expect(applyConfiguration).toHaveBeenCalledTimes(2);
+        expect(applyConfiguration.mock.calls[0][0].routes).toEqual([virtualRoute]);
+        expect(applyConfiguration.mock.calls[1][0].routes).toEqual([virtualRoute,
+            { ...physicalRoute, destinationEndpointId: 'physical:asio4all-1:output:1' }]);
+        expect(container.textContent).toContain('1 hardware connection transferred to ASIO4ALL v2');
+        expect(window.localStorage.getItem('timoxvasio.hardware-transfer.v1')).toBeNull();
     } finally {
         await act(async () => root.unmount());
-        container.remove();
-        delete window.vasio;
-        delete window.electronAPI;
+        container.remove(); window.localStorage.clear();
+        delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('a missing new-driver channel keeps a recoverable copy of the old connection', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    window.localStorage.clear();
+    const route = { id: 'right', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
+        destinationEndpointId: 'physical:interface-1:output:2', gainDb: 0, mute: false };
+    const target = { id: 'new-card', name: 'New card', inputEndpoints: [], outputEndpoints: [],
+        sampleRates: [], bufferSizes: null, capabilitiesKnown: false };
+    let currentState = { ...state, configuredRoutes: [route], routes: [route],
+        physicalDrivers: [...state.physicalDrivers, target] };
+    const applyConfiguration = jest.fn().mockImplementation(async draft => {
+        currentState = { ...currentState, engine: { ...currentState.engine, physicalDriverId: draft.physicalDriverId },
+            configuredRoutes: draft.routes, routes: draft.routes,
+            physicalDrivers: [...state.physicalDrivers, { ...target, capabilitiesKnown: true,
+                outputEndpoints: [{ id: 'physical:new-card:output:1' }] }] };
+        return { accepted: true };
+    });
+    window.vasio = { getState: jest.fn().mockImplementation(async () => currentState),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}),
+        applyConfiguration };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div'); document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.change([...container.querySelectorAll('select')]
+            .find(select => select.value === 'interface-1'), { target: { value: 'new-card' } }));
+        await act(async () => { Simulate.click(container.querySelector('.migrate-hardware-routes'));
+            await new Promise(resolve => setTimeout(resolve, 0)); });
+        expect(applyConfiguration).toHaveBeenCalledTimes(1);
+        expect(container.textContent).toContain('new driver lacks output 2');
+        expect(container.querySelector('.driver-change-recovery')).not.toBeNull();
+        expect(window.localStorage.getItem('timoxvasio.hardware-transfer.v1')).toContain('physical:interface-1:output:2');
+        expect(container.querySelector('.driver-change-recovery button').disabled).toBe(true);
+        await act(async () => { Simulate.click([...container.querySelectorAll('.driver-change-recovery button')]
+            .find(button => button.textContent.includes('Restore previous driver')));
+            await new Promise(resolve => setTimeout(resolve, 0)); });
+        expect(applyConfiguration).toHaveBeenCalledTimes(3);
+        expect(applyConfiguration.mock.calls[2][0].routes).toEqual([route]);
+        expect(container.textContent).toContain('Previous driver and connections restored.');
+        expect(window.localStorage.getItem('timoxvasio.hardware-transfer.v1')).toBeNull();
+    } finally {
+        await act(async () => root.unmount()); container.remove(); window.localStorage.clear();
+        delete window.vasio; delete window.electronAPI;
     }
 });
 
@@ -539,12 +544,13 @@ test('a connection label and color persist locally without applying audio config
     try {
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        await act(async () => Simulate.click(container.querySelector('[data-routing-view="patchbay"]')));
-        await act(async () => Simulate.click(container.querySelector('.saved-route-connection .highlight-route')));
-        await act(async () => Simulate.change(container.querySelector('.route-label-input'), { target: { value: 'Headphone' } }));
-        await act(async () => Simulate.change(container.querySelector('.route-color-input'), { target: { value: '#bd3f47' } }));
-        expect(container.querySelector('.patchbay-cables path.connection.selected').parentElement.getAttribute('style')).toContain('#bd3f47');
-        expect(container.textContent).toContain('Headphone');
+        expect(document.querySelector('.patchbay-inspector')).toBeNull();
+        await chooseContextAction(container.querySelector('[data-node-key="process:TimoxVasio:42"]'), 'Modify a connection…');
+        await act(async () => Simulate.click(document.querySelector('.process-dialog-routes button')));
+        await act(async () => Simulate.change(document.querySelector('.route-label-input'), { target: { value: 'Headphone' } }));
+        await act(async () => Simulate.change(document.querySelector('.route-color-input'), { target: { value: '#bd3f47' } }));
+        expect(document.querySelector('.route-color-input').value).toBe('#bd3f47');
+        expect(document.body.textContent).toContain('Headphone');
         expect(container.textContent).toContain('Configuration applied');
         expect(container.querySelector('.apply-configuration').disabled).toBe(true);
         await act(async () => { await Simulate.click(container.querySelector('.apply-configuration')); });
@@ -554,7 +560,10 @@ test('a connection label and color persist locally without applying audio config
         root = createRoot(container);
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        expect(container.textContent).toContain('Headphone');
+        await chooseContextAction(container.querySelector('[data-node-key="process:TimoxVasio:42"]'), 'Modify a connection…');
+        await act(async () => Simulate.click(document.querySelector('.process-dialog-routes button')));
+        expect(document.querySelector('.route-label-input').value).toBe('Headphone');
+        expect(document.querySelector('.route-color-input').value).toBe('#bd3f47');
     } finally {
         await act(async () => root.unmount());
         container.remove();
@@ -587,22 +596,20 @@ test('bulk appearance edits update several connections without applying audio co
     try {
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        await act(async () => Simulate.click(container.querySelector('[data-routing-view="patchbay"]')));
-        await act(async () => Simulate.click(container.querySelector('.bulk-edit-toggle')));
-        const checkboxes = container.querySelectorAll('.bulk-route-checkbox');
+        await chooseContextAction(container.querySelector('.react-flow__pane'), 'Edit appearance of several connections…');
+        const checkboxes = document.querySelectorAll('.bulk-route-checkbox');
         expect(checkboxes).toHaveLength(2);
         for (const checkbox of checkboxes) await act(async () => Simulate.change(checkbox, { target: { checked: true } }));
-        await act(async () => Simulate.change(container.querySelector('.bulk-label-input'), { target: { value: 'Headphone' } }));
-        await act(async () => Simulate.change(container.querySelector('.bulk-color-input'), { target: { value: '#bd3f47' } }));
-        await act(async () => Simulate.click(container.querySelector('.bulk-apply')));
-        expect(container.querySelectorAll('.route-custom-label')).toHaveLength(2);
-        expect([...container.querySelectorAll('.patchbay-cables g')].map(group => group.getAttribute('style')))
-            .toEqual(expect.arrayContaining([expect.stringContaining('#bd3f47'), expect.stringContaining('#bd3f47')]));
-        await act(async () => Simulate.change(container.querySelector('.bulk-property-toggle input'), { target: { checked: false } }));
-        await act(async () => Simulate.change(container.querySelector('.bulk-color-input'), { target: { value: '#3f725a' } }));
-        await act(async () => Simulate.click(container.querySelector('.bulk-apply')));
-        expect([...container.querySelectorAll('.route-custom-label')].map(label => label.textContent)).toEqual(['Headphone', 'Headphone']);
-        expect([...container.querySelectorAll('.patchbay-cables g')].every(group => group.getAttribute('style').includes('#3f725a'))).toBe(true);
+        await act(async () => Simulate.change(document.querySelector('.bulk-label-input'), { target: { value: 'Headphone' } }));
+        await act(async () => Simulate.change(document.querySelector('.bulk-color-input'), { target: { value: '#bd3f47' } }));
+        await act(async () => Simulate.click(document.querySelector('.bulk-apply')));
+        expect(window.localStorage.getItem('timoxvasio.route-visuals.v1')).toContain('Headphone');
+        expect(window.localStorage.getItem('timoxvasio.route-visuals.v1')).toContain('#bd3f47');
+        await act(async () => Simulate.change(document.querySelector('.bulk-property-toggle input'), { target: { checked: false } }));
+        await act(async () => Simulate.change(document.querySelector('.bulk-color-input'), { target: { value: '#3f725a' } }));
+        await act(async () => Simulate.click(document.querySelector('.bulk-apply')));
+        expect(document.querySelector('.bulk-route-list').textContent).toContain('Headphone');
+        expect(window.localStorage.getItem('timoxvasio.route-visuals.v1')).toContain('#3f725a');
         expect(container.textContent).toContain('Configuration applied');
         expect(container.querySelector('.apply-configuration').disabled).toBe(true);
         await act(async () => { await Simulate.click(container.querySelector('.apply-configuration')); });
@@ -645,17 +652,19 @@ test('the GUI waits for API inventory and renders only the returned drivers and 
         });
         expect(container.textContent).toContain('Interface réelle');
         expect(container.textContent).toContain('Application channel profiles');
-        expect(container.querySelector('[aria-label="Input channels 1"]').value).toBe('255');
+        expect(container.querySelector('.setup-physical').compareDocumentPosition(container.querySelector('.setup-profiles'))
+            & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(container.querySelector('.setup-profiles').textContent).toContain('mixxx.exe');
+        expect(container.querySelector('.setup-profiles').textContent).toContain('255');
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
-        expect(container.textContent).toContain('AudioApp.exe · PID 42');
-        expect(container.textContent).toContain('Inputs: 1');
-        expect(container.textContent).toContain('TimoxVasio AudioApp.exe Out 1');
-        const routingDetails = container.querySelector('.routing-details');
-        expect(routingDetails.open).toBe(true);
-        const destinationZone = container.querySelectorAll('.matrix-controls select')[1];
-        await act(async () => Simulate.change(destinationZone, { target: { value: 'virtual-input' } }));
-        expect(container.textContent).toContain('TimoxVasio AudioApp.exe In 1');
-        expect(container.querySelector('.route-cell')).not.toBeNull();
+        expect(container.textContent).not.toContain('Process and channel detail');
+        expect(container.querySelector('.patchbay')).not.toBeNull();
+        expect(container.querySelectorAll('.patchbay-port')).toHaveLength(0);
+        await act(async () => Simulate.click([...container.querySelectorAll('.patchbay-toolbar-actions button')]
+            .find(button => button.textContent === 'Expand all')));
+        const appNode = container.querySelector('[data-node-key="process:TimoxVasio:42"]');
+        expect(appNode.querySelectorAll('.patchbay-port')).toHaveLength(0);
+        expect(appNode.querySelector('.patchbay-capacity').textContent).toContain('In 0/');
     } finally {
         await act(async () => { root.unmount(); });
         container.remove();
@@ -664,9 +673,10 @@ test('the GUI waits for API inventory and renders only the returned drivers and 
     }
 });
 
-test('the application profile editor saves the full list through the API and reports clients to restart', async () => {
+test('Routing assigns a profile to an existing process and preserves other profiles', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    const profiles = [{ processName: 'mixxx.exe', inputChannels: 255, outputChannels: 192 }];
+    const profiles = [{ processName: 'mixxx.exe', inputChannels: 255, outputChannels: 255 },
+        { processName: 'AudioApp.exe', inputChannels: 2, outputChannels: 192 }];
     window.vasio = {
         getState: jest.fn().mockResolvedValue(state),
         getApplicationProfiles: jest.fn().mockResolvedValue({
@@ -689,21 +699,108 @@ test('the application profile editor saves the full list through the API and rep
     const root = createRoot(container);
     try {
         await act(async () => { root.render(<App />); await Promise.resolve(); });
-        const outputChannels = container.querySelector('[aria-label="Output channels 1"]');
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Routing')));
+        await act(async () => Simulate.click([...container.querySelectorAll('.patchbay-toolbar-actions button')]
+            .find(button => button.textContent === 'Expand all')));
+        await chooseContextAction(container.querySelector('[data-node-key="process:TimoxVasio:42"]'), 'Configure process…');
+        const outputChannels = document.querySelector('[aria-label="Process profile output channels"]');
+        expect(document.querySelector('[aria-label="Process profile input channels"]').value).toBe('2');
         await act(async () => {
             Simulate.change(outputChannels, { target: { value: '192' } });
         });
         await act(async () => {
-            container.querySelector('button[aria-label="Save profiles"]').click();
+            Simulate.click([...document.querySelectorAll('.patchbay-process-editor button')]
+                .find(button => button.textContent === 'Assign profile to this process'));
             await Promise.resolve();
         });
         expect(window.vasio.replaceApplicationProfiles).toHaveBeenCalledWith(profiles);
-        expect(container.textContent).toContain('Restart AudioApp.exe');
+        expect(document.body.textContent).toContain('Restart the application');
     } finally {
         await act(async () => { root.unmount(); });
         container.remove();
         delete window.vasio;
         delete window.electronAPI;
+    }
+});
+
+test('a process profile cannot hide a channel used by a saved connection', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const source = { id: 'virtual:TimoxVasio:42:output:3', name: 'AudioApp Out 3', direction: 'output', channel: 3 };
+    const route = { id: 'third', sourceEndpointId: source.id,
+        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false };
+    const routedState = { ...state, routes: [route], virtualDrivers: [{ ...state.virtualDrivers[0],
+        clients: [{ ...state.virtualDrivers[0].clients[0], outputChannels: [1, 2, 3] }],
+        outputEndpoints: [...state.virtualDrivers[0].outputEndpoints, source] }] };
+    const replaceApplicationProfiles = jest.fn();
+    window.vasio = { getState: jest.fn().mockResolvedValue(routedState),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        replaceApplicationProfiles, subscribeEvents: jest.fn(() => () => {}),
+        onDisconnect: jest.fn(() => () => {}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div'); document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Routing')));
+        await chooseContextAction(container.querySelector('[data-node-key="process:TimoxVasio:42"]'), 'Configure process…');
+        await act(async () => { Simulate.click([...document.querySelectorAll('.patchbay-process-editor button')]
+            .find(button => button.textContent === 'Assign profile to this process'));
+            await Promise.resolve(); });
+        expect(replaceApplicationProfiles).not.toHaveBeenCalled();
+        expect(document.querySelector('.patchbay-process-editor').textContent).toContain('Saved connection uses output channel 3');
+    } finally {
+        await act(async () => root.unmount()); container.remove();
+        delete window.vasio; delete window.electronAPI;
+    }
+});
+
+test('removing a process configuration removes its routes and profile while preserving other routes', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const profile = { processName: 'AudioApp.exe', inputChannels: 2, outputChannels: 2 };
+    const processRoute = { id: 'process-out', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
+        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false };
+    const profileRoute = { id: 'profile-in', sourceEndpointId: 'physical:interface-1:input:1',
+        destinationEndpointId: 'virtual:TimoxVasio:app:audioapp.exe:input:1', gainDb: 0, mute: false };
+    const otherRoute = { id: 'other', sourceEndpointId: 'physical:interface-1:input:1',
+        destinationEndpointId: 'virtual:TimoxVasio:99:input:1', gainDb: 0, mute: false };
+    let currentState = { ...state, routes: [processRoute, profileRoute, otherRoute],
+        virtualDrivers: [{ ...state.virtualDrivers[0],
+            clients: [...state.virtualDrivers[0].clients,
+                { pid: 99, processName: 'Other.exe', inputChannels: [1], outputChannels: [] }],
+            inputEndpoints: [...state.virtualDrivers[0].inputEndpoints,
+                { id: 'virtual:TimoxVasio:99:input:1', name: 'Other In 1', direction: 'input', channel: 1 }] }] };
+    const applyConfiguration = jest.fn().mockImplementation(async draft => {
+        currentState = { ...currentState, routes: draft.routes, configuredRoutes: draft.routes };
+        return { accepted: true };
+    });
+    const replaceApplicationProfiles = jest.fn().mockResolvedValue({ profiles: [], restartRequiredClients: [] });
+    window.vasio = { getState: jest.fn().mockImplementation(async () => currentState),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [profile] }),
+        replaceApplicationProfiles, applyConfiguration,
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}),
+        onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div'); document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
+            .find(button => button.textContent === 'Routing')));
+        await chooseContextAction(container.querySelector('[data-node-key="process:TimoxVasio:42"]'), 'Configure process…');
+        expect(document.querySelector('.patchbay-process-editor').textContent).toContain('2 saved connections');
+        await act(async () => Simulate.click(document.querySelector('.remove-process-configuration')));
+        expect(document.querySelector('.process-remove-confirm').textContent).toContain('Windows process stays open');
+        await act(async () => { Simulate.click(document.querySelector('.process-remove-confirm button'));
+            await new Promise(resolve => setTimeout(resolve, 0)); });
+        expect(applyConfiguration.mock.calls[0][0].routes).toEqual([otherRoute]);
+        expect(replaceApplicationProfiles).toHaveBeenCalledWith([]);
+        expect(container.textContent).toContain('2 saved connections removed and profile removed');
+    } finally {
+        await act(async () => root.unmount()); container.remove();
+        delete window.vasio; delete window.electronAPI;
     }
 });
 
@@ -792,9 +889,13 @@ test('active channels show meters and the Analyse and API views call documented 
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         const tabs = container.querySelectorAll('.view-tabs button');
         await act(async () => Simulate.click(tabs[1]));
+        await act(async () => Simulate.contextMenu(container.querySelector('.react-flow__pane'), { clientX: 100, clientY: 100 }));
+        await act(async () => Simulate.click([...document.querySelectorAll('.patchbay-context-menu [role="menuitem"]')]
+            .find(button => button.textContent === 'Process and channel detail')));
         await act(async () => publishEvent({ event: 'audio.meter', payload: { endpointId: pair.leftEndpointId, peakDbfs: -9, underruns: 0, overruns: 0 } }));
-        expect(container.querySelectorAll('.channel-meter')).toHaveLength(2);
-        expect(container.textContent).toContain('-9.0 dBFS');
+        expect(document.querySelectorAll('.routing-dialog .channel-meter')).toHaveLength(2);
+        expect(document.querySelector('.routing-dialog').textContent).toContain('-9.0 dBFS');
+        await act(async () => Simulate.click(document.querySelector('.routing-dialog-heading button')));
 
         await act(async () => Simulate.click(tabs[2]));
         expect(container.querySelector('.correlation-graph')).not.toBeNull();

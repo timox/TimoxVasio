@@ -173,6 +173,68 @@ Json meterEvent(const AudioMeterSnapshot& meter) {
         {"payload", {{"endpointId", meter.endpointId}, {"peakDbfs", peakDbfs},
             {"underruns", meter.underruns}, {"overruns", meter.overruns}}}};
 }
+
+std::uint64_t fileTimeTicks(const FILETIME& value) {
+    return (static_cast<std::uint64_t>(value.dwHighDateTime) << 32) | value.dwLowDateTime;
+}
+
+struct ProcessCpuReading {
+    std::optional<double> percent;
+    std::optional<std::uint64_t> windowMs;
+};
+
+class ProcessCpuMonitor {
+public:
+    ProcessCpuReading Read(std::uint32_t pid) {
+        const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (!process) return {};
+        FILETIME created{}, exited{}, kernel{}, user{};
+        const bool measured = GetProcessTimes(process, &created, &exited, &kernel, &user) != FALSE;
+        CloseHandle(process);
+        if (!measured) return {};
+
+        const auto now = std::chrono::steady_clock::now();
+        const auto creationTicks = fileTimeTicks(created);
+        const auto cpuTicks = fileTimeTicks(kernel) + fileTimeTicks(user);
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto& sample = samples_[pid];
+        if (sample.creationTicks != creationTicks || cpuTicks < sample.cpuTicks ||
+            sample.at == std::chrono::steady_clock::time_point{}) {
+            sample = {creationTicks, cpuTicks, now, {}, {}};
+            return {};
+        }
+        const auto elapsedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(now - sample.at).count();
+        if (elapsedNs < 1000000000LL) return {sample.percent, sample.windowMs};
+        const auto processors = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+        if (!processors) return {};
+        const auto deltaTicks = cpuTicks - sample.cpuTicks;
+        sample.percent = std::clamp(100.0 * static_cast<double>(deltaTicks) * 100.0 /
+            (static_cast<double>(elapsedNs) * processors), 0.0, 100.0);
+        sample.windowMs = static_cast<std::uint64_t>(elapsedNs / 1000000);
+        sample.cpuTicks = cpuTicks;
+        sample.at = now;
+        return {sample.percent, sample.windowMs};
+    }
+
+    void Retain(const std::set<std::uint32_t>& activePids) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto it = samples_.begin(); it != samples_.end();) {
+            if (!activePids.count(it->first)) it = samples_.erase(it);
+            else ++it;
+        }
+    }
+
+private:
+    struct Sample {
+        std::uint64_t creationTicks = 0;
+        std::uint64_t cpuTicks = 0;
+        std::chrono::steady_clock::time_point at{};
+        std::optional<double> percent;
+        std::optional<std::uint64_t> windowMs;
+    };
+    std::mutex mutex_;
+    std::unordered_map<std::uint32_t, Sample> samples_;
+};
 }
 
 struct ControlApiServer::Impl {
@@ -191,6 +253,7 @@ struct ControlApiServer::Impl {
     struct CorrelationSelection { std::string id, leftEndpointId, rightEndpointId; };
     std::mutex correlationMutex;
     std::optional<CorrelationSelection> correlationSelection;
+    mutable ProcessCpuMonitor processCpu;
 
     Impl(VasioClientManager& manager, AudioController& audioController, EngineDiagnostics& engineDiagnostics,
          std::function<void()> requestStop)
@@ -248,11 +311,14 @@ struct ControlApiServer::Impl {
         Json clientArray = Json::array();
         Json inputs = Json::array();
         Json outputs = Json::array();
+        std::set<std::uint32_t> activePids;
         for (const auto& client : attachedClients) {
             if (client.info.driverId != kVasioId || !client.mapping) continue;
             AudioClientMapping::ChannelMask activeInputs{};
             AudioClientMapping::ChannelMask activeOutputs{};
             if (!client.mapping->GetActiveChannels(activeInputs, activeOutputs)) continue;
+            activePids.insert(client.info.processId);
+            const auto cpu = processCpu.Read(client.info.processId);
             Json inputChannels = Json::array();
             Json outputChannels = Json::array();
             const auto prefix = "virtual:TimoxVasio:" + std::to_string(client.info.processId) + ":";
@@ -274,9 +340,12 @@ struct ControlApiServer::Impl {
             }
             clientArray.push_back({{"pid", client.info.processId},
                 {"processName", utf8(client.info.processName)},
+                {"processCpuPercent", cpu.percent ? Json(*cpu.percent) : Json(nullptr)},
+                {"processCpuWindowMs", cpu.windowMs ? Json(*cpu.windowMs) : Json(nullptr)},
                 {"inputChannels", std::move(inputChannels)},
                 {"outputChannels", std::move(outputChannels)}});
         }
+        processCpu.Retain(activePids);
         Json rate = state.sampleRate ? Json(*state.sampleRate) : Json(nullptr);
         Json bufferFrames = state.bufferFrames ? Json(*state.bufferFrames) : Json(nullptr);
         return Json::array({{{"id", "TimoxVasio"}, {"channelsPerDirection", AudioClientMapping::kChannelCount},
@@ -380,7 +449,7 @@ struct ControlApiServer::Impl {
         Json configuredRoutes = Json::array();
         for (const auto& route : state.configuredRoutes)
             configuredRoutes.push_back(routeJson(route));
-        return Json{{"apiVersion", "1.0"},
+        return Json{{"apiVersion", "1.0"}, {"configurationRevision", state.configurationRevision},
             {"engine", {{"state", state.state}, {"physicalDriverId", std::move(physicalId)},
                          {"sampleRate", std::move(sampleRate)}, {"bufferFrames", std::move(bufferFrames)},
                          {"lastError", std::move(lastError)}}},
@@ -412,7 +481,8 @@ struct ControlApiServer::Impl {
                 return errorEnvelope(id, "AUDIO_ENGINE_ERROR", result.error, "apply");
             return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}}}};
         }
-        if (request["command"] == "engine.start" || request["command"] == "engine.stop") {
+        if (request["command"] == "engine.start" || request["command"] == "engine.stop" ||
+            request["command"] == "engine.reset") {
             if (request.size() != 2)
                 return errorEnvelope(id, "INVALID_ENGINE_COMMAND", "Engine lifecycle commands accept only id and command", "validate");
             if (request["command"] == "engine.stop" && !clients.GetClientSnapshots().empty())
@@ -421,11 +491,17 @@ struct ControlApiServer::Impl {
                 { std::lock_guard<std::mutex> lock(correlationMutex); correlationSelection.reset(); }
                 controller.StopCorrelation();
             }
-            const auto result = request["command"] == "engine.start" ? controller.StartAudio() : controller.StopAudio();
+            const auto result = request["command"] == "engine.start" ? controller.StartAudio()
+                : request["command"] == "engine.reset" ? controller.ResetAudio() : controller.StopAudio();
             if (!result.success)
-                return errorEnvelope(id, request["command"] == "engine.start" ? "AUDIO_ENGINE_START_FAILED" : "AUDIO_ENGINE_STOP_FAILED", result.error,
-                    request["command"] == "engine.start" ? "start" : "stop");
-            diagnostics.Write(EngineDiagnostics::Level::Info, "engine", request["command"] == "engine.start" ? "Audio engine start requested through the API" : "Audio engine stop requested through the API");
+                return errorEnvelope(id, request["command"] == "engine.reset" ? "AUDIO_ENGINE_RESET_FAILED" :
+                    request["command"] == "engine.start" ? "AUDIO_ENGINE_START_FAILED" : "AUDIO_ENGINE_STOP_FAILED", result.error,
+                    request["command"] == "engine.reset" ? "reset" :
+                        request["command"] == "engine.start" ? "start" : "stop");
+            diagnostics.Write(EngineDiagnostics::Level::Info, "engine",
+                request["command"] == "engine.reset" ? "Audio driver reset requested through the API" :
+                    request["command"] == "engine.start" ? "Audio engine start requested through the API" :
+                        "Audio engine stop requested through the API");
             return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}}}};
         }
         if (request["command"] == "audio.correlation.start") {
@@ -462,7 +538,16 @@ struct ControlApiServer::Impl {
             !payload.contains("routes") || !payload["routes"].is_array())
             return errorEnvelope(id, "INVALID_CONFIGURATION",
                 "Payload must contain the physical selection, sample rate, buffer size and routes", "validate");
-        if (payload.size() != 4)
+        if (payload.size() != 4 && payload.size() != 5)
+            return errorEnvelope(id, "INVALID_CONFIGURATION", "Unexpected configuration field", "validate");
+        std::optional<std::uint64_t> expectedConfigurationRevision;
+        if (payload.contains("expectedConfigurationRevision")) {
+            if (!payload["expectedConfigurationRevision"].is_number_unsigned())
+                return errorEnvelope(id, "INVALID_CONFIGURATION",
+                    "expectedConfigurationRevision must be a nonnegative integer", "validate");
+            expectedConfigurationRevision = payload["expectedConfigurationRevision"].get<std::uint64_t>();
+        }
+        if (payload.size() == 5 && !expectedConfigurationRevision)
             return errorEnvelope(id, "INVALID_CONFIGURATION", "Unexpected configuration field", "validate");
 
         AudioControllerConfiguration configuration;
@@ -512,7 +597,8 @@ struct ControlApiServer::Impl {
         // An existing saved application route remains editable while that client
         // is disconnected. Only IDs already present in the confirmed configuration
         // are accepted outside the current endpoint inventory.
-        for (const auto& saved : controller.Snapshot().configuredRoutes) {
+        const auto savedRoutes = controller.Snapshot().configuredRoutes;
+        for (const auto& saved : savedRoutes) {
             for (const auto& endpoint : {saved.sourceEndpointId, saved.destinationEndpointId}) {
                 if (endpoint.rfind("virtual:TimoxVasio:app:", 0) != 0) continue;
                 if (endpoint.find(":input:") != std::string::npos)
@@ -522,17 +608,23 @@ struct ControlApiServer::Impl {
             }
         }
         const auto profiles = controller.GetApplicationProfiles().profiles;
+        const auto attachedClients = clients.GetClientSnapshots();
         for (const auto& route : configuration.routes) {
             for (const auto& endpoint : {route.sourceEndpointId, route.destinationEndpointId}) {
                 if (endpointTypes.find(endpoint) != endpointTypes.end()) continue;
-                const auto type = PersistentRoutes::ProfiledEndpointType(endpoint, profiles);
+                const auto type = PersistentRoutes::KnownApplicationEndpointType(
+                    endpoint, profiles, attachedClients, savedRoutes);
                 if (type) endpointTypes.emplace(endpoint, *type);
             }
             const auto source = endpointTypes.find(route.sourceEndpointId);
             const auto destination = endpointTypes.find(route.destinationEndpointId);
-            if (source == endpointTypes.end() || destination == endpointTypes.end())
+            if (source == endpointTypes.end() || destination == endpointTypes.end()) {
+                const auto& missing = source == endpointTypes.end()
+                    ? route.sourceEndpointId : route.destinationEndpointId;
                 return errorEnvelope(id, "UNKNOWN_ENDPOINT",
-                    "A route endpoint is not present in the current API inventory", "validate");
+                    "Connection " + route.id + " references an unavailable port: " + missing,
+                    "validate");
+            }
             if (!RoutingGraph::SupportsLink(source->second, destination->second))
                 return errorEnvelope(id, "INVALID_ROUTE_DIRECTION",
                     "The route direction is not one of the supported ASIO connections", "validate");
@@ -540,10 +632,12 @@ struct ControlApiServer::Impl {
 
         { std::lock_guard<std::mutex> lock(correlationMutex); correlationSelection.reset(); }
         controller.StopCorrelation();
-        const auto applied = controller.ApplyConfiguration(configuration);
+        const auto applied = controller.ApplyConfiguration(configuration, expectedConfigurationRevision);
         if (!applied.success) {
-            diagnostics.Write(EngineDiagnostics::Level::Error, "audio", applied.error);
-            return errorEnvelope(id, "AUDIO_CONFIGURATION_FAILED", applied.error, "apply");
+            diagnostics.Write(applied.conflict ? EngineDiagnostics::Level::Info :
+                EngineDiagnostics::Level::Error, "audio", applied.error);
+            return errorEnvelope(id, applied.conflict ? "CONFIGURATION_CONFLICT" :
+                "AUDIO_CONFIGURATION_FAILED", applied.error, "apply");
         }
         diagnostics.Write(EngineDiagnostics::Level::Info, "audio", "Audio configuration applied with " + std::to_string(configuration.routes.size()) + " routes");
         const auto confirmed = controller.Snapshot();

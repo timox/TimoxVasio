@@ -1,14 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './App.css';
 import './ProfessionalTheme.css';
 import RoutingPatchbay from './RoutingPatchbay';
 import QuickRouting from './QuickRouting';
-import RoutingOverview from './RoutingOverview';
-import SavedRouteMatrices from './SavedRouteMatrices';
-import { groupRoutes } from './route-groups';
+import BufferTimingDiagram from './BufferTimingDiagram';
+import AnalysisTimeline from './AnalysisTimeline';
+import { readHardwareTransfer, saveHardwareTransfer, transferRoutesToDriver } from './hardware-transfer';
 import { DEFAULT_ROUTE_COLOR, readRouteVisuals, routeVisualKey, saveRouteVisuals } from './route-visuals';
+import { transferProcessConnections } from './process-connection-transfer';
 const { configurationFromState } = require('./api-contract');
+const { mergeConfigurationDraft } = require('./configuration-merge');
 const openApiDocument = require('./openapi-spec.generated');
+const migrationLogKey = 'timoxvasio.connection-migrations.v1';
+const readMigrationLog = () => {
+    try { return JSON.parse(window.localStorage.getItem(migrationLogKey)) || []; }
+    catch { return []; }
+};
 
 function App() {
     const [connectionError, setConnectionError] = useState('Connecting to engine…');
@@ -21,25 +29,22 @@ function App() {
     const [profilesSaving, setProfilesSaving] = useState(false);
     const [profilesError, setProfilesError] = useState('');
     const [profilesNotice, setProfilesNotice] = useState('');
-    const [newProfile, setNewProfile] = useState({ processName: '', inputChannels: 256, outputChannels: 256 });
     const [notice, setNotice] = useState('');
     const [applying, setApplying] = useState(false);
-    const [sourceZone, setSourceZone] = useState('virtual-output');
-    const [destinationZone, setDestinationZone] = useState('physical-output');
-    const [channelPageSize, setChannelPageSize] = useState(16);
-    const [sourcePage, setSourcePage] = useState(0);
-    const [destinationPage, setDestinationPage] = useState(0);
-    const [sourceSearch, setSourceSearch] = useState('');
-    const [destinationSearch, setDestinationSearch] = useState('');
-    const [routingView, setRoutingView] = useState('matrix');
     const [selectedRouteId, setSelectedRouteId] = useState(null);
+    const [routingDialog, setRoutingDialog] = useState(null);
+    const [migrationLog, setMigrationLog] = useState(readMigrationLog);
+    const pendingMigrations = useRef([]);
     const [routeVisuals, setRouteVisuals] = useState(readRouteVisuals);
+    const [hardwareTransfer, setHardwareTransfer] = useState(readHardwareTransfer);
     const [activeView, setActiveView] = useState('configuration');
     const [diagnostics, setDiagnostics] = useState({ level: 'info', entries: [] });
     const [diagnosticsError, setDiagnosticsError] = useState('');
     const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
     const [engineAction, setEngineAction] = useState('');
     const [meters, setMeters] = useState({});
+    const [transportHistory, setTransportHistory] = useState([]);
+    const [performanceHistory, setPerformanceHistory] = useState([]);
     const [selectedStereoPairId, setSelectedStereoPairId] = useState('');
     const [correlation, setCorrelation] = useState({ state: 'stopped', correlation: null });
     const [correlationHistory, setCorrelationHistory] = useState([]);
@@ -55,10 +60,22 @@ function App() {
     const [measurementsError, setMeasurementsError] = useState('');
     const [consoleConfirmation, setConsoleConfirmation] = useState('');
     const confirmationDialog = useRef(null);
-    const initialMatrixRouteShown = useRef(false);
+    const metersRef = useRef({});
     const lastConfirmedConfiguration = useRef(null);
+    const draftBaseConfiguration = useRef(null);
 
     useEffect(() => { saveRouteVisuals(routeVisuals); }, [routeVisuals]);
+    useEffect(() => { saveHardwareTransfer(hardwareTransfer); }, [hardwareTransfer]);
+    useEffect(() => {
+        try { window.localStorage.setItem(migrationLogKey, JSON.stringify(migrationLog)); }
+        catch { /* Local storage may be disabled. */ }
+    }, [migrationLog]);
+    useEffect(() => {
+        if (!routingDialog) return undefined;
+        const closeOnEscape = event => { if (event.key === 'Escape') setRoutingDialog(null); };
+        document.addEventListener('keydown', closeOnEscape);
+        return () => document.removeEventListener('keydown', closeOnEscape);
+    }, [routingDialog]);
 
     const updateManyRouteVisuals = (routes, changes) => setRouteVisuals(current => {
         const next = { ...current };
@@ -99,26 +116,55 @@ function App() {
         setDiagnosticsError('');
         try {
             if (action === 'start') await window.vasio.startAudio();
+            else if (action === 'reset') await window.vasio.executeCommand({
+                id: `engine-reset-${Date.now()}`, command: 'engine.reset'
+            });
             else await window.vasio.stopAudio();
             await new Promise(resolve => setTimeout(resolve, 150));
             await refreshState();
-        } catch (error) { setDiagnosticsError(error.message); }
+            if (action === 'reset') setNotice('Physical driver reopened with the last saved connections. Pending edits were not applied.');
+        } catch (error) { setDiagnosticsError(error.message); setNotice(error.message); }
         finally { setEngineAction(''); }
     };
 
+    const recordPerformanceState = useCallback(state => {
+        const window = state.performanceMeasurements?.enabled ? state.performanceMeasurements.window : null;
+        const routedPids = new Set((state.routes || []).flatMap(route =>
+            [route.sourceEndpointId, route.destinationEndpointId].map(id =>
+                /^virtual:TimoxVasio:(\d+):/.exec(id)?.[1]).filter(Boolean).map(Number)));
+        const clients = (state.virtualDrivers?.flatMap(driver => driver.clients || []) || [])
+            .filter(client => routedPids.has(client.pid));
+        if (!state.bufferHealth && !window && !clients.some(client => typeof client.processCpuPercent === 'number')) return;
+        setPerformanceHistory(current => [...current, {
+            time: Date.now(),
+            sampleRate: state.engine?.sampleRate,
+            bufferFrames: state.engine?.bufferFrames,
+            bufferHealth: state.bufferHealth,
+            clients: clients.map(client => ({ pid: client.pid, processName: client.processName,
+                cpuPercent: client.processCpuPercent ?? null,
+                callbackWorstNs: window?.clients?.find(item => item.processId === client.pid)?.hostCallback?.worstNs ?? null }))
+        }].slice(-1800));
+    }, []);
+
     const refreshState = useCallback(async ({ resetDraft = false } = {}) => {
         const state = await window.vasio.getState();
+        recordPerformanceState(state);
         const confirmedConfiguration = configurationFromState(state);
         const previousConfirmed = lastConfirmedConfiguration.current;
         setApiState(state);
         setEngine(state.engine);
-        setConfiguration(current => resetDraft || !current || !previousConfirmed ||
-            JSON.stringify(current) === JSON.stringify(previousConfirmed)
-            ? confirmedConfiguration : current);
+        setConfiguration(current => {
+            if (resetDraft || !current || !previousConfirmed ||
+                JSON.stringify(current) === JSON.stringify(previousConfirmed)) {
+                draftBaseConfiguration.current = confirmedConfiguration;
+                return confirmedConfiguration;
+            }
+            return current;
+        });
         lastConfirmedConfiguration.current = confirmedConfiguration;
         setSelectedStereoPairId(current => state.stereoPairs?.some(pair => pair.id === current) ? current : '');
         return state;
-    }, []);
+    }, [recordPerformanceState]);
 
     const refreshApplicationProfiles = useCallback(async () => {
         setProfilesLoading(true);
@@ -149,15 +195,23 @@ function App() {
                 setApiEvents(current => [...current, { time: new Date().toISOString(), event: message.event, payload: message.payload }].slice(-500));
             if (message.event === 'engine.status') {
                 setEngine(message.payload);
-                if (message.payload.state !== 'running') setMeters({});
+                if (message.payload.state !== 'running') { metersRef.current = {}; setMeters({}); }
             }
-            if (message.event === 'devices.changed') setApiState(current => current && ({ ...current, ...message.payload }));
+            if (message.event === 'devices.changed') {
+                metersRef.current = {};
+                setMeters({});
+                setApiState(current => current && ({ ...current, ...message.payload }));
+            }
             if (message.event === 'routes.changed') {
                 refreshState().catch(error => setConnectionError(error.message));
+                metersRef.current = {};
                 setMeters({});
             }
             if (message.event === 'engine.error') setNotice(message.payload.message);
-            if (message.event === 'audio.meter') setMeters(current => ({ ...current, [message.payload.endpointId]: message.payload }));
+            if (message.event === 'audio.meter') {
+                metersRef.current[message.payload.endpointId] = message.payload;
+                setMeters(current => ({ ...current, [message.payload.endpointId]: message.payload }));
+            }
             if (message.event === 'audio.stereoPairs.changed')
                 setApiState(current => current && ({ ...current, stereoPairs: message.payload.stereoPairs }));
             if (message.event === 'audio.correlation') {
@@ -200,15 +254,33 @@ function App() {
     }, [refreshApplicationProfiles, refreshState]);
 
     useEffect(() => {
-        if (!['diagnostics', 'performance'].includes(activeView) || !window.vasio?.getState) return undefined;
+        if (!window.vasio?.getState) return undefined;
         const timer = window.setInterval(() => {
             window.vasio.getState().then(state => {
+                recordPerformanceState(state);
                 setApiState(state);
                 setEngine(state.engine);
+                setConnectionError('');
             }).catch(error => setConnectionError(error.message));
-        }, 2000);
+        }, 5000);
         return () => window.clearInterval(timer);
-    }, [activeView]);
+    }, [recordPerformanceState]);
+
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            const time = Date.now();
+            const directions = new Map();
+            Object.values(metersRef.current).forEach(meter => {
+                const match = /^virtual:TimoxVasio:(\d+):(input|output):/.exec(meter.endpointId);
+                if (match && !directions.has(`${match[1]}:${match[2]}`)) directions.set(`${match[1]}:${match[2]}`, {
+                    time, key: `${match[1]}:${match[2]}`, pid: Number(match[1]), direction: match[2],
+                    underruns: meter.underruns, overruns: meter.overruns
+                });
+            });
+            if (directions.size) setTransportHistory(current => [...current, ...directions.values()].slice(-7200));
+        }, 5000);
+        return () => window.clearInterval(timer);
+    }, []);
 
     const endpoints = useMemo(() => {
         if (!apiState) return { all: [], sourceGroups: [], destinationGroups: [] };
@@ -269,10 +341,30 @@ function App() {
             kind: direction === 'output' ? 'virtual-output' : 'virtual-input',
             endpoints: group.endpoints
         }));
+        const savedGroups = direction => {
+            const byName = new Map();
+            const known = new Set(endpoints.profiled.filter(group => group.direction === direction)
+                .flatMap(group => group.endpoints.map(endpoint => endpoint.id)));
+            for (const route of configuration?.routes || []) {
+                const id = direction === 'output' ? route.sourceEndpointId : route.destinationEndpointId;
+                const match = /^virtual:TimoxVasio:app:(.+):(input|output):(\d+)$/.exec(id);
+                if (!match || match[2] !== direction || known.has(id)) continue;
+                if (!byName.has(match[1])) byName.set(match[1], new Map());
+                byName.get(match[1]).set(id, { id, name: `${match[1]} ${direction === 'input' ? 'In' : 'Out'} ${match[3]}`,
+                    direction, channel: Number(match[3]) });
+            }
+            return [...byName].map(([name, ports]) => ({
+                id: `saved:${name}:${direction}`,
+                label: `${name} · Process not open`,
+                kind: direction === 'output' ? 'virtual-output' : 'virtual-input',
+                endpoints: [...ports.values()]
+            }));
+        };
         return {
             sources: [
                 ...virtualGroups('output'),
                 ...profileGroups('output'),
+                ...savedGroups('output'),
                 ...physical.filter(driver => driver.inputEndpoints.length).map(driver => ({
                     id: `${driver.id}:input`, label: `${driver.name} · Inputs`, kind: 'physical-input',
                     endpoints: driver.inputEndpoints
@@ -284,79 +376,29 @@ function App() {
                     endpoints: driver.outputEndpoints
                 })),
                 ...virtualGroups('input'),
-                ...profileGroups('input')
+                ...profileGroups('input'),
+                ...savedGroups('input')
             ]
         };
-    }, [apiState, endpoints.profiled]);
-    const routeKey = route => `${route.sourceEndpointId}\u0000${route.destinationEndpointId}`;
+    }, [apiState, endpoints.profiled, configuration?.routes]);
     const confirmedRoutes = apiState ? configurationFromState(apiState).routes : [];
-    const confirmedRouteByKey = new Map(confirmedRoutes.map(route => [routeKey(route), route]));
-    const draftRouteByKey = new Map((configuration?.routes || []).map(route => [routeKey(route), route]));
-    const savedRouteGroups = groupRoutes(configuration?.routes || [], patchbayGroups.sources,
-        patchbayGroups.destinations, confirmedRoutes, apiState?.routes || []);
-    const sourceGroup = endpoints.sourceGroups.find(group => group.id === sourceZone);
-    const destinationGroup = endpoints.destinationGroups.find(group => group.id === destinationZone);
-    const pageEndpoints = (group, search) => (group?.endpoints || []).filter(endpoint =>
-        endpoint.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
-    const matchingSources = pageEndpoints(sourceGroup, sourceSearch);
-    const matchingDestinations = pageEndpoints(destinationGroup, destinationSearch);
-    const visibleSources = matchingSources.slice(sourcePage * channelPageSize, (sourcePage + 1) * channelPageSize);
-    const visibleDestinations = matchingDestinations.slice(destinationPage * channelPageSize, (destinationPage + 1) * channelPageSize);
-    const visibleSourceIds = new Set(visibleSources.map(endpoint => endpoint.id));
-    const visibleDestinationIds = new Set(visibleDestinations.map(endpoint => endpoint.id));
-    const visibleRouteCount = (configuration?.routes || []).filter(route =>
-        visibleSourceIds.has(route.sourceEndpointId) && visibleDestinationIds.has(route.destinationEndpointId)).length;
-    const sourcePageCount = Math.max(1, Math.ceil(matchingSources.length / channelPageSize));
-    const destinationPageCount = Math.max(1, Math.ceil(matchingDestinations.length / channelPageSize));
-    const routedSources = new Set(confirmedRoutes.map(route => route.sourceEndpointId));
-    const routedDestinations = new Set(confirmedRoutes.map(route => route.destinationEndpointId));
-
-    useEffect(() => {
-        if (!['physical-input', 'virtual-output'].includes(sourceZone)) setSourceZone('virtual-output');
-        const allowed = sourceZone === 'physical-input' ? ['virtual-input'] : ['physical-output', 'virtual-input'];
-        if (!allowed.includes(destinationZone)) setDestinationZone(allowed[0]);
-    }, [sourceZone, destinationZone]);
-    useEffect(() => { setSourcePage(page => Math.min(page, sourcePageCount - 1)); }, [sourcePageCount]);
-    useEffect(() => { setDestinationPage(page => Math.min(page, destinationPageCount - 1)); }, [destinationPageCount]);
-
-    const showRouteInMatrix = useCallback(route => {
-        setRoutingView('matrix');
-        const source = endpoints.all.find(endpoint => endpoint.id === route.sourceEndpointId);
-        const destination = endpoints.all.find(endpoint => endpoint.id === route.destinationEndpointId);
-        if (!source || !destination) return;
-        const sourceGroupId = endpoints.sourceGroups.find(group => group.endpoints.some(endpoint => endpoint.id === source.id))?.id;
-        const destinationGroupId = endpoints.destinationGroups.find(group => group.endpoints.some(endpoint => endpoint.id === destination.id))?.id;
-        if (!sourceGroupId || !destinationGroupId) return;
-        setSourceZone(sourceGroupId);
-        setDestinationZone(destinationGroupId);
-        setSourceSearch('');
-        setDestinationSearch('');
-        const newSourceGroup = endpoints.sourceGroups.find(group => group.id === sourceGroupId);
-        const newDestinationGroup = endpoints.destinationGroups.find(group => group.id === destinationGroupId);
-        setSourcePage(Math.floor(newSourceGroup.endpoints.findIndex(endpoint => endpoint.id === source.id) / channelPageSize));
-        setDestinationPage(Math.floor(newDestinationGroup.endpoints.findIndex(endpoint => endpoint.id === destination.id) / channelPageSize));
-    }, [endpoints.all, endpoints.sourceGroups, endpoints.destinationGroups, channelPageSize]);
-
-    useEffect(() => {
-        if (initialMatrixRouteShown.current || !apiState || !configuration) return;
-        if (!configuration.routes.length) {
-            initialMatrixRouteShown.current = true;
-            return;
-        }
-        const firstVisibleRoute = configuration.routes.find(route =>
-            endpoints.all.some(endpoint => endpoint.id === route.sourceEndpointId) &&
-            endpoints.all.some(endpoint => endpoint.id === route.destinationEndpointId));
-        if (!firstVisibleRoute) return;
-        initialMatrixRouteShown.current = true;
-        showRouteInMatrix(firstVisibleRoute);
-    }, [apiState, configuration, endpoints.all, showRouteInMatrix]);
 
     const configurationLocked = applying || engine?.state === 'reconfiguring';
+    const stableEndpointId = id => {
+        const match = /^virtual:TimoxVasio:(\d+):(input|output):(\d+)$/.exec(id);
+        if (!match) return id;
+        const client = (apiState?.virtualDrivers || []).flatMap(driver => driver.clients || [])
+            .find(item => String(item.pid) === match[1]);
+        return client?.processName
+            ? `virtual:TimoxVasio:app:${client.processName.toLowerCase()}:${match[2]}:${match[3]}` : id;
+    };
     const updateDraft = (update) => setConfiguration(current =>
         configurationLocked || !current ? current : update(current));
     const updateConfiguration = (field, value) => updateDraft(current => ({ ...current, [field]: value }));
     const toggleRoute = (sourceEndpointId, destinationEndpointId) => setConfiguration(current => {
         if (configurationLocked || !current) return current;
+        sourceEndpointId = stableEndpointId(sourceEndpointId);
+        destinationEndpointId = stableEndpointId(destinationEndpointId);
         const existing = current.routes.find(route => route.sourceEndpointId === sourceEndpointId &&
             route.destinationEndpointId === destinationEndpointId);
         if (existing) return { ...current, routes: current.routes.filter(route => route.id !== existing.id) };
@@ -368,36 +410,63 @@ function App() {
             mute: false
         }] };
     });
+    const reconnectRoute = (routeId, sourceEndpointId, destinationEndpointId) => setConfiguration(current => {
+        sourceEndpointId = stableEndpointId(sourceEndpointId);
+        destinationEndpointId = stableEndpointId(destinationEndpointId);
+        if (configurationLocked || !current || current.routes.some(route => route.id !== routeId &&
+            route.sourceEndpointId === sourceEndpointId && route.destinationEndpointId === destinationEndpointId)) return current;
+        return { ...current, routes: current.routes.map(route => route.id === routeId
+            ? { ...route, sourceEndpointId, destinationEndpointId } : route) };
+    });
     const addRoutes = routes => updateDraft(current => ({ ...current,
         routes: [...current.routes, ...routes.map((route, index) => ({
             id: `route-${Date.now()}-${current.routes.length + index}`,
-            ...route, gainDb: 0, mute: false
+            ...route, sourceEndpointId: stableEndpointId(route.sourceEndpointId),
+            destinationEndpointId: stableEndpointId(route.destinationEndpointId),
+            gainDb: 0, mute: false
         }))]
     }));
+    const moveProcessConnections = (sourceName, destinationName) => {
+        if (!configuration || configurationLocked) return;
+        const result = transferProcessConnections(configuration.routes, sourceName, destinationName);
+        if (!result.moved) return;
+        const before = new Map(configuration.routes.map(route => [route.id, route]));
+        pendingMigrations.current.push(...result.routes.filter(route => {
+            const original = before.get(route.id);
+            return original && (original.sourceEndpointId !== route.sourceEndpointId ||
+                original.destinationEndpointId !== route.destinationEndpointId);
+        }).map(route => ({ from: before.get(route.id), to: route })));
+        updateDraft(current => ({ ...current, routes: transferProcessConnections(
+            current.routes, sourceName, destinationName).routes }));
+        setSelectedRouteId(null);
+        setNotice(`${result.moved} connections moved from ${sourceName} to ${destinationName} in the draft` +
+            `${result.duplicates ? `; ${result.duplicates} duplicates kept their existing target settings` : ''}. Review the graph, then Apply configuration.`);
+    };
     const editRoute = (id, field, value) => updateDraft(current => ({
         ...current, routes: current.routes.map(route => route.id === id ? { ...route, [field]: value } : route)
     }));
-    const removeRoute = id => updateDraft(current => ({
-        ...current, routes: current.routes.filter(route => route.id !== id)
-    }));
-    const updateApplicationProfile = (index, field, value) => setApplicationProfiles(current =>
-        current.map((profile, profileIndex) => profileIndex === index
-            ? { ...profile, [field]: value } : profile));
-    const addApplicationProfile = () => {
-        setProfilesError('');
-        setProfilesNotice('');
-        setApplicationProfiles(current => [...current, newProfile]);
-        setNewProfile({ processName: '', inputChannels: 256, outputChannels: 256 });
-    };
-    const removeApplicationProfile = index => setApplicationProfiles(current =>
-        current.filter((_profile, profileIndex) => profileIndex !== index));
-    const saveApplicationProfiles = async () => {
-        if (!applicationProfiles || profilesLoading || profilesSaving) return;
+    const assignProfileToProcess = async (processName, channels) => {
+        if (profilesLoading || profilesSaving) throw new Error('Application profiles are busy. Try again.');
+        const normalizedName = processName.toLocaleLowerCase();
+        const runningPids = new Set((apiState?.virtualDrivers || []).flatMap(driver => driver.clients || [])
+            .filter(client => client.processName.toLocaleLowerCase() === normalizedName).map(client => String(client.pid)));
+        for (const route of configuration?.routes || []) {
+            for (const id of [route.sourceEndpointId, route.destinationEndpointId]) {
+                const match = /^virtual:TimoxVasio:(\d+|app:[^:]+):(input|output):(\d+)$/i.exec(id);
+                if (!match || (match[1].toLocaleLowerCase() !== `app:${normalizedName}` && !runningPids.has(match[1]))) continue;
+                const limit = match[2].toLocaleLowerCase() === 'input' ? channels.inputChannels : channels.outputChannels;
+                if (Number(match[3]) > limit) throw new Error(`Saved connection uses ${match[2]} channel ${match[3]}. Keep at least ${match[3]} ${match[2]} channels or remove that connection first.`);
+            }
+        }
         setProfilesSaving(true);
         setProfilesError('');
         setProfilesNotice('');
         try {
-            const result = await window.vasio.replaceApplicationProfiles(applicationProfiles);
+            const next = confirmedProfiles.filter(profile =>
+                profile.processName.toLocaleLowerCase() !== processName.toLocaleLowerCase());
+            next.push({ processName, inputChannels: channels.inputChannels,
+                outputChannels: channels.outputChannels });
+            const result = await window.vasio.replaceApplicationProfiles(next);
             setApplicationProfiles(result.profiles);
             setConfirmedProfiles(result.profiles);
             const clients = result.restartRequiredClients;
@@ -405,25 +474,173 @@ function App() {
                 ? `Profiles saved. Restart ${clients.map(client => `${client.processName} (PID ${client.pid})`).join(', ')} to apply the changes.`
                 : 'Profiles saved. New ASIO instances will use these values.');
         } catch (error) {
-            setProfilesError(error.status === 404
-                ? 'The running engine does not support application profiles yet. Rebuild and restart TimoxVasio Engine.'
-                : error.message);
+            setProfilesError(error.message);
+            throw error;
         } finally {
             setProfilesSaving(false);
         }
     };
+    const removeProcessConfiguration = async ({ processName, runtimePrefix, includeProfile }) => {
+        if (!apiState || !configuration || configurationDirty || configurationLocked || profilesSaving || hardwareTransfer)
+            throw new Error('Apply pending changes before removing a process configuration.');
+        const original = configurationFromState(apiState);
+        const profilePrefix = `virtual:timoxvasio:app:${processName.toLocaleLowerCase()}:`;
+        const belongs = id => (runtimePrefix && id.startsWith(runtimePrefix)) ||
+            id.toLocaleLowerCase().startsWith(profilePrefix);
+        const remainingRoutes = original.routes.filter(route =>
+            !belongs(route.sourceEndpointId) && !belongs(route.destinationEndpointId));
+        const removedRoutes = original.routes.filter(route =>
+            belongs(route.sourceEndpointId) || belongs(route.destinationEndpointId));
+        const remainingProfiles = includeProfile ? confirmedProfiles.filter(profile =>
+            profile.processName.toLocaleLowerCase() !== processName.toLocaleLowerCase()) : confirmedProfiles;
+        const profileRemoved = remainingProfiles.length !== confirmedProfiles.length;
+        if (!removedRoutes.length && !profileRemoved) return;
+        setApplying(true);
+        setNotice(`Removing ${removedRoutes.length} saved connections for ${processName}…`);
+        let routesApplied = false;
+        let profileApplied = false;
+        try {
+            if (removedRoutes.length) {
+                await window.vasio.applyConfiguration({ ...original, routes: remainingRoutes });
+                routesApplied = true;
+            }
+            if (profileRemoved) {
+                const result = await window.vasio.replaceApplicationProfiles(remainingProfiles);
+                profileApplied = true;
+                setApplicationProfiles(result.profiles);
+                setConfirmedProfiles(result.profiles);
+            }
+            await refreshState({ resetDraft: true });
+            setRouteVisuals(current => {
+                const next = { ...current };
+                removedRoutes.forEach(route => { delete next[routeVisualKey(route)]; });
+                return next;
+            });
+            setSelectedRouteId(null);
+            setNotice(`${processName}: ${removedRoutes.length} saved ${removedRoutes.length === 1 ? 'connection removed' : 'connections removed'}${profileRemoved ? ' and profile removed' : ''}. Restart the application to release its current ASIO channels.`);
+        } catch (error) {
+            const recoveryErrors = [];
+            if (profileApplied) {
+                try {
+                    const restoredProfiles = await window.vasio.replaceApplicationProfiles(confirmedProfiles);
+                    setApplicationProfiles(restoredProfiles.profiles);
+                    setConfirmedProfiles(restoredProfiles.profiles);
+                } catch (rollbackError) { recoveryErrors.push(`profile: ${rollbackError.message}`); }
+            }
+            if (routesApplied) {
+                try { await window.vasio.applyConfiguration(original); await refreshState({ resetDraft: true }); }
+                catch (rollbackError) { recoveryErrors.push(`connections: ${rollbackError.message}`); }
+            }
+            const message = recoveryErrors.length ? `${error.message} Recovery failed for ${recoveryErrors.join('; ')}.` : error.message;
+            setNotice(message);
+            throw new Error(message);
+        } finally { setApplying(false); }
+    };
+    const restoreHardwareTransfer = async (plan, state) => {
+        const driver = state.physicalDrivers?.find(item => item.id === plan.targetDriverId);
+        if (!driver?.capabilitiesKnown) {
+            setNotice('The new physical driver did not publish its ports. The original connections remain saved for recovery.');
+            return;
+        }
+        const result = transferRoutesToDriver(plan.routes, driver);
+        if (result.missing.length) {
+            setNotice(`The new driver lacks ${result.missing.join(', ')}. The original connections remain saved for recovery; choose a driver with these ports.`);
+            return;
+        }
+        const confirmed = configurationFromState(state);
+        const migrated = { ...confirmed, routes: [...confirmed.routes, ...result.routes] };
+        await window.vasio.applyConfiguration(migrated);
+        const final = await refreshState({ resetDraft: true });
+        const saved = configurationFromState(final).routes;
+        if (!result.routes.every(route => saved.some(item => item.sourceEndpointId === route.sourceEndpointId &&
+            item.destinationEndpointId === route.destinationEndpointId && item.gainDb === route.gainDb && item.mute === route.mute)))
+            throw new Error('The new driver opened, but the migrated connections were not confirmed. Their backup remains available.');
+        setHardwareTransfer(null);
+        saveHardwareTransfer(null);
+        setNotice(`${result.routes.length} hardware ${result.routes.length === 1 ? 'connection' : 'connections'} transferred to ${driver.name}.`);
+    };
+    const migrateHardwareConnections = async () => {
+        if (!configuration?.physicalDriverId || configurationLocked || !incompatiblePhysicalRoutes.length) return;
+        const plan = { targetDriverId: configuration.physicalDriverId,
+            previousConfiguration: apiState ? configurationFromState(apiState) : null,
+            routes: incompatiblePhysicalRoutes.map(route => ({ ...route })) };
+        setHardwareTransfer(plan);
+        saveHardwareTransfer(plan);
+        setApplying(true);
+        setNotice('Opening the selected physical driver; the existing connections are saved for transfer…');
+        try {
+            const affected = new Set(plan.routes.map(route => route.id));
+            await window.vasio.applyConfiguration({ ...configuration,
+                routes: configuration.routes.filter(route => !affected.has(route.id)) });
+            const opened = await refreshState({ resetDraft: true });
+            if (opened.engine.physicalDriverId !== plan.targetDriverId)
+                throw new Error('The selected driver did not open. The original connections remain saved for recovery.');
+            await restoreHardwareTransfer(plan, opened);
+        } catch (error) { setNotice(error.message); }
+        finally { setApplying(false); }
+    };
+    const retryHardwareTransfer = async () => {
+        if (!hardwareTransfer || configurationLocked || !apiState) return;
+        setApplying(true);
+        try { await restoreHardwareTransfer(hardwareTransfer, apiState); }
+        catch (error) { setNotice(error.message); }
+        finally { setApplying(false); }
+    };
+    const restorePreviousPhysicalDriver = async () => {
+        const previous = hardwareTransfer?.previousConfiguration;
+        if (!previous?.physicalDriverId || configurationLocked || !apiState) return;
+        setApplying(true);
+        setNotice('Restoring the previous physical driver and its connections…');
+        try {
+            if (apiState.engine.physicalDriverId !== previous.physicalDriverId) {
+                const current = configurationFromState(apiState);
+                await window.vasio.applyConfiguration({ ...current,
+                    physicalDriverId: previous.physicalDriverId,
+                    sampleRate: previous.sampleRate, bufferFrames: previous.bufferFrames,
+                    routes: current.routes.filter(route => ![route.sourceEndpointId, route.destinationEndpointId]
+                        .some(id => id.startsWith('physical:'))) });
+                await refreshState({ resetDraft: true });
+            }
+            await window.vasio.applyConfiguration(previous);
+            const restored = await refreshState({ resetDraft: true });
+            const saved = configurationFromState(restored).routes;
+            if (restored.engine.physicalDriverId !== previous.physicalDriverId ||
+                !previous.routes.every(route => saved.some(item => item.sourceEndpointId === route.sourceEndpointId &&
+                    item.destinationEndpointId === route.destinationEndpointId && item.gainDb === route.gainDb && item.mute === route.mute)))
+                throw new Error('The previous driver or its connections could not be confirmed. The backup remains available.');
+            setHardwareTransfer(null);
+            saveHardwareTransfer(null);
+            setNotice('Previous driver and connections restored.');
+        } catch (error) { setNotice(error.message); }
+        finally { setApplying(false); }
+    };
     const applyConfiguration = async () => {
-        if (!configuration || configurationLocked) return;
+        if (!configuration || configurationLocked || hardwareTransfer) return;
         if (incompatiblePhysicalRoutes.length) {
-            setNotice(`Remove the ${incompatiblePhysicalRoutes.length} route(s) targeting the previous physical driver before applying this configuration.`);
+            setNotice('Use “Switch driver and transfer connections” to keep the saved connections when changing the physical driver.');
             return;
         }
         setApplying(true);
         setNotice('Applying configuration…');
         try {
-            await window.vasio.applyConfiguration(configuration);
+            const latestState = await window.vasio.getState();
+            const latestConfiguration = configurationFromState(latestState);
+            const merged = mergeConfigurationDraft(
+                draftBaseConfiguration.current || latestConfiguration,
+                configuration, latestConfiguration);
+            await window.vasio.applyConfiguration(Number.isInteger(latestState.configurationRevision)
+                ? { ...merged, expectedConfigurationRevision: latestState.configurationRevision }
+                : merged);
             const confirmed = await refreshState({ resetDraft: true });
-            setNotice(configuration.routes.length === 0
+            if (pendingMigrations.current.length) {
+                const time = new Date().toISOString();
+                const migrations = pendingMigrations.current;
+                setMigrationLog(current => [...migrations.map(item => ({ time,
+                    message: `Migrated connection: ${item.from.sourceEndpointId} → ${item.from.destinationEndpointId}` +
+                        ` became ${item.to.sourceEndpointId} → ${item.to.destinationEndpointId}` })), ...current].slice(0, 100));
+                pendingMigrations.current = [];
+            }
+            setNotice(merged.routes.length === 0
                 ? 'Physical driver configured. The audio engine remains stopped until a route is defined.'
                 : confirmed.engine.state === 'stopped' && !confirmed.routes.length
                     ? 'Configured routes are waiting for their application channels to open.'
@@ -435,19 +652,33 @@ function App() {
         }
     };
 
-    const endpointName = id => endpoints.all.find(item => item.id === id)?.name || id;
     const physicalDrivers = apiState?.physicalDrivers || [];
+    const selectPhysicalDriver = driverId => updateDraft(current => ({
+        ...current, physicalDriverId: driverId || null, sampleRate: null, bufferFrames: null
+    }));
     const incompatiblePhysicalRoutes = (configuration?.routes || []).filter(route =>
         [route.sourceEndpointId, route.destinationEndpointId].some(endpointId =>
             endpointId.startsWith('physical:') &&
             (!configuration.physicalDriverId ||
                 !endpointId.startsWith(`physical:${configuration.physicalDriverId}:`))));
-    const removeIncompatibleRoutes = () => updateDraft(current => ({
-        ...current,
-        routes: current.routes.filter(route => !incompatiblePhysicalRoutes.some(incompatible => incompatible.id === route.id))
-    }));
-    const clearAllRoutes = () => updateDraft(current => ({ ...current, routes: [] }));
+    const keepRunningPhysicalDriver = () => {
+        if (!apiState) return;
+        const confirmed = configurationFromState(apiState);
+        updateDraft(current => ({ ...current, physicalDriverId: confirmed.physicalDriverId,
+            sampleRate: confirmed.sampleRate, bufferFrames: confirmed.bufferFrames }));
+        if (hardwareTransfer && hardwareTransfer.targetDriverId !== confirmed.physicalDriverId &&
+            incompatiblePhysicalRoutes.length > 0) {
+            setHardwareTransfer(null);
+            saveHardwareTransfer(null);
+        }
+        setNotice('');
+    };
     const selectedPhysical = physicalDrivers.find(driver => driver.id === configuration?.physicalDriverId);
+    const runningPhysical = physicalDrivers.find(driver => driver.id === engine?.physicalDriverId);
+    const transferTarget = physicalDrivers.find(driver => driver.id === hardwareTransfer?.targetDriverId);
+    const transferMissingPorts = hardwareTransfer && transferTarget?.capabilitiesKnown
+        ? transferRoutesToDriver(hardwareTransfer.routes, transferTarget).missing : [];
+    const physicalDriverChangePending = configuration?.physicalDriverId !== engine?.physicalDriverId;
     const availableRates = selectedPhysical?.sampleRates || [];
     const bufferSizes = (() => {
         const limits = selectedPhysical?.bufferSizes;
@@ -469,6 +700,10 @@ function App() {
     const measurements = apiState?.performanceMeasurements;
     const measurementWindow = measurements?.enabled ? measurements.window : null;
     const hasApplicationPath = (measurementWindow?.clients.length || 0) > 0;
+    const routedPids = new Set((apiState?.routes || []).flatMap(route =>
+        [route.sourceEndpointId, route.destinationEndpointId].map(id =>
+            /^virtual:TimoxVasio:(\d+):/.exec(id)?.[1]).filter(Boolean).map(Number)));
+    const routedClients = (virtualDriver?.clients || []).filter(client => routedPids.has(client.pid));
     const hasStageSamples = hasApplicationPath && [
         ...measurementWindow.clients.flatMap(client => [client.hostCallback, client.ringWrite, client.ringWait]),
         measurementWindow.physical.clientRead, measurementWindow.physical.routing, measurementWindow.physical.outputCopy
@@ -526,6 +761,19 @@ function App() {
     };
     const configurationDirty = !!(apiState && configuration &&
         JSON.stringify(configuration) !== JSON.stringify(configurationFromState(apiState)));
+    const discardDraft = () => {
+        if (!apiState || configurationLocked || !configurationDirty) return;
+        const saved = configurationFromState(apiState);
+        draftBaseConfiguration.current = saved;
+        setConfiguration(saved);
+        setSelectedRouteId(null);
+        pendingMigrations.current = [];
+        setNotice('Pending edits discarded. Saved connections remain unchanged.');
+    };
+    const physicalSettingsPending = !!(configuration && engine && (
+        configuration.physicalDriverId !== engine.physicalDriverId ||
+        (configuration.sampleRate && configuration.sampleRate !== engine.sampleRate) ||
+        (configuration.bufferFrames && configuration.bufferFrames !== engine.bufferFrames)));
     const stopCorrelation = async () => {
         try { await window.vasio.stopCorrelation(); }
         catch (error) { setNotice(error.message); }
@@ -554,18 +802,31 @@ function App() {
     };
 
     return (
-        <div className="App">
+        <div className={`App view-${activeView}`}>
             <header className="App-header">
                 <div className="brand"><h1><a href="https://github.com/timox/TimoxVasio" target="_blank" rel="noopener noreferrer" title="Open the TimoxVasio GitHub repository">Timox VASIO Control</a></h1></div>
                 <div className="status"><span className={`status-light ${engine?.state || 'disconnected'}`} />
                     {connectionError || `Engine: ${engine?.state || 'pending'}`}</div>
             </header>
             <nav className="view-tabs" aria-label="Application sections">
-                {[['configuration', 'Configuration'], ['channels', 'Channels'], ['analysis', 'Analysis'], ['performance', 'Performance'], ['api', 'API and Swagger'], ['diagnostics', 'Logs']].map(([id, label]) =>
+                <div className="view-tabs-heading">Sections</div>
+                {[['configuration', 'ASIO setup'], ['channels', 'Routing'], ['analysis', 'Analysis'], ['performance', 'Performance'], ['api', 'API and Swagger'], ['diagnostics', 'Logs']].map(([id, label]) =>
                     <button key={id} type="button" className={activeView === id ? 'selected' : ''} aria-current={activeView === id ? 'page' : undefined}
-                        onClick={() => { setActiveView(id); if (id === 'diagnostics') refreshDiagnostics(); }}>{label}</button>)}
+                        onClick={() => { setRoutingDialog(null); setActiveView(id); if (id === 'diagnostics') refreshDiagnostics(); }}>{label}</button>)}
+                {activeView === 'channels' && <div className="view-tabs-actions">
+                    <span className={configurationDirty ? 'draft-indicator pending' : 'draft-indicator'}>
+                        {configurationDirty ? 'Changes pending' : 'Configuration applied'}</span>
+                    <button type="button" className="apply-configuration" onClick={applyConfiguration}
+                        disabled={!apiState || !configuration || !configurationDirty || configurationLocked || !!hardwareTransfer || incompatiblePhysicalRoutes.length > 0}>Apply configuration</button>
+                    {configurationDirty && <button type="button" className="discard-draft" onClick={discardDraft}
+                        disabled={configurationLocked || !!hardwareTransfer}>Discard pending edits</button>}
+                </div>}
             </nav>
             {activeView === 'analysis' ? <main className="main-content api-console">
+                <AnalysisTimeline performanceHistory={performanceHistory} transportHistory={transportHistory}
+                    virtualClients={virtualDriver?.clients || []} routes={apiState?.routes || []}
+                    configuredRoutes={confirmedRoutes}
+                    engine={engine} onClear={() => { setPerformanceHistory([]); setTransportHistory([]); }} />
                 <section className="section analysis-view"><h2>L/R stereo correlation</h2>
                     <p className="hint">Measures correlation between the two channels of an active output pair. Values range from −1 (out of phase) to +1 (in phase).</p>
                     <label className="field">L/R output pair
@@ -630,6 +891,7 @@ function App() {
                     </dialog>
                 </section>
             </main> : activeView === 'performance' ? <main className="main-content api-console">
+                <BufferTimingDiagram sampleRate={engine?.sampleRate} bufferFrames={engine?.bufferFrames} />
                 <section className="section buffer-health" aria-label="Physical callback performance">
                     <h2>Physical ASIO callback</h2>
                     {!bufferHealth ? <p>No callback observation yet. Open an ASIO application and wait for a five-second window.</p> : <>
@@ -659,6 +921,32 @@ function App() {
                         </p>
                         <p className="hint">{bufferHealth.sampleRate} Hz · {bufferHealth.bufferFrames} frames · {(bufferHealth.windowDurationMs / 1000).toFixed(1)} s window. Timing incidents do not by themselves prove an audible dropout.</p>
                     </>}
+                </section>
+                <section className="section routed-app-cpu" aria-label="Routed application CPU">
+                    <h2>Routed application load</h2>
+                    <p className="hint">Process CPU is its share of all logical processors, including work outside audio. The callback figure shows how much of one block its audio processing used. A busy host can be identified here; TimoxVasio cannot identify an individual VST inside it.</p>
+                    {routedClients.length === 0 ? <p>No routed ASIO application is active.</p> :
+                        <div className="routed-app-list">{routedClients.map(client => {
+                            const hostCallback = measurementWindow?.clients.find(item => item.processId === client.pid)?.hostCallback;
+                            const blockPeriodNs = bufferHealth?.blockPeriodNs ||
+                                (engine?.sampleRate && engine?.bufferFrames
+                                    ? engine.bufferFrames * 1000000000 / engine.sampleRate : null);
+                            const callbackShare = hostCallback && blockPeriodNs
+                                ? hostCallback.worstNs * 100 / blockPeriodNs : null;
+                            return <article className="routed-app-card" key={client.pid}>
+                                <div className="routed-app-heading"><h3>{client.processName}</h3><span>PID {client.pid}</span></div>
+                                <div className="routed-app-readings">
+                                    <div><span>Windows process CPU</span><strong>{typeof client.processCpuPercent === 'number'
+                                        ? `${client.processCpuPercent.toFixed(1)}%` : '—'}</strong>
+                                        <small>{client.processCpuWindowMs ? `Average over ${(client.processCpuWindowMs / 1000).toFixed(1)} s` : 'Waiting for another reading, or process access unavailable'}</small></div>
+                                    <div className={callbackShare >= 100 ? 'callback-over-budget' : ''}>
+                                        <span>Slowest host callback / block</span><strong>{callbackShare === null ? '—' : `${callbackShare.toFixed(1)}%`}</strong>
+                                        <small>{callbackShare === null ? 'Enable Measure stages and wait for a 5 s window' :
+                                            callbackShare >= 100 ? 'Audio deadline exceeded in a sampled callback' :
+                                                `${formatStageNs(hostCallback.worstNs)} of ${formatStageNs(blockPeriodNs)} available`}</small></div>
+                                </div>
+                            </article>;
+                        })}</div>}
                 </section>
                 <section className="section transport-health" aria-label="Virtual transport losses">
                     <h2>Virtual transport</h2>
@@ -730,6 +1018,10 @@ function App() {
                         {(connectionError || engine?.state !== 'running') && <button type="button" className="engine-start" onClick={() => manageEngine('start')} disabled={!!engineAction}>{engineAction === 'start' ? 'Starting…' : 'Start audio engine'}</button>}
                         {!connectionError && engine?.physicalDriverId && <button type="button" className="engine-stop" onClick={() => manageEngine('stop')} disabled={!!engineAction || (virtualDriver?.clients.length || 0) > 0} title={(virtualDriver?.clients.length || 0) > 0 ? 'Close connected ASIO applications before stopping the engine.' : undefined}>{engineAction === 'stop' ? 'Stopping…' : 'Stop audio engine'}</button>}</div></div>
                     {diagnosticsError && <div className="error-panel">{diagnosticsError}</div>}
+                    {migrationLog.length > 0 && <div className="migration-log" aria-label="Connection migrations">
+                        <h3>Connection migration history</h3>
+                        <ul>{migrationLog.map((entry, index) => <li key={`${entry.time}-${index}`}><time>{entry.time}</time> · {entry.message}</li>)}</ul>
+                    </div>}
                     <div className="log-table-wrap"><table className="log-table"><thead><tr><th>UTC time</th><th>Level</th><th>Component</th><th>Message</th></tr></thead>
                         <tbody>{diagnostics.entries.map((entry, index) => <tr key={`${entry.timestamp}-${index}`}><td>{entry.timestamp}</td><td><span className={`log-level ${entry.level}`}>{entry.level}</span></td><td>{entry.component}</td><td>{entry.message}</td></tr>)}
                             {!diagnostics.entries.length && <tr><td colSpan="4" className="empty-log">No log entries recorded.</td></tr>}</tbody></table></div>
@@ -737,255 +1029,58 @@ function App() {
             </main> : <main className="main-content api-console">
                 {engine?.lastError && <div className="error-panel">{engine.lastError.message}</div>}
                 {notice && <div className="notice" role="status">{notice}</div>}
-
-                {activeView === 'configuration' && <section className="section">
-                    <h2>Virtual ASIO drivers</h2>
-                    {!virtualDriver ? <p className="hint">The engine has not published a virtual driver.</p> : <div className="driver-settings">
-                        <article className="driver-setting">
-                            <h3>{virtualDriver.id}</h3>
-                            <p>Maximum per application: {virtualDriver.channelsPerDirection} inputs · {virtualDriver.channelsPerDirection} outputs</p>
-                            <p>Clock: {engine?.physicalDriverId ? 'selected physical driver' : 'waiting for physical driver'}</p>
-                            <p>Sample rate: {virtualDriver.sampleRate ? `${virtualDriver.sampleRate} Hz` : 'pending'}</p>
-                            <p>Block size: {virtualDriver.bufferFrames ? `${virtualDriver.bufferFrames} frames` : 'pending'}</p>
-                        </article>
+                {['configuration', 'channels'].includes(activeView) && incompatiblePhysicalRoutes.length > 0 &&
+                    <div className="driver-change-blocker" role="alert">
+                        <strong>{physicalDriverChangePending ? 'Physical driver change not applied' : 'Connections target another physical driver'}</strong>
+                        <p>Running: <b>{runningPhysical?.name || 'none'}</b> · Replacement: <b>{selectedPhysical?.name || 'choose a driver below'}</b>.</p>
+                        <p>{incompatiblePhysicalRoutes.length} saved {incompatiblePhysicalRoutes.length === 1 ? 'connection still points' : 'connections still point'} to the old card. Select the replacement driver, then transfer the connections to the same channel numbers.</p>
+                        <label className="field driver-change-target">Replacement physical ASIO driver
+                            <select aria-label="Replacement physical ASIO driver" disabled={configurationLocked || !!hardwareTransfer}
+                                value={selectedPhysical?.id || ''} onChange={event => selectPhysicalDriver(event.target.value)}>
+                                <option value="">Choose a replacement driver…</option>
+                                {physicalDrivers.filter(driver => driver.id !== engine?.physicalDriverId).map(driver =>
+                                    <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+                            </select>
+                        </label>
+                        {physicalDrivers.every(driver => driver.id === engine?.physicalDriverId) &&
+                            <p>No other physical ASIO driver is detected. Connect or install the replacement driver first.</p>}
+                        <div className="driver-change-actions">
+                            <button type="button" className="migrate-hardware-routes" disabled={configurationLocked || !!hardwareTransfer || !selectedPhysical || !physicalDriverChangePending}
+                                onClick={migrateHardwareConnections}>{selectedPhysical ? `Switch driver and transfer ${incompatiblePhysicalRoutes.length} ${incompatiblePhysicalRoutes.length === 1 ? 'connection' : 'connections'}` : 'Choose a replacement driver first'}</button>
+                            {physicalDriverChangePending && <button type="button" onClick={keepRunningPhysicalDriver}>Keep running driver</button>}
+                        </div>
                     </div>}
-                    <p className="hint">Use the “Physical ASIO driver” menu below to select the master clock.</p>
-                </section>}
-
-                {activeView === 'configuration' && <section className="section">
-                    <h2>Application channel profiles</h2>
-                    <p className="hint">These values limit the channels advertised to each executable. They do not reduce the 256 transport channels. Changes take effect when the ASIO application restarts.</p>
-                    {profilesError && <div className="error-panel" role="alert">{profilesError}</div>}
-                    {profilesNotice && <div className="notice" role="status">{profilesNotice}</div>}
-                    {profilesLoading ? <p className="hint">Loading profiles from the API…</p> : applicationProfiles && <>
-                        <div className="profile-table-scroll">
-                            <table className="application-profile-table">
-                                <thead><tr><th>Executable</th><th>Input channels</th><th>Output channels</th><th>Action</th></tr></thead>
-                                <tbody>
-                                    {applicationProfiles.map((profile, index) => <tr key={`${profile.processName}-${index}`}>
-                                        <td><input aria-label={`Executable ${index + 1}`} value={profile.processName}
-                                            onChange={event => updateApplicationProfile(index, 'processName', event.target.value)} /></td>
-                                        <td><input aria-label={`Input channels ${index + 1}`} type="number" min="1" max="256" step="1"
-                                            value={profile.inputChannels} onChange={event => updateApplicationProfile(index, 'inputChannels', Number(event.target.value))} /></td>
-                                        <td><input aria-label={`Output channels ${index + 1}`} type="number" min="1" max="256" step="1"
-                                            value={profile.outputChannels} onChange={event => updateApplicationProfile(index, 'outputChannels', Number(event.target.value))} /></td>
-                                        <td><button type="button" onClick={() => removeApplicationProfile(index)} aria-label={`Remove profile ${profile.processName}`}>Remove</button></td>
-                                    </tr>)}
-                                    {!applicationProfiles.length && <tr><td colSpan="4">No custom profiles; the default is 256 inputs and 256 outputs.</td></tr>}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div className="profile-add-row">
-                            <label className="field">New executable
-                                <input value={newProfile.processName} placeholder="example.exe" onChange={event => setNewProfile(current => ({ ...current, processName: event.target.value }))} />
-                            </label>
-                            <label className="field">Inputs
-                                <input type="number" min="1" max="256" step="1" value={newProfile.inputChannels}
-                                    onChange={event => setNewProfile(current => ({ ...current, inputChannels: Number(event.target.value) }))} />
-                            </label>
-                            <label className="field">Outputs
-                                <input type="number" min="1" max="256" step="1" value={newProfile.outputChannels}
-                                    onChange={event => setNewProfile(current => ({ ...current, outputChannels: Number(event.target.value) }))} />
-                            </label>
-                            <button type="button" onClick={addApplicationProfile} disabled={!newProfile.processName.trim()}>Add profile</button>
-                        </div>
-                        <button type="button" className="save-profiles" aria-label="Save profiles"
-                            disabled={profilesSaving} onClick={saveApplicationProfiles}>
-                            {profilesSaving ? 'Saving…' : 'Save profiles'}
-                        </button>
-                    </>}
-                </section>}
-
-                {activeView === 'channels' && <div className={`apply-bar${configurationDirty ? ' pending' : ''}`} role="status" aria-live="polite">
-                    <span>{configurationDirty
-                        ? 'Pending changes — Apply configuration to activate the draft; audio routing will briefly pause.'
-                        : 'Configuration applied — saved routes match the engine. Check active counts below.'}</span>
-                    <button className="apply-configuration" onClick={applyConfiguration}
-                        disabled={!apiState || !configuration || !configurationDirty || configurationLocked}>Apply configuration</button>
-                </div>}
-
-                {activeView === 'channels' && <section className="section">
-                    <h2>Routing</h2>
-                    <details className="routing-details" open><summary>Edit routes · {(configuration?.routes || []).length} configured</summary>
-                    <div className="routing-view-switch" role="group" aria-label="Routing view">
-                        <button type="button" data-routing-view="overview" aria-pressed={routingView === 'overview'}
-                            className={routingView === 'overview' ? 'selected' : ''} onClick={() => setRoutingView('overview')}>Overview</button>
-                        <button type="button" data-routing-view="quick" aria-pressed={routingView === 'quick'}
-                            className={routingView === 'quick' ? 'selected' : ''} onClick={() => setRoutingView('quick')}>Quick routing</button>
-                        <button type="button" data-routing-view="patchbay" aria-pressed={routingView === 'patchbay'}
-                            className={routingView === 'patchbay' ? 'selected' : ''} onClick={() => setRoutingView('patchbay')}>Connections</button>
-                        <button type="button" data-routing-view="matrix" aria-pressed={routingView === 'matrix'}
-                            className={routingView === 'matrix' ? 'selected' : ''} onClick={() => setRoutingView('matrix')}>Matrix</button>
-                    </div>
-                    {routingView === 'overview' ? <RoutingOverview physicalDriver={selectedPhysical}
-                        virtualClients={virtualDriver?.clients || []} routes={configuration?.routes || []}
-                        routeGroups={savedRouteGroups} /> :
-                    routingView === 'quick' ? <QuickRouting sourceGroups={patchbayGroups.sources}
-                        destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
-                        onAddRoutes={addRoutes} disabled={configurationLocked} /> :
-                    routingView === 'patchbay' ? <RoutingPatchbay sourceGroups={patchbayGroups.sources}
-                        destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
-                        onToggleRoute={toggleRoute} selectedRouteId={selectedRouteId}
-                        routeVisuals={routeVisuals} onChangeRouteVisual={updateRouteVisual}
-                        onBulkChangeRouteVisuals={updateManyRouteVisuals}
-                        onSelectRoute={setSelectedRouteId} onEditRoute={editRoute}
-                        disabled={configurationLocked} /> : <>
-                    <p className="hint">Select a source zone and a compatible destination zone. Each cell connects its row channel to its column channel. Click to add or remove a route.</p>
-                    <div className="routing-matrix">
-                        <div className="matrix-controls">
-                            <label className="field">Source zone
-                                <select value={sourceZone} onChange={event => { setSourceZone(event.target.value); setSourcePage(0); setSourceSearch(''); }}>
-                                    <option value="virtual-output">Virtual outputs (applications → engine)</option>
-                                    <option value="physical-input">Physical inputs (driver → engine)</option>
-                                </select>
-                            </label>
-                            <label className="field">Destination zone
-                                <select value={destinationZone} onChange={event => { setDestinationZone(event.target.value); setDestinationPage(0); setDestinationSearch(''); }}>
-                                    {(sourceZone === 'physical-input' ? ['virtual-input'] : ['physical-output', 'virtual-input']).map(id => {
-                                        const group = endpoints.destinationGroups.find(item => item.id === id);
-                                        return <option key={id} value={id}>{group?.label}</option>;
-                                    })}
-                                </select>
-                            </label>
-                            <label className="field matrix-page-size">Channels per page
-                                <select value={channelPageSize} onChange={event => { setChannelPageSize(Number(event.target.value)); setSourcePage(0); setDestinationPage(0); }}>
-                                    {[8, 16, 32].map(size => <option key={size} value={size}>{size}</option>)}
-                                </select>
-                            </label>
-                        </div>
-                        <div className="matrix-search-row">
-                            <label>Search source channels<input value={sourceSearch} onChange={event => { setSourceSearch(event.target.value); setSourcePage(0); }} placeholder="Channel name" /></label>
-                            <label>Search destination channels<input value={destinationSearch} onChange={event => { setDestinationSearch(event.target.value); setDestinationPage(0); }} placeholder="Channel name" /></label>
-                        </div>
-                        <div className="matrix-axis-summary">
-                            <span>{sourceGroup?.label || 'Source'} · {matchingSources.length} channels</span>
-                            <span>{destinationGroup?.label || 'Destination'} · {matchingDestinations.length} channels</span>
-                            <span className={`route-legend${visibleRouteCount === 0 ? ' empty' : ''}`}>
-                                Draft: {(configuration?.routes || []).length} {(configuration?.routes || []).length === 1 ? 'route' : 'routes'} · {visibleRouteCount} on these pages
-                            </span>
-                        </div>
-                        <p className="matrix-status-legend">● Applied &nbsp; + Pending addition &nbsp; − Pending removal &nbsp; ◆ Pending settings</p>
-                        {visibleRouteCount === 0 && (configuration?.routes || []).length > 0 &&
-                            <p className="hint">Routes exist on other zones or pages. Use “Show in matrix” next to a route below to jump to it.</p>}
-                        <div className="matrix-scroll" role="region" aria-label="Paginated routing matrix" tabIndex="0">
-                            {!visibleSources.length || !visibleDestinations.length ? <div className="matrix-empty">
-                                <strong>{!sourceGroup?.endpoints.length || !destinationGroup?.endpoints.length ? 'No channels published in this zone.' : 'No channels match the search.'}</strong>
-                                <p>{!sourceGroup?.endpoints.length || !destinationGroup?.endpoints.length ? 'Check active drivers and channels published by the API.' : 'Change or clear the search text.'}</p>
-                            </div> : <table className="route-matrix">
-                                <thead>
-                                    <tr className="matrix-zone-headings">
-                                        <th className="matrix-corner" scope="col">Sources ↓ / Destinations →</th>
-                                        <th colSpan={visibleDestinations.length} scope="colgroup">{destinationGroup.label}</th>
-                                    </tr>
-                                    <tr className="matrix-endpoint-headings">
-                                        <th className="matrix-corner matrix-corner-sub" scope="col">{sourceGroup.label}</th>
-                                        {visibleDestinations.map(endpoint => <th key={endpoint.id} className={routedDestinations.has(endpoint.id) ? 'matrix-configured' : ''} scope="col" title={endpoint.name}>
-                                            <span>{routedDestinations.has(endpoint.id) ? '● ' : ''}{endpoint.name}</span>
-                                        </th>)}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {visibleSources.map(source => <tr key={source.id}>
-                                        <th className={`matrix-source-endpoint${routedSources.has(source.id) ? ' matrix-configured' : ''}`} scope="row" title={source.name}>
-                                            {routedSources.has(source.id) ? <span className="configured-mark" aria-label="Routed source">● </span> : null}{source.name}
-                                        </th>
-                                        {visibleDestinations.map(destination => {
-                                            const key = `${source.id}\u0000${destination.id}`;
-                                            const draftRoute = draftRouteByKey.get(key);
-                                            const confirmedRoute = confirmedRouteByKey.get(key);
-                                            const route = !!draftRoute;
-                                            const status = draftRoute && !confirmedRoute ? 'pending-add'
-                                                : !draftRoute && confirmedRoute ? 'pending-remove'
-                                                : draftRoute && confirmedRoute &&
-                                                    (draftRoute.gainDb !== confirmedRoute.gainDb || draftRoute.mute !== confirmedRoute.mute) ? 'pending-edit'
-                                                : draftRoute ? 'applied' : 'inactive';
-                                            const statusLabel = {
-                                                'pending-add': 'route pending application',
-                                                'pending-remove': 'route pending removal',
-                                                'pending-edit': 'route settings pending application',
-                                                applied: 'route applied', inactive: 'route inactive'
-                                            }[status];
-                                            return <td key={destination.id}>
-                                                <button type="button" className={`route-cell ${status}${route ? ' active' : ''}`}
-                                                    disabled={configurationLocked}
-                                                    aria-label={`${source.name} to ${destination.name}, ${statusLabel}`}
-                                                    aria-pressed={route} title={`${source.name} → ${destination.name} · ${statusLabel}`}
-                                                    onClick={() => toggleRoute(source.id, destination.id)}>
-                                                    {{ 'pending-add': '+', 'pending-remove': '−', 'pending-edit': '◆', applied: '●', inactive: '' }[status]}
-                                                </button>
-                                            </td>;
-                                        })}
-                                    </tr>)}
-                                </tbody>
-                            </table>}
-                        </div>
-                        <div className="matrix-pagers">
-                            <div className="matrix-pager">
-                                <span>Sources : {matchingSources.length ? sourcePage * channelPageSize + 1 : 0}–{Math.min((sourcePage + 1) * channelPageSize, matchingSources.length)} / {matchingSources.length}</span>
-                                <button type="button" onClick={() => setSourcePage(page => Math.max(0, page - 1))} disabled={sourcePage === 0}>Previous</button>
-                                <button type="button" onClick={() => setSourcePage(page => Math.min(sourcePageCount - 1, page + 1))} disabled={sourcePage >= sourcePageCount - 1}>Next</button>
-                            </div>
-                            <div className="matrix-pager">
-                                <span>Destinations : {matchingDestinations.length ? destinationPage * channelPageSize + 1 : 0}–{Math.min((destinationPage + 1) * channelPageSize, matchingDestinations.length)} / {matchingDestinations.length}</span>
-                                <button type="button" onClick={() => setDestinationPage(page => Math.max(0, page - 1))} disabled={destinationPage === 0}>Previous</button>
-                                <button type="button" onClick={() => setDestinationPage(page => Math.min(destinationPageCount - 1, page + 1))} disabled={destinationPage >= destinationPageCount - 1}>Next</button>
-                            </div>
-                        </div>
-                    </div>
-                    </>}
-                    <h3>Saved connections</h3>
-                    <p className="hint">A saved route carries audio when both endpoints have opened their ASIO channels.</p>
-                    {savedRouteGroups.length === 0 ? <p className="hint">No routes configured.</p> :
-                        <SavedRouteMatrices groups={savedRouteGroups} endpointName={endpointName}
-                            confirmedRoutes={confirmedRoutes} activeRoutes={apiState?.routes || []}
-                            routeVisuals={routeVisuals} selectedRouteId={selectedRouteId}
-                            onHighlight={route => { setRoutingView('patchbay');
-                                setSelectedRouteId(current => current === route.id ? null : route.id); }}
-                            onShowMatrix={showRouteInMatrix} onEdit={editRoute} onRemove={removeRoute}
-                            disabled={configurationLocked} />}
-                    </details>
-                </section>}
-                {activeView === 'channels' && <section className="section">
-                    <h2>Application channels</h2>
-                    <p className="hint">“Open” shows channels advertised by the application. “Routed” shows channels connected in the displayed configuration. Open channels are not routed automatically.</p>
-                    {applicationChannelSummaries.length === 0 ? <p className="hint">No applications connected to TimoxVasio.</p> :
-                        <div className="application-channel-list">
-                            {applicationChannelSummaries.map(client => <article className="application-channel-card" key={client.pid}>
-                                <h3>{client.processName}</h3>
-                                <div className="application-channel-directions">
-                                    <div><strong>Inputs</strong><span>{client.inputChannels.length} open</span><span>{client.routedInputCount} routed</span></div>
-                                    <div><strong>Outputs</strong><span>{client.outputChannels.length} open</span><span>{client.routedOutputCount} routed</span></div>
-                                </div>
-                                {(client.inputMeterEndpoints.length + client.outputMeterEndpoints.length) > 0 && <div className="active-channel-meters" role="region" tabIndex="0" aria-label={`Active levels for ${client.processName}`}>
-                                    {[...client.inputMeterEndpoints, ...client.outputMeterEndpoints].map(endpoint => <ChannelMeter key={endpoint.id} endpoint={endpoint} meter={meters[endpoint.id]} />)}
-                                </div>}
-                            </article>)}
-                        </div>}
-                </section>}
-
-                {activeView === 'configuration' && <section className="section">
-                    <h2>Physical ASIO driver</h2>
-                    <label className="field">Selected driver
-                        <select disabled={configurationLocked} value={configuration?.physicalDriverId || ''} onChange={event => updateDraft(current => ({
-                            ...current,
-                            physicalDriverId: event.target.value || null,
-                            sampleRate: null,
-                            bufferFrames: null
-                        }))}>
-                            <option value="">None (engine stopped)</option>
-                            {physicalDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
-                        </select>
-                    </label>
-                    {incompatiblePhysicalRoutes.length > 0 && <div className="error-panel" role="alert">
-                        <p>{incompatiblePhysicalRoutes.length} {incompatiblePhysicalRoutes.length === 1 ? 'route still targets' : 'routes still target'} the previous physical driver. Remove those routes from the draft before applying the new driver.</p>
-                        <div className="analysis-actions">
-                            <button type="button" className="remove-incompatible-routes" disabled={configurationLocked}
-                                onClick={removeIncompatibleRoutes}>Remove previous hardware routes</button>
-                            <button type="button" className="clear-all-routes" disabled={configurationLocked}
-                                onClick={clearAllRoutes}>Clear all routes</button>
-                        </div>
-                        <p>These changes take effect only when you select Apply configuration.</p>
+                {['configuration', 'channels'].includes(activeView) && hardwareTransfer &&
+                    <div className="driver-change-recovery" role="alert">
+                        <strong>{hardwareTransfer.routes.length} {hardwareTransfer.routes.length === 1 ? 'connection saved' : 'connections saved'} for transfer</strong>
+                        <p>The original connections are backed up in Control. The target driver is {transferTarget?.name || hardwareTransfer.targetDriverId}.</p>
+                        {transferMissingPorts.length > 0 && <p>The new driver has no {transferMissingPorts.join(', ')}. Restore the previous driver, or choose another card with these channels.</p>}
+                        {engine?.physicalDriverId === hardwareTransfer.targetDriverId ?
+                            <button type="button" disabled={configurationLocked || !transferTarget?.capabilitiesKnown || transferMissingPorts.length > 0}
+                                onClick={retryHardwareTransfer}>Restore connections on the new driver</button> :
+                            <p>Open the target driver to discover its ports, then restore these connections.</p>}
+                        {hardwareTransfer.previousConfiguration?.physicalDriverId &&
+                            <button type="button" disabled={configurationLocked} onClick={restorePreviousPhysicalDriver}>
+                                Restore previous driver and connections
+                            </button>}
                     </div>}
+
+                {activeView === 'configuration' && <section className="section setup-physical">
+                    <div className="setup-heading"><div><span className="setup-kind">▣ Hardware</span><h2>Physical ASIO driver</h2></div>
+                        <span className={`setup-state ${physicalSettingsPending ? 'pending' : 'applied'}`}>{physicalSettingsPending ? 'Changes pending' : engine?.physicalDriverId ? 'Configured' : 'No driver selected'}</span></div>
+                    {engine?.physicalDriverId && <div className="analysis-actions"><button type="button" className="engine-reset"
+                        disabled={!!engineAction || applying || configurationLocked}
+                        onClick={() => manageEngine('reset')}>{engineAction === 'reset' ? 'Reopening driver…' : 'Reset physical driver'}</button>
+                        <span className="hint">Briefly interrupts audio and reopens the last saved configuration; saved connections are kept.</span></div>}
+                    {incompatiblePhysicalRoutes.length > 0 ?
+                        <p className="hint">Choose the replacement driver in the warning above, or keep the running driver.</p> :
+                        <label className="field">Selected driver
+                            <select disabled={configurationLocked} value={configuration?.physicalDriverId || ''}
+                                onChange={event => selectPhysicalDriver(event.target.value)}>
+                                <option value="">None (engine stopped)</option>
+                                {physicalDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+                            </select>
+                        </label>}
                     {configuration?.physicalDriverId && <>
                         <label className="field">Physical sample rate
                             <select disabled={configurationLocked} value={configuration.sampleRate || ''} onChange={event => updateConfiguration('sampleRate', event.target.value ? Number(event.target.value) : null)}>
@@ -1003,20 +1098,91 @@ function App() {
                     </>}
                 </section>}
 
-                {activeView === 'channels' && <section className="section">
-                    <h2>Clients connected to TimoxVasio</h2>
-                    {!virtualDriver?.clients.length ? <p className="hint">No ASIO clients connected.</p> : <ul className="configured-routes">
-                        {virtualDriver.clients.map(client => <li key={client.pid}>
-                            <span>{client.processName} · PID {client.pid}</span>
-                            <span>Inputs: {client.inputChannels.join(', ') || 'none'}</span>
-                            <span>Outputs: {client.outputChannels.join(', ') || 'none'}</span>
-                        </li>)}
-                    </ul>}
+                {activeView === 'configuration' && <section className="section setup-profiles">
+                    <div className="setup-heading"><div><span className="setup-kind">◇ Capacity for applications</span><h2>Application channel profiles</h2></div>
+                        <span className="setup-state applied">{confirmedProfiles.length} saved</span></div>
+                    <p className="hint">Assign a channel profile to an existing process from its block in Routing. Use “Show all ports” there if it has no connections yet. The profile takes effect when the application opens ASIO again.</p>
+                    {profilesError && <div className="error-panel" role="alert">{profilesError}</div>}
+                    {profilesNotice && <div className="notice" role="status">{profilesNotice}</div>}
+                    {profilesLoading ? <p className="hint">Loading profiles from the API…</p> : applicationProfiles && <>
+                        <div className="profile-table-scroll">
+                            <table className="application-profile-table">
+                                <thead><tr><th>Executable</th><th>Input channels</th><th>Output channels</th></tr></thead>
+                                <tbody>
+                                    {applicationProfiles.map((profile, index) => <tr key={`${profile.processName}-${index}`}>
+                                        <td>{profile.processName}</td>
+                                        <td>{profile.inputChannels}</td>
+                                        <td>{profile.outputChannels}</td>
+                                    </tr>)}
+                                    {!applicationProfiles.length && <tr><td colSpan="3">No application profiles configured.</td></tr>}
+                                </tbody>
+                            </table>
+                        </div>
+                        <button type="button" onClick={() => setActiveView('channels')}>Open Routing to configure a process</button>
+                    </>}
                 </section>}
 
-                {activeView === 'configuration' && <button className="apply-configuration" onClick={applyConfiguration} disabled={!apiState || !configuration || configurationLocked}>
+                {activeView === 'channels' && <div className={`apply-bar${configurationDirty ? ' pending' : ''}`} role="status" aria-live="polite">
+                    <span>{hardwareTransfer ? 'Connection transfer needs attention — use the recovery options above.' : incompatiblePhysicalRoutes.length > 0
+                        ? 'Driver change blocked — resolve the old hardware connections above.' : configurationDirty
+                        ? 'Pending changes — Apply configuration to activate the draft; audio routing will briefly pause.'
+                        : 'Configuration applied — saved routes match the engine. Check active counts below.'}</span>
+                    <button className="apply-configuration" onClick={applyConfiguration}
+                        disabled={!apiState || !configuration || !configurationDirty || configurationLocked || !!hardwareTransfer || incompatiblePhysicalRoutes.length > 0}>Apply configuration</button>
+                    {configurationDirty && <button type="button" className="discard-draft" onClick={discardDraft}
+                        disabled={configurationLocked || !!hardwareTransfer}>Discard pending edits</button>}
+                </div>}
+
+                {activeView === 'channels' && <section className="section routing-workspace-section">
+                    <h2>Routing</h2>
+                    <p className="hint">Right-click the background, a process, or a cable for its actions. Details open in a dialog.</p>
+                    <RoutingPatchbay sourceGroups={patchbayGroups.sources}
+                        destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
+                        confirmedRoutes={confirmedRoutes} activeRoutes={apiState?.routes || []}
+                        meters={meters} onToggleRoute={toggleRoute} onReconnectRoute={reconnectRoute} selectedRouteId={selectedRouteId}
+                        routeVisuals={routeVisuals} onChangeRouteVisual={updateRouteVisual}
+                        onBulkChangeRouteVisuals={updateManyRouteVisuals}
+                        onSelectRoute={setSelectedRouteId} onEditRoute={editRoute}
+                        profiles={confirmedProfiles} onAssignProfile={assignProfileToProcess}
+                        onRemoveProcessConfiguration={removeProcessConfiguration}
+                        onTransferProcessConnections={moveProcessConnections}
+                        onCreateConnection={processName => setRoutingDialog({ kind: 'add', processName })}
+                        onShowProcessDetail={processName => setRoutingDialog({ kind: 'process', processName })}
+                        disabled={configurationLocked} />
+                </section>}
+                {activeView === 'channels' && routingDialog && createPortal(<div className="routing-dialog-backdrop" onMouseDown={event => {
+                    if (event.target === event.currentTarget) setRoutingDialog(null);
+                }}><div className="routing-dialog" role="dialog" aria-modal="true" aria-label={routingDialog.kind === 'add' ? 'Add a connection' : 'Process and channel detail'}>
+                    <div className="routing-dialog-heading"><h2>{routingDialog.kind === 'add' ? 'Add a connection' : 'Process and channel detail'}</h2>
+                        <button type="button" onClick={() => setRoutingDialog(null)}>Close</button></div>
+                    {routingDialog.kind === 'add' ? <QuickRouting sourceGroups={patchbayGroups.sources}
+                        destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
+                        onAddRoutes={addRoutes} resolveEndpointId={stableEndpointId}
+                        preferredProcessName={routingDialog.processName || ''}
+                        disabled={configurationLocked} /> : <>
+                    <p className="hint">“Open” shows channels advertised by the application. “Routed” shows channels connected in the displayed configuration. Open channels are not routed automatically.</p>
+                    {applicationChannelSummaries.filter(client => !routingDialog.processName || client.processName.toLocaleLowerCase() === routingDialog.processName.toLocaleLowerCase()).length === 0 ? <p className="hint">No application channels are currently open.</p> :
+                        <div className="application-channel-list">
+                            {applicationChannelSummaries.filter(client => !routingDialog.processName || client.processName.toLocaleLowerCase() === routingDialog.processName.toLocaleLowerCase()).map(client => <article className="application-channel-card" key={client.pid}>
+                                <h3>{client.processName}</h3>
+                                <div className="application-channel-directions">
+                                    <div><strong>Inputs</strong><span>{client.inputChannels.length} open</span><span>{client.routedInputCount} routed</span></div>
+                                    <div><strong>Outputs</strong><span>{client.outputChannels.length} open</span><span>{client.routedOutputCount} routed</span></div>
+                                </div>
+                                {(client.inputMeterEndpoints.length + client.outputMeterEndpoints.length) > 0 && <div className="active-channel-meters" role="region" tabIndex="0" aria-label={`Active levels for ${client.processName}`}>
+                                    {[...client.inputMeterEndpoints, ...client.outputMeterEndpoints].map(endpoint => <ChannelMeter key={endpoint.id} endpoint={endpoint} meter={meters[endpoint.id]} />)}
+                                </div>}
+                            </article>)}
+                        </div>}
+                    </>}
+                </div></div>, document.body)}
+
+
+
+                {activeView === 'configuration' && <div className="analysis-actions"><button className="apply-configuration" onClick={applyConfiguration} disabled={!apiState || !configuration || configurationLocked || !!hardwareTransfer || incompatiblePhysicalRoutes.length > 0}>
                     Apply configuration
-                </button>}
+                </button>{configurationDirty && <button type="button" className="discard-draft" onClick={discardDraft}
+                    disabled={configurationLocked || !!hardwareTransfer}>Discard pending edits</button>}</div>}
             </main>}
         </div>
     );

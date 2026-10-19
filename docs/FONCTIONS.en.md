@@ -2,13 +2,13 @@
 
 [Français](FONCTIONS.md) | **English**
 
-This guide describes Timox VASIO Control in [TimoxVasio 1.2.5](https://github.com/timox/TimoxVasio/releases/tag/v1.2.5). The application has six views:
+This guide describes [TimoxVasio 1.2.6](https://github.com/timox/TimoxVasio/releases/tag/v1.2.6). The application has six views:
 
 | View | Main use |
 | --- | --- |
-| **Configuration** | Select the physical ASIO driver, sample rate, and buffer size; configure per-application channel profiles. |
-| **Channels** | Inspect connected applications, open and routed channels, and meters; edit routes with Quick routing, the graphical patchbay, or the matrix. |
-| **Analysis** | Follow L/R correlation for an open, routed stereo output pair. |
+| **Configuration** | Select the physical ASIO driver, sample rate, and buffer size; review assigned application channel profiles. |
+| **Routing** | Inspect patchbay connections, assign a profile to a present process, remove its configuration, then open the matrix for one connection. |
+| **Analysis** | Explore Performance history, transport incidents and stereo correlation; export session data. |
 | **Performance** | Check that the physical driver callback fits within one block and measure each stage of the audio path. |
 | **API and Swagger** | Read the embedded contract and send HTTP requests or WebSocket commands from the integrated console. |
 | **Logs** | Inspect engine events and set the diagnostic level. |
@@ -28,9 +28,11 @@ Samples follow the audio path. Control, Swagger, and the console use the local A
 
 ## Open channels, routes, and meters
 
-An application profile can advertise up to 256 inputs and 256 outputs. Only channels it opens through ASIO become active endpoints. An open channel is not automatically routed. In **Channels**, meters appear only for the application's channels that are both open and part of an active route.
+**Routing** opens on the patchbay and shows saved connections. **Connection pair** focuses one source/destination pair; **Show all ports** reveals available ports. **Add a connection** opens the mono/stereo form. A process block holds its inputs on the left and outputs on the right, including ports from its saved profile. The −, +, and **Fit** controls change zoom; drag the background to pan the graph. The ✥ handle moves a block and ✎ gives it a display name; these choices are saved locally in Control and do not change any ASIO names.
 
-**Overview** summarizes used and available physical channels and application flows. **Quick routing** suggests a mono or stereo connection between source and destination groups; you can change the proposed channels. Routes can also be created in the graphical **patchbay** (ports grouped by application, visible cables, a connection inspector) or in the **matrix**, which suits dense routing. Saved connections are grouped by source/destination pair; each group shows a channel range, applied or pending status, and an active route count. Opening a group reveals a small matrix of the channels in use, with per-connection gain, mute, and removal controls. Routes for disconnected applications remain grouped under their executable name. An applied route becomes active only when both ASIO channels are open. Audio changes remain in the draft until **Apply configuration**. One or more selected connections can receive a label and a color; these choices exist only in the cabling view and change neither the engine's routes nor the audio processing.
+The ⚙ button on a present process in Routing assigns its ASIO input/output capacity profile, initially suggesting 2/2. The profile applies to the executable the next time it opens ASIO; 256 is an internal limit, not a set of ports shown by default. In the same panel, **Remove this configuration** removes the process connections and its profile after confirmation without closing the Windows process. Only channels opened by the application become active endpoints. An open channel is not automatically connected. Process and meter details remain collapsed below the graph.
+
+Graph blocks distinguish physical hardware, a running process, and a saved profile. Physical and virtual ports use different colors and shapes. A solid cable is saved, a dashed cable has pending changes, and a dotted cable is muted; ▲ indicates positive gain. Selecting a cable shows its state, gain, mute, and a matrix restricted to linked channels between the two blocks. An applied connection becomes active only when both ASIO channels are open. Audio changes remain pending until **Apply configuration**. Custom labels and colors are local to Control and do not affect audio processing.
 
 ```mermaid
 flowchart LR
@@ -99,7 +101,7 @@ For example, with no application connected, state may show eight `configuredRout
 
 ## Performance: callback budget and stage timing
 
-The **Performance** view answers two questions: does the physical driver callback fit within one block, and where does the time go between the application and the interface.
+The **Performance** view shows the sample → ASIO buffers → block diagram and answers two questions: does the physical driver callback fit within one block, and where does the time go between the application and the interface. One block lasts `bufferFrames / sampleRate`. **Routed application load** also shows Windows process CPU (averaged across all logical processors) and, when stage timing is enabled, the worst application callback as a percentage of one block. A value above 100% indicates that a sampled callback missed its audio deadline; these measurements cannot identify a particular VST.
 
 **Physical callback budget.** For each five-second window the engine publishes `bufferHealth` in `GET /api/v1/state`: the slowest callback, the time available for one block (`bufferFrames / sampleRate`), the remaining margin or overrun (*Time left* / *Over time*), the number of delayed starts, processing overruns and observed callbacks. The state is `healthy`, `warning`, or `insufficient` when the window does not hold enough callbacks. A delayed start is a scheduling observation, not proof of an audible dropout. Nothing is adjusted automatically: raising the buffer size remains the user's decision.
 
@@ -127,6 +129,12 @@ $state = Invoke-RestMethod 'http://127.0.0.1:52525/api/v1/state'
 $state.bufferHealth | Format-List state, callbackCount, delayedStartCount, processingOverrunCount
 $state.performanceMeasurements.window.physical | Format-List
 ```
+
+## Analysis: measurement history
+
+The **Analysis** tab plots measurements collected in Performance: physical callback time relative to a block, routed process CPU, and worst application callback time relative to a block. It samples state every five seconds; history calculations do not run on the audio thread. Ring underrun and overrun incidents are plotted by application and direction as differences between cumulative counters. The first point is a baseline, not a new incident. Counters are shared by channels in one transport and cannot identify the individual channel responsible.
+
+The channel section distinguishes **configured** routes, channels **opened** by the application, and channels **routed now**. A routed channel does not prove that audio is present. History is retained in memory while Control is open (up to 1,800 performance and 7,200 transport snapshots); **Export CSV** supports later analysis. Frequency distribution is not available from the current API: it would require occasionally copying a selected channel block and computing its spectrum outside the audio callback.
 
 ## Integrated API console and programming examples
 

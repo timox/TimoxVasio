@@ -315,9 +315,16 @@ AudioControllerResult AudioController::SetPerformanceMeasurementsEnabled(bool en
 }
 
 AudioControllerResult AudioController::ApplyConfiguration(
-    const AudioControllerConfiguration& configuration) {
+    const AudioControllerConfiguration& configuration,
+    std::optional<std::uint64_t> expectedConfigurationRevision) {
     try {
-        return Invoke([this, configuration] { return ApplyOnWorker(configuration); });
+        return Invoke([this, configuration, expectedConfigurationRevision] {
+            if (expectedConfigurationRevision &&
+                *expectedConfigurationRevision != configurationRevision_)
+                return AudioControllerResult{false,
+                    "Saved configuration changed in another application; refresh and retry", true};
+            return ApplyOnWorker(configuration);
+        });
     } catch (const std::exception& exception) {
         return {false, exception.what()};
     }
@@ -328,6 +335,18 @@ AudioControllerResult AudioController::StartAudio() {
         return Invoke([this] {
             if (!audioStoppedByCommand_ && Snapshot().state == "running")
                 return AudioControllerResult{true, {}};
+            const auto result = ApplyConfigurationCore(desiredConfiguration_);
+            if (result.success) audioStoppedByCommand_ = false;
+            return result;
+        });
+    } catch (const std::exception& exception) {
+        return {false, exception.what()};
+    }
+}
+
+AudioControllerResult AudioController::ResetAudio() {
+    try {
+        return Invoke([this] {
             const auto result = ApplyConfigurationCore(desiredConfiguration_);
             if (result.success) audioStoppedByCommand_ = false;
             return result;
@@ -396,6 +415,7 @@ void AudioController::SetStatus(const AudioControllerSnapshot& snapshot) {
     const auto revision = state_.revision + 1;
     state_ = snapshot;
     state_.revision = revision;
+    state_.configurationRevision = configurationRevision_;
     events_.push_back(state_);
     if (events_.size() > 64) events_.pop_front();
 }
@@ -623,6 +643,7 @@ AudioControllerResult AudioController::ApplyOnWorker(
             return {false, failed.lastError};
         }
         desiredConfiguration_ = std::move(durable);
+        ++configurationRevision_;
         auto status = Snapshot();
         status.configuredRoutes = desiredConfiguration_.routes;
         SetStatus(status);
@@ -659,6 +680,10 @@ void AudioController::RestoreConfigurationOnWorker() {
     }
     desiredConfiguration_ = configuration;
     const auto restored = ApplyConfigurationCore(configuration);
+    if (restored.success) {
+        ++configurationRevision_;
+        SetStatus(Snapshot());
+    }
     if (!restored.success) {
         StopPhysicalRuntime();
         auto failed = Snapshot();

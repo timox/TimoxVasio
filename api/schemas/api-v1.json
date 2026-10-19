@@ -10,6 +10,7 @@
     { "$ref": "#/definitions/applyCommand" },
     { "$ref": "#/definitions/engineStartCommand" },
     { "$ref": "#/definitions/engineStopCommand" },
+    { "$ref": "#/definitions/engineResetCommand" },
     { "$ref": "#/definitions/correlationStartCommand" },
     { "$ref": "#/definitions/correlationStopCommand" },
     { "$ref": "#/definitions/performanceMeasurementsSetCommand" },
@@ -69,6 +70,8 @@
             "properties": {
               "pid": { "type": "integer", "minimum": 1 },
               "processName": { "type": "string" },
+              "processCpuPercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100, "description": "Windows process CPU averaged across all active logical processors. Null until two process-time samples are available." },
+              "processCpuWindowMs": { "type": ["integer", "null"], "minimum": 1, "description": "Elapsed wall time between process CPU samples. Null until the first measurement." },
               "inputChannels": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 256 } },
               "outputChannels": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 256 } }
             },
@@ -121,6 +124,7 @@
       "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes", "configuredRoutes", "stereoPairs", "bufferHealth", "performanceMeasurements"],
       "properties": {
         "apiVersion": { "const": "1.0" },
+        "configurationRevision": { "type": "integer", "minimum": 0 },
         "engine": { "$ref": "#/definitions/engine" },
         "physicalDrivers": { "type": "array", "items": { "$ref": "#/definitions/physicalDriver" } },
         "virtualDrivers": { "type": "array", "items": { "$ref": "#/definitions/virtualDriver" } },
@@ -316,7 +320,8 @@
             "physicalDriverId": { "type": ["string", "null"] },
             "sampleRate": { "type": ["integer", "null"], "minimum": 1 },
             "bufferFrames": { "type": ["integer", "null"], "minimum": 1 },
-            "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } }
+            "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } },
+            "expectedConfigurationRevision": { "type": "integer", "minimum": 0 }
           },
           "additionalProperties": false
         }
@@ -336,6 +341,12 @@
       "type": "object",
       "required": ["id", "command"],
       "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 128 }, "command": { "const": "engine.start" } },
+      "additionalProperties": false
+    },
+    "engineResetCommand": {
+      "type": "object",
+      "required": ["id", "command"],
+      "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 128 }, "command": { "const": "engine.reset" } },
       "additionalProperties": false
     },
     "correlationStartCommand": {
@@ -369,6 +380,7 @@
         { "$ref": "#/definitions/applyCommand" },
         { "$ref": "#/definitions/engineStartCommand" },
         { "$ref": "#/definitions/engineStopCommand" },
+        { "$ref": "#/definitions/engineResetCommand" },
         { "$ref": "#/definitions/correlationStartCommand" },
         { "$ref": "#/definitions/correlationStopCommand" },
         { "$ref": "#/definitions/performanceMeasurementsSetCommand" }

@@ -15,16 +15,18 @@ const pair = (group, start, stereo) => !start ? [] : stereo
     ? [start, group.endpoints.find(endpoint => endpoint.channel === start.channel + 1)].filter(Boolean)
     : [start];
 
-const pickStart = (starts, selected, used, group, stereo, preferredChannel) => starts.find(endpoint => endpoint.id === selected)
+const pickStart = (starts, selected, used, group, stereo, preferredChannel, resolveEndpointId) => starts.find(endpoint => endpoint.id === selected)
     || starts.find(endpoint => endpoint.channel === preferredChannel &&
-        pair(group, endpoint, stereo).every(channel => !used.has(channel.id)))
-    || starts.find(endpoint => pair(group, endpoint, stereo).every(channel => !used.has(channel.id)))
+        pair(group, endpoint, stereo).every(channel => !used.has(resolveEndpointId(channel.id))))
+    || starts.find(endpoint => pair(group, endpoint, stereo).every(channel => !used.has(resolveEndpointId(channel.id))))
     || starts[0];
 
 export default function QuickRouting({ sourceGroups = [], destinationGroups = [], routes = [], onAddRoutes,
-    disabled = false }) {
-    const [sourceGroupId, setSourceGroupId] = useState('');
-    const [destinationGroupId, setDestinationGroupId] = useState('');
+    resolveEndpointId = id => id, disabled = false, preferredProcessName = '' }) {
+    const preferredSource = sourceGroups.find(group => group.label.split(' · ')[0].toLocaleLowerCase() === preferredProcessName.toLocaleLowerCase());
+    const preferredDestination = destinationGroups.find(group => group.label.split(' · ')[0].toLocaleLowerCase() === preferredProcessName.toLocaleLowerCase());
+    const [sourceGroupId, setSourceGroupId] = useState(preferredSource?.id || '');
+    const [destinationGroupId, setDestinationGroupId] = useState(preferredSource ? '' : preferredDestination?.id || '');
     const [sourceStartId, setSourceStartId] = useState('');
     const [destinationStartId, setDestinationStartId] = useState('');
     const [stereo, setStereo] = useState(true);
@@ -35,16 +37,17 @@ export default function QuickRouting({ sourceGroups = [], destinationGroups = []
     const usedDestinations = new Set(routes.map(route => route.destinationEndpointId));
     const sourceStarts = startsFor(sourceGroup, stereo);
     const destinationStarts = startsFor(destinationGroup, stereo);
-    const sourceStart = pickStart(sourceStarts, sourceStartId, usedSources, sourceGroup, stereo);
+    const sourceStart = pickStart(sourceStarts, sourceStartId, usedSources, sourceGroup, stereo,
+        undefined, resolveEndpointId);
     const destinationStart = pickStart(destinationStarts, destinationStartId, usedDestinations,
-        destinationGroup, stereo, sourceStart?.channel);
+        destinationGroup, stereo, sourceStart?.channel, resolveEndpointId);
     const sources = pair(sourceGroup, sourceStart, stereo);
     const targets = pair(destinationGroup, destinationStart, stereo);
     const proposed = sources.map((source, index) => ({ sourceEndpointId: source.id,
         destinationEndpointId: targets[index]?.id })).filter(route => route.destinationEndpointId);
     const missing = proposed.filter(route => !routes.some(existing =>
-        existing.sourceEndpointId === route.sourceEndpointId &&
-        existing.destinationEndpointId === route.destinationEndpointId));
+        existing.sourceEndpointId === resolveEndpointId(route.sourceEndpointId) &&
+        existing.destinationEndpointId === resolveEndpointId(route.destinationEndpointId)));
     const channelLabel = endpoints => endpoints.map(endpoint => endpoint.channel).join('–');
     const add = () => {
         if (!missing.length || disabled) return;

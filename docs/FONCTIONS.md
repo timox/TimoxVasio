@@ -2,13 +2,13 @@
 
 **Français** | [English](FONCTIONS.en.md)
 
-Cette page décrit les fonctions de Timox VASIO Control dans [TimoxVasio 1.2.5](https://github.com/timox/TimoxVasio/releases/tag/v1.2.5). L’interface est en anglais ; elle réunit six vues :
+Cette page décrit les fonctions de [TimoxVasio 1.2.6](https://github.com/timox/TimoxVasio/releases/tag/v1.2.6). L’interface est en anglais ; elle réunit six vues :
 
 | Vue | Usage principal |
 | --- | --- |
-| **Configuration** | Choisir le pilote ASIO physique, sa fréquence et son tampon; régler les profils de canaux par application. |
-| **Channels** | Voir les applications connectées, les canaux ouverts et routés, leurs niveaux, puis modifier les routes dans l'ajout rapide, le patchbay graphique ou la matrice. |
-| **Analysis** | Suivre la corrélation des sorties gauche et droite d’une paire stéréo ouverte et routée. |
+| **Configuration** | Choisir le pilote ASIO physique, sa fréquence et son tampon; consulter les profils de canaux attribués aux applications. |
+| **Routing** | Voir les connexions dans le patchbay, attribuer un profil à un processus présent, retirer sa configuration, puis ouvrir la matrice d'une connexion précise. |
+| **Analysis** | Explorer l'historique des métriques Performance, les incidents du transport et la corrélation stéréo ; exporter les données. |
 | **Performance** | Vérifier que le callback du pilote physique tient dans le temps d’un bloc et mesurer la durée de chaque étape du trajet audio. |
 | **API and Swagger** | Lire le contrat embarqué et envoyer des requêtes HTTP ou commandes WebSocket depuis la console intégrée. |
 | **Logs** | Consulter les événements du moteur et choisir le niveau de diagnostic. |
@@ -28,9 +28,11 @@ Les échantillons suivent le chemin du haut. L’interface, Swagger et la consol
 
 ## Canaux ouverts, routes et vumètres
 
-Une application peut recevoir un profil annonçant jusqu’à 256 entrées et 256 sorties. Seuls les canaux qu’elle ouvre avec ASIO deviennent des extrémités actives. Un canal ouvert n’est pas automatiquement routé. Dans **Channels**, les vumètres sont affichés uniquement pour les canaux de cette application qui sont à la fois ouverts et présents dans une route active.
+**Routing** s'ouvre sur le patchbay et montre les connexions sauvegardées. Le sélecteur **Connection pair** isole un couple source/destination ; **Show all ports** révèle les ports disponibles. **Add a connection** ouvre l'ajout mono/stéréo. Un bloc de processus réunit ses entrées à gauche et ses sorties à droite, y compris les ports issus de son profil enregistré. Les commandes −, + et **Fit** règlent le zoom; on peut faire glisser le fond pour parcourir la carte. La poignée ✥ déplace un bloc et ✎ lui donne un nom d'affichage ; ces choix sont conservés localement dans Control et ne changent aucun nom ASIO.
 
-L'onglet **Overview** résume les canaux physiques utilisés ou disponibles et les flux par application. **Quick routing** propose un branchement mono ou stéréo entre groupes source et destination, avec des canaux suggérés que l'on peut changer. Les routes se créent aussi dans le **patchbay** graphique (ports groupés par application, câbles visibles, inspecteur de connexion) ou dans la **matrice**, mieux adaptée aux routages denses. Les connexions enregistrées sont regroupées par couple source/destination ; chaque groupe affiche une plage de canaux, l'état appliqué ou en attente et le nombre de routes actives. En ouvrant le groupe, une petite matrice ne montre que les canaux concernés, avec une case par connexion donnant accès au gain, au mute et à la suppression. Les routes d'une application déconnectée restent regroupées par son nom. Une route appliquée ne devient active que lorsque les deux canaux ASIO sont ouverts. Les modifications restent en brouillon jusqu'à **Apply configuration**. Une ou plusieurs connexions sélectionnées peuvent recevoir un libellé et une couleur ; ces choix n’existent que dans la vue de câblage et ne changent ni les routes du moteur ni le traitement audio.
+Le bouton ⚙ d'un processus présent dans Routing permet de lui attribuer un profil de capacité en entrées et sorties ASIO, avec 2/2 proposés au départ. Le profil s'applique à l'exécutable au prochain démarrage ASIO; 256 est une limite interne et non un ensemble de ports affichés par défaut. Dans ce même panneau, **Remove this configuration** retire les connexions de ce processus et son profil après confirmation, sans fermer le processus Windows. Seuls les canaux ouverts par l'application deviennent des extrémités actives. Un canal ouvert n'est pas automatiquement connecté. Le détail des processus et des vumètres reste replié sous le graphe.
+
+Dans le graphe, les blocs distinguent matériel physique, processus actif et profil sauvegardé. Les ports physiques et virtuels ont des couleurs et des formes distinctes. Un câble continu est sauvegardé, un câble en tirets attend l'application de la configuration et un câble pointillé est muet ; ▲ indique un gain positif. L'inspecteur d'un câble montre son état, son gain, sa sourdine et ouvre une matrice limitée aux canaux reliés entre les deux blocs. Une connexion appliquée ne devient active que lorsque ses deux canaux ASIO sont ouverts. Les modifications audio restent en brouillon jusqu'à **Apply configuration**. Les libellés et couleurs personnalisés sont locaux à Control et ne modifient pas le traitement audio.
 
 ```mermaid
 flowchart LR
@@ -99,7 +101,7 @@ Un exemple d’état sans application connectée est `configuredRoutes: 8`, `rou
 
 ## Performance : budget du callback et durées par étape
 
-La vue **Performance** répond à deux questions : le callback du pilote physique tient-il dans le temps d'un bloc, et où passe le temps entre l'application et la carte.
+La vue **Performance** montre le schéma échantillon → tampons ASIO → bloc et répond à deux questions : le callback du pilote physique tient-il dans le temps d'un bloc, et où passe le temps entre l'application et la carte. La durée d'un bloc est `bufferFrames / sampleRate`. La zone **Routed application load** affiche aussi le CPU du processus Windows (moyenne sur tous les processeurs logiques) et, quand les mesures par étape sont activées, le pire callback de l'application en pourcentage du bloc. Un dépassement de 100 % signale une échéance audio manquée dans l'échantillon mesuré ; ces chiffres ne désignent pas un VST précis.
 
 **Budget du callback physique.** Sur chaque fenêtre de cinq secondes, le moteur publie `bufferHealth` dans `GET /api/v1/state` : le callback le plus lent (*Slowest callback*), le temps disponible pour un bloc (*Time available*, soit `bufferFrames / sampleRate`), la marge restante ou le dépassement (*Time left* / *Over time*), le nombre de démarrages retardés (*Delayed starts*), de dépassements de traitement (*Processing overruns*) et de callbacks observés. L'état vaut `healthy`, `warning` ou `insufficient` quand la fenêtre n'a pas assez de callbacks. Un démarrage retardé est une observation d'ordonnancement, pas la preuve d'une coupure audible. Rien n'est ajusté automatiquement : augmenter la taille de buffer reste une décision de l'utilisateur.
 
@@ -127,6 +129,12 @@ $state = Invoke-RestMethod 'http://127.0.0.1:52525/api/v1/state'
 $state.bufferHealth | Format-List state, callbackCount, delayedStartCount, processingOverrunCount
 $state.performanceMeasurements.window.physical | Format-List
 ```
+
+## Analyse : historique des mesures
+
+L'onglet **Analysis** trace les mesures récoltées dans Performance : durée du callback physique rapportée au bloc, CPU du processus routé et pire callback de l'application rapporté au bloc. Il échantillonne l'état toutes les cinq secondes ; l'historique n'est pas calculé sur le fil audio. Les incidents d'anneau (*underrun* et *overrun*) sont tracés par application et par sens, sous forme de différences entre compteurs cumulés. Le premier point est une référence, pas un nouvel incident. Les compteurs sont communs aux canaux d'un même transport et ne permettent pas de localiser l'incident sur un canal individuel.
+
+La section canaux distingue les routes **configurées**, les canaux **ouverts** par l'application et ceux **routés maintenant**. « Routé » ne prouve pas la présence de son. L'historique est conservé en mémoire pendant l'ouverture de Control (jusqu'à 1 800 instantanés de performance et 7 200 instantanés de transport) ; **Export CSV** permet une analyse après la session. La distribution du son par fréquence n'est pas disponible dans l'API actuelle : elle demanderait de copier ponctuellement un bloc du canal choisi et de calculer son spectre hors du callback audio.
 
 ## Console API intégrée et exemples de programmation
 

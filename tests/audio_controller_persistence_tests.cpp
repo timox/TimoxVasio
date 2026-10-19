@@ -62,8 +62,14 @@ int wmain() {
             "disable clears measurement state") && passed;
 
         const AudioControllerConfiguration emptyConfiguration;
-        const auto applied = controller.ApplyConfiguration(emptyConfiguration);
+        const auto applied = controller.ApplyConfiguration(emptyConfiguration, 0);
         passed = require(applied.success, "an empty stopped configuration applies") && passed;
+        const auto savedRevision = controller.Snapshot().configurationRevision;
+        passed = require(savedRevision == 1, "saved configuration revision advances") && passed;
+        const auto conflict = controller.ApplyConfiguration(emptyConfiguration, 0);
+        passed = require(!conflict.success && conflict.conflict &&
+            controller.Snapshot().configurationRevision == savedRevision,
+            "stale configuration revision cannot overwrite another apply") && passed;
         passed = require(GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES,
             "successful configuration.apply writes the persistence file") && passed;
         controller.Stop();

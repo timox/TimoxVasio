@@ -170,4 +170,41 @@ inline std::optional<RoutingEndpointType> ProfiledEndpointType(const std::string
     }
     return {};
 }
+
+// A connection may be prepared while an application has not opened that channel yet.
+// Its executable must already be known from a profile, a connected client, or a
+// saved connection; otherwise arbitrary application names cannot enter the draft.
+inline std::optional<RoutingEndpointType> KnownApplicationEndpointType(const std::string& id,
+        const std::vector<ApplicationProfile>& profiles,
+        const std::vector<VasioClientSnapshot>& clients,
+        const std::vector<AudioRoute>& savedRoutes) {
+    if (id.rfind(Detail::kAppPrefix, 0) != 0) return {};
+    const auto nameEnd = id.find(':', sizeof(Detail::kAppPrefix) - 1);
+    if (nameEnd == std::string::npos) return {};
+    const auto name = id.substr(sizeof(Detail::kAppPrefix) - 1,
+        nameEnd - (sizeof(Detail::kAppPrefix) - 1));
+    if (name.empty()) return {};
+    const auto rest = id.substr(nameEnd + 1);
+    const auto separator = rest.find(':');
+    if (separator == std::string::npos) return {};
+    const auto direction = rest.substr(0, separator);
+    std::uint32_t channel = 0;
+    if ((direction != "input" && direction != "output") ||
+        !Detail::parseChannel(rest.substr(separator + 1), channel)) return {};
+    const auto type = direction == "input" ? RoutingEndpointType::VirtualInput
+        : RoutingEndpointType::VirtualOutput;
+    for (const auto& profile : profiles) {
+        if (Detail::executableName(profile.processName) != name) continue;
+        return channel <= (direction == "input" ? profile.inputChannels : profile.outputChannels)
+            ? std::optional<RoutingEndpointType>(type) : std::nullopt;
+    }
+    for (const auto& client : clients)
+        if (client.info.driverId == 1 && Detail::executableName(client.info.processName) == name)
+            return type;
+    const auto prefix = std::string(Detail::kAppPrefix) + name + ":";
+    for (const auto& route : savedRoutes)
+        if (route.sourceEndpointId.rfind(prefix, 0) == 0 ||
+            route.destinationEndpointId.rfind(prefix, 0) == 0) return type;
+    return {};
+}
 }

@@ -17,7 +17,7 @@ La version portable `Timox.VASIO.Control.<version>.exe` lance l'interface et le 
 Pour enregistrer la DLL à la main depuis le dossier extrait, dans un PowerShell administrateur :
 
 ```powershell
-$driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.2.5'
+$driverDir = 'C:\Program Files\Steinberg\VirtualASIO\1.2.6'
 New-Item -ItemType Directory -Force -Path $driverDir | Out-Null
 Copy-Item -LiteralPath '.\TimoxVasio.dll' -Destination (Join-Path $driverDir 'TimoxVasio.dll') -Force
 pwsh -NoProfile -File '.\register_drivers.ps1' install -DllDirectory $driverDir
@@ -31,7 +31,7 @@ Depuis le dossier extrait (ou `install\` dans le dépôt) :
 
 ```powershell
 pwsh -NoProfile -File .\register_drivers.ps1 list
-Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\1.2.5\TimoxVasio.dll"
+Get-ChildItem "C:\Program Files\Steinberg\VirtualASIO\1.2.6\TimoxVasio.dll"
 ```
 
 Le pilote attendu est `TimoxVasio`. Il annonce 256 entrées et 256 sorties ; chaque application n'expose que les canaux qu'elle alloue réellement avec `createBuffers`.
@@ -50,7 +50,7 @@ Dans un terminal administrateur, à la racine du dépôt :
 .\install\build_and_install.bat
 ```
 
-Le script compile la cible `TimoxVasio` dans `build_driver_110`, copie `TimoxVasio.dll` dans `C:\Program Files\Steinberg\VirtualASIO\1.2.5`, retire les anciennes entrées VASIO1–VASIO4 et enregistre le pilote. Si une ancienne DLL reste verrouillée par une application, il le signale ; elle n'est plus enregistrée comme pilote.
+Le script compile la cible `TimoxVasio` dans `build_driver_110`, copie `TimoxVasio.dll` dans `C:\Program Files\Steinberg\VirtualASIO\1.2.6`, retire les anciennes entrées VASIO1–VASIO4 et enregistre le pilote. Si une ancienne DLL reste verrouillée par une application, il le signale ; elle n'est plus enregistrée comme pilote.
 
 Le moteur et l'application se compilent séparément : voir [BUILD_DRIVERS.md](BUILD_DRIVERS.md) et [gui/README.md](../gui/README.md).
 

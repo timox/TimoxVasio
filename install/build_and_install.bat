@@ -98,13 +98,13 @@ echo.
 
 :: Créer le dossier d'installation
 echo [INFO] Création du dossier d'installation...
-if not exist "C:\Program Files\Steinberg\VirtualASIO\1.2.5" (
-    mkdir "C:\Program Files\Steinberg\VirtualASIO\1.2.5"
+if not exist "C:\Program Files\Steinberg\VirtualASIO\1.2.6" (
+    mkdir "C:\Program Files\Steinberg\VirtualASIO\1.2.6"
 )
 
 :: Copier les DLLs
 echo [INFO] Copie de TimoxVasio.dll...
-copy build_driver_110\Release\TimoxVasio.dll "C:\Program Files\Steinberg\VirtualASIO\1.2.5\" /Y
+copy build_driver_110\Release\TimoxVasio.dll "C:\Program Files\Steinberg\VirtualASIO\1.2.6\" /Y
 
 if %errorlevel% neq 0 (
     echo [ERREUR] Copie des DLLs échouée
@@ -112,7 +112,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [OK] DLLs installées dans C:\Program Files\Steinberg\VirtualASIO\1.2.5\
+echo [OK] DLLs installées dans C:\Program Files\Steinberg\VirtualASIO\1.2.6\
 for %%D in (VASIO1.dll VASIO2.dll VASIO3.dll VASIO4.dll) do (
     if exist "C:\Program Files\Steinberg\VirtualASIO\%%D" del /f /q "C:\Program Files\Steinberg\VirtualASIO\%%D" 2>nul
     if exist "C:\Program Files\Steinberg\VirtualASIO\%%D" echo [AVERTISSEMENT] Ancienne DLL encore presente: %%D

@@ -5,7 +5,6 @@ function configurationFromState(state) {
         sampleRate: state.engine.sampleRate,
         bufferFrames: state.engine.bufferFrames,
         routes: (state.configuredRoutes || state.routes)
-            .map(route => state.routes.find(active => active.id === route.id) || route)
             .map(({ id, sourceEndpointId, destinationEndpointId, gainDb, mute }) =>
             ({ id, sourceEndpointId, destinationEndpointId, gainDb, mute }))
     };

@@ -146,11 +146,31 @@ int wmain() {
         passed = require(websocket.read(websocketMessage) == httplib::ws::Text &&
             nlohmann::json::parse(websocketMessage).value("success", false),
             "stage measurement disable is acknowledged") && passed;
+        passed = require(websocket.send(R"({"id":"reset-test","command":"engine.reset"})"),
+            "WebSocket accepts a driver reset request") && passed;
+        bool resetAcknowledged = false;
+        for (int attempt = 0; attempt < 8; ++attempt) {
+            if (websocket.read(websocketMessage) != httplib::ws::Text) break;
+            const auto response = nlohmann::json::parse(websocketMessage);
+            if (response.value("id", std::string{}) == "reset-test") {
+                resetAcknowledged = response.value("success", false);
+                break;
+            }
+        }
+        passed = require(resetAcknowledged,
+            "driver reset is acknowledged without changing saved configuration") && passed;
         passed = require(websocket.send(R"({"id":"stop-test","command":"engine.stop"})"),
             "WebSocket accepts an engine.stop request") && passed;
-        const auto responseType = websocket.read(websocketMessage);
-        passed = require(responseType == httplib::ws::Text &&
-            nlohmann::json::parse(websocketMessage).value("success", false),
+        bool stopAcknowledged = false;
+        for (int attempt = 0; attempt < 8; ++attempt) {
+            if (websocket.read(websocketMessage) != httplib::ws::Text) break;
+            const auto response = nlohmann::json::parse(websocketMessage);
+            if (response.value("id", std::string{}) == "stop-test") {
+                stopAcknowledged = response.value("success", false);
+                break;
+            }
+        }
+        passed = require(stopAcknowledged,
             "engine.stop stops audio while no client is attached") && passed;
         const auto stillServing = client.Get("/api/v1/state");
         passed = require(stillServing && stillServing->status == 200,

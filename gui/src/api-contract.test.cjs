@@ -30,6 +30,14 @@ test('a disconnected application keeps its configured route in the editor', () =
     assert.deepEqual(draft.routes, [pending]);
 });
 
+test('an active PID never replaces the stable saved application endpoint in the draft', () => {
+    const saved = { id: 'r1', sourceEndpointId: 'virtual:TimoxVasio:app:traktor pro 4.exe:output:1',
+        destinationEndpointId: 'physical:device-1:output:1', gainDb: 0, mute: false };
+    const active = { ...saved, sourceEndpointId: 'virtual:TimoxVasio:916:output:1' };
+    assert.deepEqual(configurationFromState({ ...state, configuredRoutes: [saved], routes: [active] }).routes,
+        [saved]);
+});
+
 test('configuration.apply has the documented command envelope and no legacy route fields', () => {
     const command = applyCommand(configurationFromState(state), 'gui-1');
     assert.deepEqual(command, { id: 'gui-1', command: 'configuration.apply', payload: configurationFromState(state) });
