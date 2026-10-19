@@ -24,6 +24,12 @@ Le schéma relie fréquence, buffers ASIO et durée des blocs. Les mesures indiq
 
 ![Performance TimoxVasio 1.2.6 : schéma des buffers et mesures du callback ASIO](docs/images/performance-1.2.6.png)
 
+### API et Swagger
+
+La référence HTTP est intégrée à l’application, avec les schémas et les commandes WebSocket. Voir la [documentation API](docs/API.md).
+
+![TimoxVasio 1.2.6 : référence API et Swagger intégrée](docs/images/api-swagger-1.2.6.png)
+
 ## Pourquoi
 
 Un pilote ASIO classique ne sert qu'une application à la fois, et les applications ne peuvent pas s'envoyer de son. TimoxVasio se place entre les applications et la carte : toutes l'ouvrent en même temps, et le moteur les relie entre elles et à la carte.

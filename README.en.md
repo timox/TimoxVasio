@@ -24,6 +24,12 @@ The diagram explains sample rate, alternating ASIO buffers and block duration. M
 
 ![TimoxVasio 1.2.6 Performance: ASIO buffer diagram and callback measurements](docs/images/performance-1.2.6.png)
 
+### API and Swagger
+
+The application includes the HTTP reference, schemas and WebSocket commands. See the [API documentation](docs/API.en.md).
+
+![TimoxVasio 1.2.6: embedded API reference and Swagger](docs/images/api-swagger-1.2.6.png)
+
 ## Why
 
 A classic ASIO driver serves one application at a time, and applications cannot send audio to each other. TimoxVasio sits between the applications and the interface: they all open it at the same time, and the engine connects them to each other and to the interface.
