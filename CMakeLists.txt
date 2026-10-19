@@ -20,7 +20,6 @@ endif()
 set(ASIO_SDK_PATH "${CMAKE_SOURCE_DIR}/asiosdk" CACHE PATH "Chemin vers ASIO SDK")
 set(SRC_DIR "${CMAKE_SOURCE_DIR}/src")
 set(INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
-set(CONFIG_DIR "${CMAKE_SOURCE_DIR}/config")
 
 # Headers ASIO SDK
 if(NOT EXISTS "${ASIO_SDK_PATH}/common/asio.h")
@@ -332,13 +331,6 @@ else()
     message(FATAL_ERROR "Ce projet necessite Windows et Visual Studio")
 endif()
 
-# Configuration
-add_custom_command(TARGET TimoxVirtualAsioEngine POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CONFIG_DIR}
-    $<TARGET_FILE_DIR:TimoxVirtualAsioEngine>/config
-    COMMENT "Copie de la configuration..."
-)
 add_custom_command(TARGET TimoxVirtualAsioEngine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
     ${CMAKE_SOURCE_DIR}/api/openapi-v1.json

@@ -68,10 +68,6 @@
         "to": "backend/TimoxVirtualAsioEngine.exe"
       },
       {
-        "from": "../build_codex_110/Release/config",
-        "to": "backend/config"
-      },
-      {
         "from": "../api/openapi-v1.json",
         "to": "backend/openapi-v1.json"
       },
