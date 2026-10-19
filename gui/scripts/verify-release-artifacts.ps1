@@ -82,8 +82,8 @@ $configResource = $package.build.extraResources | Where-Object { $_.to -eq 'back
 if (-not $engineResource -or $engineResource.from -ne '../build_codex_110/Release/TimoxVirtualAsioEngine.exe') {
     throw 'Electron Builder ne référence pas le moteur canonique.'
 }
-if (-not $configResource -or $configResource.from -ne '../build_codex_110/Release/config') {
-    throw 'Electron Builder ne référence pas la configuration du build canonique.'
+if ($configResource) {
+    throw 'Electron Builder ne doit plus embarquer la configuration routing.ini du prototype.'
 }
 if (-not $package.build.nsis.perMachine -or $package.build.nsis.include -ne 'assets/installer.nsh') {
     throw 'Le Setup doit demander les droits administrateur et inclure le pilote ASIO.'
