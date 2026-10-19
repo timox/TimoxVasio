@@ -10,6 +10,20 @@ Version publiée : **[1.2.6](https://github.com/timox/TimoxVasio/releases/tag/v1
 
 ![TimoxVasio en un coup d'œil : un seul pilote, 256 entrées et sorties par application, pas de verrou, une seule horloge, routes persistantes, API locale, niveaux et analyse, logiciel libre](docs/images/timoxvasio-features-fr.svg)
 
+## Aperçu de l’interface
+
+### Routage
+
+Les processus réunissent leurs entrées et sorties. Seuls les ports connectés sont affichés ; les compteurs indiquent la capacité utilisée. Les actions et les détails s’ouvrent par clic droit.
+
+![Patchbay TimoxVasio 1.2.6 : connexions entre applications, capacités In/Out et menu contextuel](docs/images/routing-1.2.6.png)
+
+### Performance
+
+Le schéma relie fréquence, buffers ASIO et durée des blocs. Les mesures indiquent le temps de traitement, la marge disponible et les incidents observés.
+
+![Performance TimoxVasio 1.2.6 : schéma des buffers et mesures du callback ASIO](docs/images/performance-1.2.6.png)
+
 ## Pourquoi
 
 Un pilote ASIO classique ne sert qu'une application à la fois, et les applications ne peuvent pas s'envoyer de son. TimoxVasio se place entre les applications et la carte : toutes l'ouvrent en même temps, et le moteur les relie entre elles et à la carte.

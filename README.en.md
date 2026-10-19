@@ -10,6 +10,20 @@ Published release: **[1.2.6](https://github.com/timox/TimoxVasio/releases/tag/v1
 
 ![TimoxVasio at a glance: one driver, 256 inputs and outputs per application, no channel locks, one master clock, persistent routes, local API, meters and analysis, free software](docs/images/timoxvasio-features-en.svg)
 
+## Interface overview
+
+### Routing
+
+Processes own their inputs and outputs. Only connected ports are shown; counters indicate used capacity. Right-click menus open actions and detail dialogs.
+
+![TimoxVasio 1.2.6 patchbay: application connections, In/Out capacity and context menu](docs/images/routing-1.2.6.png)
+
+### Performance
+
+The diagram explains sample rate, alternating ASIO buffers and block duration. Measurements show processing time, remaining time and observed timing incidents.
+
+![TimoxVasio 1.2.6 Performance: ASIO buffer diagram and callback measurements](docs/images/performance-1.2.6.png)
+
 ## Why
 
 A classic ASIO driver serves one application at a time, and applications cannot send audio to each other. TimoxVasio sits between the applications and the interface: they all open it at the same time, and the engine connects them to each other and to the interface.
