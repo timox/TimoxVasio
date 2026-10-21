@@ -102,3 +102,38 @@ Le support effectif et le gain loopback du pilote physique ne sont pas mesurés 
 | État | Binaire | Horodatage UTC | SHA-256 |
 |---|---|---|---|
 | M2 | `build_codex_110/Release/TimoxVirtualAsioEngine.exe` | 2026-10-21T05:56:08.0426729Z | `2A8CA1247310A72C4C8B4CB0F160C86A86A63DEF0C509B5319720F8D3E8845C9` |
+
+### M3 — terminée
+
+Sélection hors callback, huit chemins LSB spécialisés, dix enveloppes génériques.
+Les fonctions scalaires existantes restent l'oracle inchangé. Test initial exécuté avec
+sélecteurs vides : échec attendu « Missing block converter for supported type 16 ».
+Après implémentation : PASS sur les 18 formats, 65 536 encodages 16 bits exhaustifs,
+un million d'encodages PCM aléatoires par format et un million de motifs float aléatoires,
+rampe, non-finis, zéros signés, limites et voisins des demi-LSB. Les valeurs ±0,5f
+exercent aussi les égalités exactes d'arrondi. Buffers PCM décalés d'un octet, sentinelles,
+lecture seule de l'entrée et tailles 0/1/7/255/256/257 vérifiées.
+
+Build Release x64 moteur, PhysicalAsioProbe et tests : succès. Tests de conversion scalaire
+et bloc, AudioRoutingRuntimeTests, RoutingGraphTests, PhysicalAsioProbe : PASS.
+Benchmark informatif (encodage + décodage, 8 canaux × 256 trames × 1000 tours) :
+
+| Format | Scalaire (ms) | Bloc (ms) | Rapport |
+|---|---:|---:|---:|
+| Int16LSB | 89,402 | 21,313 | 4,19× |
+| Int24LSB | 99,413 | 27,060 | 3,67× |
+| Int32LSB | 90,389 | 22,786 | 3,97× |
+| Int32LSB24 | 88,952 | 25,525 | 3,48× |
+| Float32LSB | 36,272 | 10,091 | 3,59× |
+
+Ce microbenchmark ne mesure ni le moteur complet ni outputCopyTiming sur une carte.
+Relecture indépendante : aucun défaut bloquant identifié ; tests directs des erreurs MMCSS,
+de l'ordre outputReady et de la coexistence avec les hôtes réels encore absents.
+Ces limites restent ouvertes pour la préversion demandée, sans promesse de gain matériel.
+
+| État | Binaire | Horodatage UTC | SHA-256 |
+|---|---|---|---|
+| M3 | `build_codex_110/Release/TimoxVirtualAsioEngine.exe` | 2026-10-21T06:00:45.7764261Z | `E761D440EF6DAE185EF27F15353C76F689A098317E49C1D66A10FF3753B0C374` |
+
+L'utilisateur demande ensuite une release avec suffixe `-test` : préparation de `1.2.7-test`
+dans un commit de version distinct ; M4 reste exclue.

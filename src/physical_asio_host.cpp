@@ -119,6 +119,8 @@ struct PhysicalAsioHost::Session {
     std::uint32_t clockOnlyBytesPerSample = 0;
     std::vector<ASIOChannelInfo> inputChannels;
     std::vector<ASIOChannelInfo> outputChannels;
+    std::vector<AsioSampleConversion::DecodeBlockFn> inputDecoders;
+    std::vector<AsioSampleConversion::EncodeBlockFn> outputEncoders;
     std::vector<float> inputSamples;
     std::vector<float> outputSamples;
     std::vector<const float*> inputPointers;
@@ -154,9 +156,7 @@ struct PhysicalAsioHost::Session {
             const auto& info = inputChannels[channel];
             auto* destination = inputSamples.data() + channel * frames;
             const auto* source = static_cast<const std::uint8_t*>(buffers[channel].buffers[index]);
-            const auto stride = AsioSampleConversion::BytesPerSample(info.type);
-            for (std::uint32_t frame = 0; frame < frames; ++frame)
-                destination[frame] = AsioSampleConversion::Decode(source + frame * stride, info.type);
+            inputDecoders[channel](destination, source, frames);
             inputPointers[static_cast<std::size_t>(info.channel)] = destination;
         }
         for (std::size_t channel = 0; channel < outputCount; ++channel) {
@@ -173,10 +173,10 @@ struct PhysicalAsioHost::Session {
         for (std::size_t channel = 0; channel < outputCount; ++channel) {
             const auto& info = outputChannels[channel];
             auto* destination = static_cast<std::uint8_t*>(buffers[outputBase + channel].buffers[index]);
-            const auto stride = AsioSampleConversion::BytesPerSample(info.type);
             const auto* source = outputPointers[static_cast<std::size_t>(info.channel)];
-            for (std::uint32_t frame = 0; frame < frames; ++frame)
-                AsioSampleConversion::Encode(destination + frame * stride, info.type, source ? source[frame] : 0.0f);
+            if (source) outputEncoders[channel](destination, source, frames);
+            else std::memset(destination, 0, static_cast<std::size_t>(frames) *
+                AsioSampleConversion::BytesPerSample(info.type));
         }
         if (hasClockOnlyBuffer && clockOnlyBufferIsOutput) {
             auto* destination = static_cast<std::uint8_t*>(buffers[clockOnlyBufferIndex].buffers[index]);
@@ -487,6 +487,8 @@ bool PhysicalAsioHost::start(std::uint32_t bufferFrames,
 
     session.inputChannels.resize(routedInputChannels.size());
     session.outputChannels.resize(routedOutputChannels.size());
+    session.inputDecoders.resize(routedInputChannels.size());
+    session.outputEncoders.resize(routedOutputChannels.size());
     for (std::size_t slot = 0; slot < routedInputChannels.size() + routedOutputChannels.size(); ++slot) {
         const bool isInput = slot < routedInputChannels.size();
         const auto channel = isInput ? routedInputChannels[slot] :
@@ -499,8 +501,14 @@ bool PhysicalAsioHost::start(std::uint32_t bufferFrames,
             error = "ASIO channel has an unsupported sample format (channel " + std::to_string(info.channel) + ")";
             return false;
         }
-        if (isInput) session.inputChannels[slot] = info;
-        else session.outputChannels[slot - routedInputChannels.size()] = info;
+        if (isInput) {
+            session.inputChannels[slot] = info;
+            session.inputDecoders[slot] = AsioSampleConversion::SelectDecoder(info.type);
+        } else {
+            const auto outputSlot = slot - routedInputChannels.size();
+            session.outputChannels[outputSlot] = info;
+            session.outputEncoders[outputSlot] = AsioSampleConversion::SelectEncoder(info.type);
+        }
     }
 
     session.bufferFrames = bufferFrames;

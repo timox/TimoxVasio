@@ -167,6 +167,15 @@ if(WIN32)
         ${ASIO_SDK_PATH}/common
     )
 
+    add_executable(AsioSampleConversionBlockTests
+        ${CMAKE_SOURCE_DIR}/tests/asio_sample_conversion_block_tests.cpp
+        ${SRC_DIR}/asio_sample_conversion.cpp
+    )
+    target_include_directories(AsioSampleConversionBlockTests PRIVATE
+        ${INCLUDE_DIR}
+        ${ASIO_SDK_PATH}/common
+    )
+
     add_executable(RoutingGraphTests
         ${CMAKE_SOURCE_DIR}/tests/routing_graph_tests.cpp
         ${SRC_DIR}/routing_graph.cpp
