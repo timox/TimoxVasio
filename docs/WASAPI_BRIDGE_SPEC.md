@@ -4,6 +4,7 @@
 
 Statut : proposition de conception, non implémentée. Version cible : 1.3.
 Date : 21 octobre 2026.
+Plan d'implémentation pour agent codeur : [superpowers/plans/2026-10-21-wasapi-bridge.md](superpowers/plans/2026-10-21-wasapi-bridge.md).
 
 Ce document spécifie l'interface qui permet aux applications ASIO connectées
 à TimoxVasio d'échanger de l'audio avec la pile audio Windows (WASAPI), dans

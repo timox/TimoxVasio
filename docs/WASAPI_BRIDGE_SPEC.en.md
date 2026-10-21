@@ -4,6 +4,7 @@
 
 Status: design proposal, not implemented. Target version: 1.3.
 Date: 21 October 2026.
+Implementation plan for a coding agent (French): [superpowers/plans/2026-10-21-wasapi-bridge.md](superpowers/plans/2026-10-21-wasapi-bridge.md).
 
 This document specifies the interface that lets ASIO applications connected
 to TimoxVasio exchange audio with the Windows audio stack (WASAPI), in both
