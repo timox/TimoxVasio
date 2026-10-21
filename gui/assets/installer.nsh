@@ -1,8 +1,8 @@
 !macro customInstall
   ; NSIS itself is 32-bit. Write the native ASIO and COM keys explicitly.
   SetRegView 64
-  CreateDirectory "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test"
-  SetOutPath "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test"
+  CreateDirectory "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7"
+  SetOutPath "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7"
   SetOverwrite ifnewer
   ClearErrors
   File /oname=TimoxVasio.dll "${PROJECT_DIR}\..\build_driver_110\Release\TimoxVasio.dll"
@@ -29,7 +29,7 @@
   WriteRegStr HKLM "SOFTWARE\ASIO\TimoxVasio" "CLSID" "{A4D39126-78CB-4D89-9E0A-54494D4F5856}"
   WriteRegStr HKLM "SOFTWARE\ASIO\TimoxVasio" "Description" "TimoxVasio"
   WriteRegStr HKLM "SOFTWARE\Classes\CLSID\{A4D39126-78CB-4D89-9E0A-54494D4F5856}" "" "TimoxVasio"
-  WriteRegStr HKLM "SOFTWARE\Classes\CLSID\{A4D39126-78CB-4D89-9E0A-54494D4F5856}\InprocServer32" "" "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test\TimoxVasio.dll"
+  WriteRegStr HKLM "SOFTWARE\Classes\CLSID\{A4D39126-78CB-4D89-9E0A-54494D4F5856}\InprocServer32" "" "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7\TimoxVasio.dll"
   WriteRegStr HKLM "SOFTWARE\Classes\CLSID\{A4D39126-78CB-4D89-9E0A-54494D4F5856}\InprocServer32" "ThreadingModel" "Apartment"
   ${If} ${Errors}
     ${IfNot} ${Silent}
@@ -44,11 +44,11 @@
   ${IfNot} ${isUpdated}
     SetRegView 64
     ReadRegStr $R0 HKLM "SOFTWARE\Classes\CLSID\{A4D39126-78CB-4D89-9E0A-54494D4F5856}\InprocServer32" ""
-    ${If} $R0 == "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test\TimoxVasio.dll"
+    ${If} $R0 == "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7\TimoxVasio.dll"
       DeleteRegKey HKLM "SOFTWARE\ASIO\TimoxVasio"
       DeleteRegKey HKLM "SOFTWARE\Classes\CLSID\{A4D39126-78CB-4D89-9E0A-54494D4F5856}"
     ${EndIf}
-    Delete "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test\TimoxVasio.dll"
-    RMDir "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test"
+    Delete "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7\TimoxVasio.dll"
+    RMDir "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7"
   ${EndIf}
 !macroend
