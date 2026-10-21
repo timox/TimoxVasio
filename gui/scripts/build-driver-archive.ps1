@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $guiRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent $guiRoot
-$bundle = Join-Path $guiRoot 'dist\driver_bundle_1_2_6'
-$archive = Join-Path $guiRoot 'dist\TimoxVasio Driver 1.2.6.zip'
+$bundle = Join-Path $guiRoot 'dist\driver_bundle_1_2_7_test'
+$archive = Join-Path $guiRoot 'dist\TimoxVasio Driver 1.2.7-test.zip'
 $driver = Join-Path $repoRoot 'build_driver_110\Release\TimoxVasio.dll'
 $readmeSource = Join-Path $repoRoot 'install\driver-archive-README.md'
 $englishReadmeSource = Join-Path $repoRoot 'install\driver-archive-README.en.md'
