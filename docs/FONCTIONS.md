@@ -2,7 +2,7 @@
 
 **Français** | [English](FONCTIONS.en.md)
 
-Cette page décrit les fonctions de [TimoxVasio 1.2.6](https://github.com/timox/TimoxVasio/releases/tag/v1.2.6). L’interface est en anglais ; elle réunit six vues :
+Cette page décrit les fonctions de [TimoxVasio 1.2.7](https://github.com/timox/TimoxVasio/releases/tag/v1.2.7). L’interface est en anglais ; elle réunit six vues :
 
 | Vue | Usage principal |
 | --- | --- |
@@ -28,11 +28,13 @@ Les échantillons suivent le chemin du haut. L’interface, Swagger et la consol
 
 ## Canaux ouverts, routes et vumètres
 
-**Routing** s'ouvre sur le patchbay et montre les connexions sauvegardées. Le sélecteur **Connection pair** isole un couple source/destination ; **Show all ports** révèle les ports disponibles. **Add a connection** ouvre l'ajout mono/stéréo. Un bloc de processus réunit ses entrées à gauche et ses sorties à droite, y compris les ports issus de son profil enregistré. Les commandes −, + et **Fit** règlent le zoom; on peut faire glisser le fond pour parcourir la carte. La poignée ✥ déplace un bloc et ✎ lui donne un nom d'affichage ; ces choix sont conservés localement dans Control et ne changent aucun nom ASIO.
+**Routing** s'ouvre sur le patchbay et montre les connexions sauvegardées. Le sélecteur **Connection pair** isole un couple source/destination. Le menu contextuel du fond ou d'un processus propose **Add a connection…** pour ajouter une connexion mono/stéréo. Un bloc de processus réunit ses entrées à gauche et ses sorties à droite, y compris les ports issus de son profil enregistré. Les commandes −, + et **Recenter graph** règlent le cadrage ; on peut faire glisser le fond pour parcourir la carte. La poignée ✥ déplace un bloc ; **Rename block…**, dans son menu contextuel, lui donne un nom local sans changer le nom ASIO.
 
-Le bouton ⚙ d'un processus présent dans Routing permet de lui attribuer un profil de capacité en entrées et sorties ASIO, avec 2/2 proposés au départ. Le profil s'applique à l'exécutable au prochain démarrage ASIO; 256 est une limite interne et non un ensemble de ports affichés par défaut. Dans ce même panneau, **Remove this configuration** retire les connexions de ce processus et son profil après confirmation, sans fermer le processus Windows. Seuls les canaux ouverts par l'application deviennent des extrémités actives. Un canal ouvert n'est pas automatiquement connecté. Le détail des processus et des vumètres reste replié sous le graphe.
+**Auto-arrange**, à côté du zoom, réorganise automatiquement les blocs visibles : entrées physiques à gauche, applications au centre, sorties physiques à droite. Leur taille détermine leur espacement, puis la vue est recentrée. Les positions sont mémorisées localement ; les noms, les connexions et les réglages audio sont conservés. Aucun clic sur **Apply configuration** n’est nécessaire.
 
-Dans le graphe, les blocs distinguent matériel physique, processus actif et profil sauvegardé. Les ports physiques et virtuels ont des couleurs et des formes distinctes. Un câble continu est sauvegardé, un câble en tirets attend l'application de la configuration et un câble pointillé est muet ; ▲ indique un gain positif. L'inspecteur d'un câble montre son état, son gain, sa sourdine et ouvre une matrice limitée aux canaux reliés entre les deux blocs. Une connexion appliquée ne devient active que lorsque ses deux canaux ASIO sont ouverts. Les modifications audio restent en brouillon jusqu'à **Apply configuration**. Les libellés et couleurs personnalisés sont locaux à Control et ne modifient pas le traitement audio.
+Le menu contextuel d'un processus présent dans Routing ouvre une boîte de dialogue pour lui attribuer un profil de capacité en entrées et sorties ASIO, avec 2/2 proposés au départ. Le profil s'applique à l'exécutable au prochain démarrage ASIO; 256 est une limite interne et non un ensemble de ports affichés par défaut. Dans cette boîte de dialogue, **Remove this configuration** retire les connexions de ce processus et son profil après confirmation, sans fermer le processus Windows. Seuls les canaux ouverts par l'application deviennent des extrémités actives. Un canal ouvert n'est pas automatiquement connecté. Le détail des processus et des vumètres reste replié sous le graphe.
+
+Dans le graphe, les blocs distinguent matériel physique, processus actif et profil sauvegardé. Les ports physiques et virtuels ont des couleurs et des formes distinctes. Un câble continu est sauvegardé, un câble en tirets attend l'application de la configuration et un câble pointillé est muet ; ▲ indique un gain positif. Le menu contextuel d'un câble ouvre ses propriétés dans une boîte de dialogue : état, gain, sourdine et matrice limitée aux canaux reliés entre les deux blocs. Sélectionner un câble seul n'ouvre aucun panneau. Une connexion appliquée ne devient active que lorsque ses deux canaux ASIO sont ouverts. Les modifications audio restent en brouillon jusqu'à **Apply configuration**. Les libellés et couleurs personnalisés sont locaux à Control et ne modifient pas le traitement audio.
 
 ```mermaid
 flowchart LR
