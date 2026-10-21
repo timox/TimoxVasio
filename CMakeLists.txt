@@ -197,6 +197,15 @@ if(WIN32)
     target_include_directories(AudioRoutingRuntimeTests PRIVATE ${INCLUDE_DIR})
     target_link_libraries(AudioRoutingRuntimeTests PRIVATE ole32)
 
+    add_executable(AudioPathBenchmark
+        tests/audio_path_benchmark.cpp
+        ${SRC_DIR}/audio_routing_runtime.cpp
+        ${SRC_DIR}/routing_graph.cpp
+        ${SRC_DIR}/audio_transport.cpp
+        ${SRC_DIR}/asio_sample_conversion.cpp)
+    target_include_directories(AudioPathBenchmark PRIVATE ${INCLUDE_DIR} ${ASIO_SDK_PATH}/common)
+    target_link_libraries(AudioPathBenchmark PRIVATE ole32)
+
     add_executable(PerformanceStageMeasurementsTests
         tests/performance_stage_measurements_tests.cpp)
     target_include_directories(PerformanceStageMeasurementsTests PRIVATE ${INCLUDE_DIR})
