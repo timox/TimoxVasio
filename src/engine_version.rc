@@ -17,7 +17,7 @@ BEGIN
             VALUE "FileVersion", "1.2.7.0\0"
             VALUE "OriginalFilename", "TimoxVirtualAsioEngine.exe\0"
             VALUE "ProductName", "TimoxVasio\0"
-            VALUE "ProductVersion", "1.2.7-test\0"
+            VALUE "ProductVersion", "1.2.7\0"
         END
     END
     BLOCK "VarFileInfo"

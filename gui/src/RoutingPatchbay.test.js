@@ -357,6 +357,35 @@ test('a block can be given a local display name with its layout persisted', asyn
     }
 });
 
+test('auto-arrange persists positions, preserves names and does not edit audio connections', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const key = 'timoxvasio.patchbay.layout.v1';
+    window.localStorage.setItem(key, JSON.stringify({
+        'process:app': { x: -900, y: -800, label: 'Studio source' },
+        'hidden-block': { x: 10, y: 20, label: 'Hidden' }
+    }));
+    const onToggleRoute = jest.fn();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => root.render(<RoutingPatchbay sourceGroups={sourceGroups}
+            destinationGroups={destinationGroups} routes={[]} onToggleRoute={onToggleRoute} />));
+        const button = [...container.querySelectorAll('button')].find(item => item.textContent === 'Auto-arrange');
+        expect(button.disabled).toBe(false);
+        await act(async () => Simulate.click(button));
+        const layout = JSON.parse(window.localStorage.getItem(key));
+        expect(layout['process:app'].x).toBeGreaterThan(0);
+        expect(layout['process:app'].label).toBe('Studio source');
+        expect(layout['hidden-block']).toEqual({ x: 10, y: 20, label: 'Hidden' });
+        expect(onToggleRoute).not.toHaveBeenCalled();
+    } finally {
+        await act(async () => root.unmount());
+        window.localStorage.removeItem(key);
+        container.remove();
+    }
+});
+
 test('a running process owns its output and saved-profile input in one zoomable block', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const output = { id: 'virtual:TimoxVasio:42:output:1', name: 'scsynth Out 1' };
