@@ -4,6 +4,8 @@
 
 Pilote ASIO virtuel et moteur de routage audio pour Windows x64.
 
+**Projet WASAPI en cours : [guide illustré ASIO/WASAPI — architecture, pilotes virtuels et contraintes du pont](docs/ASIO_WASAPI_GUIDE.md).**
+
 TimoxVasio permet de faire circuler l'audio entre plusieurs applications ASIO, et vers une carte son physique, sans câble ni table de mixage. Les routes se configurent depuis une interface graphique ou par une API locale.
 
 Version publiée : **[1.2.7](https://github.com/timox/TimoxVasio/releases/tag/v1.2.7)**. Voir les [notes de version](docs/RELEASE_NOTES_v1.2.7.md).
