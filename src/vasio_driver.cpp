@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "vasio_com_driver.h"
+#include <avrt.h>
 
 #include <cmath>
 #include <algorithm>
@@ -420,6 +421,29 @@ ASIOError VASIODriver::outputReady() { return ASE_NotPresent; }
 
 void VASIODriver::callbackLoop() noexcept {
     currentCallbackDriver = this;
+    // ASIO SDK 2.3, p.46: the driver owns the callback thread's priority.
+    // Dynamic AVRT loading follows PortAudio SetupAVRT / BumpThreadPriority.
+    const int originalPriority = GetThreadPriority(GetCurrentThread());
+    HMODULE avrt = LoadLibraryExW(L"avrt.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    HANDLE mmcssTask = nullptr;
+    decltype(&AvRevertMmThreadCharacteristics) revert = nullptr;
+    bool criticalPriority = false;
+    if (avrt) {
+        const auto setCharacteristics = reinterpret_cast<decltype(&AvSetMmThreadCharacteristicsW)>(
+            GetProcAddress(avrt, "AvSetMmThreadCharacteristicsW"));
+        const auto setPriority = reinterpret_cast<decltype(&AvSetMmThreadPriority)>(
+            GetProcAddress(avrt, "AvSetMmThreadPriority"));
+        revert = reinterpret_cast<decltype(revert)>(
+            GetProcAddress(avrt, "AvRevertMmThreadCharacteristics"));
+        if (setCharacteristics && setPriority && revert) {
+            DWORD taskIndex = 0;
+            mmcssTask = setCharacteristics(L"Pro Audio", &taskIndex);
+            if (mmcssTask)
+                criticalPriority = setPriority(mmcssTask, AVRT_PRIORITY_CRITICAL) != FALSE;
+        }
+    }
+    const bool fallbackPriority = !criticalPriority &&
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL) != FALSE;
     long bufferIndex = 0;
     std::uint32_t stageCallbackNumber = 0;
     bool formatChanged = false;
@@ -486,6 +510,11 @@ void VASIODriver::callbackLoop() noexcept {
             bufferIndex ^= 1;
         }
     }
+    // Revoke on this worker before scheduling reset/reaping callbacks.
+    if (mmcssTask) revert(mmcssTask);
+    if (fallbackPriority && originalPriority != THREAD_PRIORITY_ERROR_RETURN)
+        SetThreadPriority(GetCurrentThread(), originalPriority);
+    if (avrt) FreeLibrary(avrt);
     if (transport_) transport_->PublishClientState(AudioClientMapping::ClientState::Stopped);
     if (formatChanged && resetMessage_.load(std::memory_order_acquire)) {
         // A host may close/reopen this COM object synchronously from asioMessage.
