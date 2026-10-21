@@ -18,7 +18,7 @@ These results establish tested interface behavior. They are neither Steinberg ce
 | Channel indexes | `getChannelInfo` accepts 0–255 and rejects 256; sparse allocation accepts 0, 127, and 255 | [vasio_driver.cpp](../src/vasio_driver.cpp), driver probes | Verified |
 | Buffer format | Little-endian float32, double-buffered; bounds and duplicate indexes checked | `getChannelInfo` and `createBuffers` in [vasio_driver.cpp](../src/vasio_driver.cpp) | Code and audio probe verified |
 | Block size and rate | Without an attached engine, driver-defined advertised capabilities; with one, only actual physical values accepted | `getBufferSize`, `canSampleRate`, `setSampleRate`, `createBuffers` in [vasio_driver.cpp](../src/vasio_driver.cpp); October 5 Renoise test | Verified in Renoise at 48 kHz / 1024 frames; other hosts remain additional coverage |
-| Callbacks and position | `start`/`stop` control a worker; buffer callbacks and sample position/timestamp are published | `callbackLoop` in [vasio_driver.cpp](../src/vasio_driver.cpp), [driver_audio_probe.cpp](../tests/driver_audio_probe.cpp) | Transport probe verified |
+| Callbacks and position | `start`/`stop` control a worker registered with MMCSS "Pro Audio" at CRITICAL priority (ASIO SDK 2.3 p.46), with a TIME_CRITICAL fallback and cleanup on the worker; buffer callbacks and sample position/timestamp are published | `callbackLoop` in [vasio_driver.cpp](../src/vasio_driver.cpp), [driver_audio_probe.cpp](../tests/driver_audio_probe.cpp) | Transport probe verified |
 | Optional control | `controlPanel`, `future`, `outputReady`, and explicit clock-source selection are unavailable (`ASE_NotPresent`) | [vasio_driver.cpp](../src/vasio_driver.cpp) | Declared limitation |
 
 ## Advertised capacity and used channels

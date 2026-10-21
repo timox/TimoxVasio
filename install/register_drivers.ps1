@@ -2,7 +2,7 @@ param(
     [ValidateSet('install', 'uninstall', 'list', 'clean')]
     [string]$Action = 'install',
     [string]$RegistryRoot = 'HKLM:\SOFTWARE',
-    [string]$DllDirectory = 'C:\Program Files\Steinberg\VirtualASIO\1.2.6'
+    [string]$DllDirectory = 'C:\Program Files\Steinberg\VirtualASIO\1.2.7'
 )
 
 $ErrorActionPreference = 'Stop'
