@@ -90,3 +90,15 @@ Provenance (chemins relatifs à `C:/Users/timo/Documents/GitHub/TimoxVasio`) :
 | Base | `build_driver_110/Release/TimoxVasio.dll` | 2026-10-18T14:40:26.1314784Z | `9BB0DB27E0A498FDC9749AF5E6B510282129E082F1A33A0E9BD2F3A017FAE951` |
 | Base | `build_codex_110/Release/TimoxVirtualAsioEngine.exe` | 2026-10-18T21:24:24.7568153Z | `39144511775B9FAACCE817DD5462E62F13886758AA92C410C330450B42D1FB44` |
 | M1 | `build_driver_110/Release/TimoxVasio.dll` | 2026-10-21T05:55:02.9043923Z | `1E7CFCDF860F0FC18AE19DA3BFE742A1876A551A17FDD9772B3C3F1E5C6A9C08` |
+
+### M2 — terminée
+
+Interrogation après init ; notification après les sorties et le silence d'horloge,
+avant la fin de la mesure outputCopyTiming. DLL virtuelle inchangée (`ASE_NotPresent`).
+Build Release x64 du moteur et PhysicalAsioProbe : succès. AsioSampleConversionTests,
+AudioRoutingRuntimeTests, RoutingGraphTests et PhysicalAsioProbe : PASS ; diff --check : succès.
+Le support effectif et le gain loopback du pilote physique ne sont pas mesurés par ces tests.
+
+| État | Binaire | Horodatage UTC | SHA-256 |
+|---|---|---|---|
+| M2 | `build_codex_110/Release/TimoxVirtualAsioEngine.exe` | 2026-10-21T05:56:08.0426729Z | `2A8CA1247310A72C4C8B4CB0F160C86A86A63DEF0C509B5319720F8D3E8845C9` |

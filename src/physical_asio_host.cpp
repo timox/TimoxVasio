@@ -105,6 +105,7 @@ struct PhysicalAsioHost::Session {
     std::string physicalDriverName;
     IASIO* driver = nullptr;
     bool initialized = false;
+    bool postOutput = false; // Queried before buffers; immutable while callbacks run.
     bool buffersCreated = false;
     bool started = false;
     std::uint32_t bufferFrames = 0;
@@ -181,6 +182,7 @@ struct PhysicalAsioHost::Session {
             auto* destination = static_cast<std::uint8_t*>(buffers[clockOnlyBufferIndex].buffers[index]);
             std::memset(destination, 0, static_cast<std::size_t>(frames) * clockOnlyBytesPerSample);
         }
+        if (postOutput) driver->outputReady();
         if (sampleOutputCopy && outputCount > 0) {
             LARGE_INTEGER outputCopyEnd{};
             QueryPerformanceCounter(&outputCopyEnd);
@@ -279,6 +281,9 @@ bool PhysicalAsioHost::open(const std::wstring& id, void* systemHandle,
         return false;
     }
     pending->initialized = true;
+    // ASIOOutputReady contract permits querying before buffers exist.
+    // PortAudio's LoadAsioDriver uses the same capability handshake.
+    pending->postOutput = pending->driver->outputReady() == ASE_OK;
 
     ASIOError result = pending->driver->getChannels(&capabilities.inputChannels,
                                                      &capabilities.outputChannels);
