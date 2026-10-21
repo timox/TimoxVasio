@@ -2,6 +2,8 @@
 
 [Français](ARCHITECTURE.md) | **English**
 
+For the ongoing ASIO/WASAPI work, see the [illustrated guide to the common engine, virtual drivers and bridge constraints](ASIO_WASAPI_GUIDE.en.md). The remainder of this page describes the reference ASIO architecture.
+
 ## Purpose
 
 TimoxVasio is a Windows x64 virtual ASIO driver. Its DLL gives applications virtual channels; a separate engine transports and routes their audio to other TimoxVasio clients or a physical ASIO driver. The selected physical driver supplies the master clock, actual sample rate, and block size.

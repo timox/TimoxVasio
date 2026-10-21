@@ -2,6 +2,8 @@
 
 **Français** | [English](ARCHITECTURE.en.md)
 
+Pour l'évolution ASIO/WASAPI en cours : [guide illustré du moteur commun, des pilotes virtuels et des contraintes du pont](ASIO_WASAPI_GUIDE.md). Le reste de cette page décrit l'architecture ASIO de référence.
+
 ## Objectif
 
 TimoxVasio est un pilote ASIO virtuel Windows x64. La DLL ASIO fournit aux
