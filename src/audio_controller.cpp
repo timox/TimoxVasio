@@ -1,6 +1,8 @@
 #include "audio_controller.h"
 
 #include "audio_routing_runtime.h"
+#include "physical_asio_host.h"
+#include "software_clock_host.h"
 #include "persistent_routes.h"
 #include "vasio_client_manager.h"
 
@@ -89,10 +91,16 @@ void acknowledgePublishedGenerations(const std::vector<VasioClientSnapshot>& cli
 }
 
 AudioController::AudioController(VasioClientManager& clients, std::wstring configurationPath,
-                                 std::wstring applicationProfilesPath)
+                                 std::wstring applicationProfilesPath,
+                                 ClockHostFactory clockHostFactory,
+                                 WasapiBridge::BackendFactory wasapiBackendFactory,
+                                 WasapiBridgeManager::EndpointResolver wasapiEndpointResolver)
     : clients_(clients), configurationStore_(std::move(configurationPath)),
       applicationProfileStore_(std::move(applicationProfilesPath)),
-      callbackSlot_(&AudioRoutingRuntime::PhysicalCallback) {}
+      clockHostFactory_(std::move(clockHostFactory)),
+      callbackSlot_(&AudioRoutingRuntime::PhysicalCallback),
+      wasapiBackendFactory_(std::move(wasapiBackendFactory)),
+      wasapiEndpointResolver_(std::move(wasapiEndpointResolver)) {}
 AudioController::~AudioController() { Stop(); }
 
 void AudioController::StopPhysicalRuntime() noexcept {
@@ -101,30 +109,36 @@ void AudioController::StopPhysicalRuntime() noexcept {
     if (physicalHost_) physicalHost_->stop();
     callbackSlot_.WaitForQuiescence();
     runtime_.reset();
+    wasapiManager_.reset(); // Graph retired first; session destruction joins workers off RT.
     hostPhysicalInputs_.clear();
     hostPhysicalOutputs_.clear();
     if (physicalHost_) physicalHost_->close();
 }
 
 bool AudioController::TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
-    const std::vector<VasioClientSnapshot>& clients) {
+    const std::vector<VasioClientSnapshot>& clients,
+    const std::shared_ptr<WasapiBridgeManager>& requestedManager) {
     const auto current = Snapshot();
+    const auto manager=requestedManager?requestedManager:wasapiManager_;
+    const auto bindings=manager?manager->Bindings():std::vector<WasapiRoutingBinding>{};
+    const auto activeRoutes = PersistentRoutes::ResolveForClock(routes, clients, current.physicalDriverId,bindings);
     if (current.state != "running" || !runtime_ || !physicalHost_ ||
-        (routes.empty() && !hasAttachedClient(clients)) ||
-        !current.physicalDriverId || !current.sampleRate || !current.bufferFrames ||
+        !current.sampleRate || !current.bufferFrames ||
+        current.clockSource != desiredConfiguration_.clockSource ||
         current.physicalDriverId != desiredConfiguration_.physicalDriverId ||
         (desiredConfiguration_.sampleRate && current.sampleRate != desiredConfiguration_.sampleRate) ||
         (desiredConfiguration_.bufferFrames && current.bufferFrames != desiredConfiguration_.bufferFrames))
         return false;
 
     AudioRoutingLayout layout;
-    layout.physicalDriverId = *current.physicalDriverId;
+    layout.physicalDriverId = current.physicalDriverId.value_or("");
     layout.sampleRate = *current.sampleRate;
     layout.bufferFrames = *current.bufferFrames;
     layout.physicalInputChannels = current.physicalCapabilities.inputChannels;
     layout.physicalOutputChannels = current.physicalCapabilities.outputChannels;
     layout.clients = clients;
-    layout.routes = routes;
+    layout.routes = activeRoutes;
+    layout.wasapiBindings=bindings;
     std::string error;
     auto replacement = AudioRoutingRuntime::Create(std::move(layout), error);
     if (!replacement ||
@@ -147,10 +161,12 @@ bool AudioController::TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
     callbackSlot_.Publish(runtime_.get());
     callbackSlot_.WaitForQuiescence();
     retired.reset();
+    wasapiManager_=manager;
     acknowledgePublishedGenerations(clients, *current.sampleRate, *current.bufferFrames);
     auto updated = current;
-    updated.routes = routes;
+    updated.routes = activeRoutes;
     updated.configuredRoutes = desiredConfiguration_.routes;
+    if(updated.lastError.find("WASAPI reconnection rejected")==0)updated.lastError.clear();
     SetStatus(updated);
     return true;
 }
@@ -211,7 +227,86 @@ void AudioController::Stop() noexcept {
 }
 
 std::vector<PhysicalAsioDriverInfo> AudioController::EnumeratePhysicalDrivers() {
-    return Invoke([this] { return physicalHost_->enumerate(); });
+    return Invoke([this] {
+        if (hostClockSource_ == AudioClockSource::Asio) return physicalHost_->enumerate();
+        auto catalog = clockHostFactory_ ? clockHostFactory_() : std::make_unique<PhysicalAsioHost>();
+        return catalog ? catalog->enumerate() : std::vector<PhysicalAsioDriverInfo>{};
+    });
+}
+
+std::vector<WasapiDeviceInfo> AudioController::EnumerateWasapiDevices() {
+    return Invoke([this] {
+        const auto apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+        wasapiDevices_.clear();wasapiInventoryError_.clear();
+        if(SUCCEEDED(apartment) || apartment==RPC_E_CHANGED_MODE) {
+            try { WasapiDeviceEnumerator{}.enumerate(wasapiDevices_,wasapiInventoryError_); }
+            catch(...) {
+                if(SUCCEEDED(apartment))CoUninitialize();
+                throw;
+            }
+            if(SUCCEEDED(apartment))CoUninitialize();
+        } else wasapiInventoryError_="Cannot initialize COM for WASAPI inventory";
+        SetStatus(Snapshot());
+        return wasapiDevices_;
+    });
+}
+
+void AudioController::ReconcileWasapiOnWorker() {
+    {std::lock_guard<std::mutex> lock(queueMutex_);if(stopping_)return;}
+    if(!wasapiManager_ || Snapshot().state!="running")return;
+    try {
+        auto candidate=wasapiManager_->Reconcile(WasapiBridgeManager::Clock::now());
+        if(candidate && !TryHotSwapRoutes(desiredConfiguration_.routes,clients_.GetClientSnapshots(),candidate)) {
+            wasapiManager_->DeferPublication(WasapiBridgeManager::Clock::now());
+            auto status=Snapshot();
+            status.lastError="WASAPI reconnection rejected by graph constraints; retry deferred";
+            SetStatus(status);
+        }
+    } catch(...) {
+        // A slave preparation/allocation failure must not terminate the master.
+        // The existing manager retains the failed session for the next retry.
+    }
+}
+
+std::optional<AudioControllerResult> AudioController::ApplyPreparedLive(
+    const AudioControllerConfiguration& configuration,const AudioControllerConfiguration* durable) {
+    const auto current=Snapshot();
+    if(current.state!="running" || !runtime_ || !physicalHost_ || !current.sampleRate || !current.bufferFrames ||
+       current.clockSource!=configuration.clockSource || current.physicalDriverId!=configuration.physicalDriverId ||
+       (configuration.sampleRate && configuration.sampleRate!=current.sampleRate) ||
+       (configuration.bufferFrames && configuration.bufferFrames!=current.bufferFrames))return std::nullopt;
+    std::string error;
+    auto candidate=WasapiBridgeManager::Prepare(configuration.wasapiBridges,*current.sampleRate,
+        *current.bufferFrames,wasapiManager_,wasapiBackendFactory_,error,false,wasapiEndpointResolver_);
+    if(!candidate)return AudioControllerResult{false,error};
+    auto clients=clients_.GetClientSnapshots();
+    auto bindings=candidate->Bindings();
+    const auto routes=PersistentRoutes::ResolveForClock(configuration.routes,clients,current.physicalDriverId,bindings);
+    AudioRoutingLayout layout;
+    layout.physicalDriverId=current.physicalDriverId.value_or("");
+    layout.sampleRate=*current.sampleRate;layout.bufferFrames=*current.bufferFrames;
+    layout.physicalInputChannels=current.physicalCapabilities.inputChannels;
+    layout.physicalOutputChannels=current.physicalCapabilities.outputChannels;
+    layout.clients=clients;layout.routes=routes;layout.wasapiBindings=std::move(bindings);
+    auto replacement=AudioRoutingRuntime::Create(std::move(layout),error);
+    if(!replacement)return AudioControllerResult{false,error};
+    if(!std::includes(hostPhysicalInputs_.begin(),hostPhysicalInputs_.end(),
+          replacement->RoutedPhysicalInputChannels().begin(),replacement->RoutedPhysicalInputChannels().end()) ||
+       !std::includes(hostPhysicalOutputs_.begin(),hostPhysicalOutputs_.end(),
+          replacement->RoutedPhysicalOutputChannels().begin(),replacement->RoutedPhysicalOutputChannels().end()))
+        return std::nullopt;
+    // All fallible preparation precedes persistence and callback publication.
+    auto updated=current;updated.routes=routes;updated.configuredRoutes=configuration.routes;
+    updated.configuredWasapiBridges=configuration.wasapiBridges;
+    replacement->SetStageMeasurementsEnabled(ReadPerformanceMeasurements().enabled);
+    if(durable && !configurationStore_.Save(*durable,error))return AudioControllerResult{false,error};
+    ResetPerformanceMeasurementsWindow();
+    auto retired=std::move(runtime_);runtime_=std::move(replacement);
+    callbackSlot_.Publish(runtime_.get());callbackSlot_.WaitForQuiescence();retired.reset();
+    wasapiManager_=std::move(candidate);
+    acknowledgePublishedGenerations(clients,*current.sampleRate,*current.bufferFrames);
+    SetStatus(updated);
+    return AudioControllerResult{true,{}};
 }
 
 ApplicationProfilesSnapshot AudioController::GetApplicationProfiles() {
@@ -316,14 +411,17 @@ AudioControllerResult AudioController::SetPerformanceMeasurementsEnabled(bool en
 
 AudioControllerResult AudioController::ApplyConfiguration(
     const AudioControllerConfiguration& configuration,
-    std::optional<std::uint64_t> expectedConfigurationRevision) {
+    std::optional<std::uint64_t> expectedConfigurationRevision, bool preserveClockSource,bool preserveWasapiBridges) {
     try {
-        return Invoke([this, configuration, expectedConfigurationRevision] {
+        return Invoke([this, configuration, expectedConfigurationRevision, preserveClockSource,preserveWasapiBridges] {
             if (expectedConfigurationRevision &&
                 *expectedConfigurationRevision != configurationRevision_)
                 return AudioControllerResult{false,
                     "Saved configuration changed in another application; refresh and retry", true};
-            return ApplyOnWorker(configuration);
+            auto effective = configuration;
+            if (preserveClockSource) effective.clockSource = desiredConfiguration_.clockSource;
+            if (preserveWasapiBridges) effective.wasapiBridges=desiredConfiguration_.wasapiBridges;
+            return ApplyOnWorker(effective);
         });
     } catch (const std::exception& exception) {
         return {false, exception.what()};
@@ -414,6 +512,13 @@ void AudioController::SetStatus(const AudioControllerSnapshot& snapshot) {
     std::lock_guard<std::mutex> lock(stateMutex_);
     const auto revision = state_.revision + 1;
     state_ = snapshot;
+    state_.wasapiBridges=wasapiManager_?wasapiManager_->Snapshots():std::vector<WasapiBridgeSnapshot>{};
+    if(!wasapiManager_)for(const auto& config:state_.configuredWasapiBridges) {
+        WasapiBridgeSnapshot bridge;bridge.id=config.id;bridge.state=config.enabled?"stopped":"disabled";
+        bridge.health.state=WasapiBridgeState::Stopped;state_.wasapiBridges.push_back(std::move(bridge));
+    }
+    state_.wasapiDevices=wasapiDevices_;
+    state_.wasapiInventoryError=wasapiInventoryError_;
     state_.revision = revision;
     state_.configurationRevision = configurationRevision_;
     events_.push_back(state_);
@@ -424,11 +529,14 @@ void AudioController::Run() noexcept {
     try {
         hostWindow_ = createHostWindow();
         if (!hostWindow_) throw std::runtime_error("Unable to create ASIO message window");
-        physicalHost_ = std::make_unique<PhysicalAsioHost>();
+        physicalHost_ = clockHostFactory_ ? clockHostFactory_() : std::make_unique<PhysicalAsioHost>();
+        hostClockSource_ = AudioClockSource::Asio;
+        if (!physicalHost_) throw std::runtime_error("Audio clock host factory returned null");
         RestoreApplicationProfilesOnWorker();
         RestoreConfigurationOnWorker();
         if (startupEvent_) SetEvent(startupEvent_);
         auto nextRouteReconcile = std::chrono::steady_clock::time_point{};
+        auto nextWasapiHealth=std::chrono::steady_clock::time_point{};
         auto bufferWindowStart = std::chrono::steady_clock::time_point{};
         auto observedBufferHealthGeneration = bufferHealthGeneration_;
         auto observedPerformanceGeneration = performanceMeasurementsGeneration_;
@@ -456,7 +564,19 @@ void AudioController::Run() noexcept {
                     DispatchMessageW(&message);
                 }
             }
-            if (physicalHost_ && physicalHost_->consumeSampleRateChange()) {
+            const auto clockError = physicalHost_ ? physicalHost_->consumeErrorCode() : 0;
+            if (clockError) {
+                auto failed = Snapshot();
+                StopPhysicalRuntime();
+                audioStoppedByCommand_ = true;
+                failed.state = "error";
+                failed.clockCapabilities = {};
+                failed.physicalCapabilities = {};
+                failed.lastError = "Audio clock backend failed (Windows error " +
+                    std::to_string(clockError) + "); explicitly start or reset audio to retry";
+                SetStatus(failed);
+            }
+            if (!clockError && physicalHost_ && physicalHost_->consumeSampleRateChange()) {
                 const auto previous = Snapshot();
                 StopPhysicalRuntime();
                 AudioControllerSnapshot failed = previous;
@@ -465,9 +585,16 @@ void AudioController::Run() noexcept {
                 failed.lastError = "Physical ASIO driver reported a sample-rate change; reapply the configuration to resynchronize TimoxVasio";
                 SetStatus(failed);
             }
-            if (!audioStoppedByCommand_ && desiredConfiguration_.physicalDriverId) {
+            if (!audioStoppedByCommand_ && (desiredConfiguration_.physicalDriverId ||
+                    desiredConfiguration_.clockSource == AudioClockSource::Software)) {
+                ReconcileWasapiOnWorker();
+                if(wasapiManager_ && std::chrono::steady_clock::now()>=nextWasapiHealth) {
+                    SetStatus(Snapshot());nextWasapiHealth=std::chrono::steady_clock::now()+std::chrono::milliseconds(250);
+                }
                 const auto clients = clients_.GetClientSnapshots();
-                const auto resolved = PersistentRoutes::Resolve(desiredConfiguration_.routes, clients);
+                const auto resolved = PersistentRoutes::ResolveForClock(desiredConfiguration_.routes,
+                    clients, desiredConfiguration_.physicalDriverId,
+                    wasapiManager_?wasapiManager_->Bindings():std::vector<WasapiRoutingBinding>{});
                 const auto current = Snapshot();
                 const bool attachedClient = hasAttachedClient(clients);
                 const bool routesChanged = !sameRoutes(resolved, current.routes);
@@ -605,6 +732,7 @@ void AudioController::Run() noexcept {
         failed.state = "error";
         failed.lastError = "Audio controller worker failed";
         SetStatus(failed);
+        started_.store(false);
         if (startupEvent_) SetEvent(startupEvent_);
     }
     started_.store(false);
@@ -624,45 +752,45 @@ void AudioController::RestoreApplicationProfilesOnWorker() {
 
 AudioControllerResult AudioController::ApplyOnWorker(
     const AudioControllerConfiguration& configuration, bool persist) {
+    const auto previous=Snapshot();
+    const auto oldConfiguration=desiredConfiguration_;
+    const auto restore=[&] {
+        if(previous.state=="running" && Snapshot().revision!=previous.revision) {
+            const auto result=ApplyConfigurationCore(oldConfiguration,true);
+            if(!result.success) {
+                auto failed=Snapshot();failed.lastError="Configuration rollback failed: "+result.error;
+                SetStatus(failed);
+            }
+        }
+    };
     try {
         std::string routeError;
         AudioControllerConfiguration durable = configuration;
         durable.routes = PersistentRoutes::Encode(configuration.routes,
             clients_.GetClientSnapshots(), routeError);
         if (!routeError.empty()) return {false, routeError};
-        auto applied = ApplyConfigurationCore(configuration);
-        if (!applied.success || !persist) return applied;
+        const auto live=ApplyPreparedLive(configuration,persist?&durable:nullptr);
+        auto applied = live?*live:ApplyConfigurationCore(configuration);
+        if (!applied.success) {if(!live)restore();return applied;}
+        if(!persist)return applied;
         std::string error;
-        if (!configurationStore_.Save(durable, error)) {
-            StopPhysicalRuntime();
-            auto failed = Snapshot();
-            failed.state = "error";
-            failed.physicalCapabilities = {};
-            failed.lastError = error;
-            SetStatus(failed);
-            return {false, failed.lastError};
+        if (!live && !configurationStore_.Save(durable, error)) {
+            if(previous.state=="running")restore();
+            else {StopPhysicalRuntime();auto failed=previous;failed.lastError=error;SetStatus(failed);}
+            return {false, error};
         }
         desiredConfiguration_ = std::move(durable);
         ++configurationRevision_;
         auto status = Snapshot();
         status.configuredRoutes = desiredConfiguration_.routes;
+        status.configuredWasapiBridges=desiredConfiguration_.wasapiBridges;
         SetStatus(status);
         audioStoppedByCommand_ = false;
         return applied;
     } catch (const std::exception& exception) {
-        StopPhysicalRuntime();
-        AudioControllerSnapshot failed;
-        failed.state = "error";
-        failed.lastError = exception.what();
-        SetStatus(failed);
-        return {false, failed.lastError};
+        restore();return {false, exception.what()};
     } catch (...) {
-        StopPhysicalRuntime();
-        AudioControllerSnapshot failed;
-        failed.state = "error";
-        failed.lastError = "Unknown audio controller failure";
-        SetStatus(failed);
-        return {false, failed.lastError};
+        restore();return {false,"Unknown audio controller failure"};
     }
 }
 
@@ -679,7 +807,7 @@ void AudioController::RestoreConfigurationOnWorker() {
         return;
     }
     desiredConfiguration_ = configuration;
-    const auto restored = ApplyConfigurationCore(configuration);
+    const auto restored = ApplyConfigurationCore(configuration,true);
     if (restored.success) {
         ++configurationRevision_;
         SetStatus(Snapshot());
@@ -695,31 +823,52 @@ void AudioController::RestoreConfigurationOnWorker() {
 }
 
 AudioControllerResult AudioController::ApplyConfigurationCore(
-    const AudioControllerConfiguration& configuration) {
+    const AudioControllerConfiguration& configuration,bool allowUnavailable) {
+    const bool software = configuration.clockSource == AudioClockSource::Software;
+    if (configuration.clockSource != AudioClockSource::Asio && !software)
+        return {false, "Unsupported audio clock source"};
+    if (software && (configuration.physicalDriverId || !configuration.sampleRate ||
+            *configuration.sampleRate < 8000 || *configuration.sampleRate > 384000 ||
+            !configuration.bufferFrames || *configuration.bufferFrames < 16 ||
+            *configuration.bufferFrames > 8192))
+        return {false, "Software clock requires no physical driver, a sample rate from 8000 to 384000 and a buffer size from 16 to 8192"};
+    if (!software && !configuration.physicalDriverId &&
+            (!configuration.routes.empty() || configuration.sampleRate || configuration.bufferFrames))
+        return {false, "A physical ASIO clock is required for sample-rate, buffer and routing configuration"};
+    std::string preparationError;
+    if(!ValidateWasapiBridgeConfigurations(configuration.wasapiBridges,preparationError))return {false,preparationError};
+    std::shared_ptr<WasapiBridgeManager> candidate;
+    if(configuration.sampleRate && configuration.bufferFrames) {
+        candidate=WasapiBridgeManager::Prepare(configuration.wasapiBridges,*configuration.sampleRate,
+            *configuration.bufferFrames,{},wasapiBackendFactory_,preparationError,allowUnavailable,wasapiEndpointResolver_);
+        if(!candidate)return {false,preparationError};
+    }
     ++bufferHealthGeneration_;
     bufferHealthPolicy_.Reset();
     { std::lock_guard<std::mutex> lock(bufferHealthMutex_); bufferHealth_ = {}; }
-    const auto activeRoutes = PersistentRoutes::Resolve(configuration.routes,
-        clients_.GetClientSnapshots());
     AudioControllerSnapshot next;
+    next.clockSource = configuration.clockSource;
     next.state = "reconfiguring";
     next.configuredRoutes = configuration.routes;
+    next.configuredWasapiBridges=configuration.wasapiBridges;
     SetStatus(next);
     StopPhysicalRuntime();
-    if (!configuration.physicalDriverId) {
-        if (!configuration.routes.empty() || configuration.sampleRate || configuration.bufferFrames) {
-            next.state = "error";
-            next.lastError = "A physical ASIO clock is required for sample-rate, buffer and routing configuration";
-            SetStatus(next);
-            return {false, next.lastError};
-        }
+    if (hostClockSource_ != configuration.clockSource) {
+        std::unique_ptr<AudioClockHost> replacement;
+        if (software) replacement = std::make_unique<SoftwareClockHost>();
+        else replacement = clockHostFactory_ ? clockHostFactory_() : std::make_unique<PhysicalAsioHost>();
+        if (!replacement) throw std::runtime_error("Audio clock host factory returned null");
+        physicalHost_ = std::move(replacement);
+        hostClockSource_ = configuration.clockSource;
+    }
+    if (!software && !configuration.physicalDriverId) {
         next.state = "stopped";
         SetStatus(next);
         return {true, {}};
     }
 
-    const std::wstring driverId(configuration.physicalDriverId->begin(),
-                                configuration.physicalDriverId->end());
+    const auto selectedId = configuration.physicalDriverId.value_or("software");
+    const std::wstring driverId(selectedId.begin(), selectedId.end());
     std::string error;
     PhysicalAsioCapabilities capabilities;
     if (!physicalHost_->open(driverId, hostWindow_, capabilities, error)) {
@@ -755,9 +904,17 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
         return {false, next.lastError};
     }
 
+    if(!candidate)candidate=WasapiBridgeManager::Prepare(configuration.wasapiBridges,sampleRate,
+        physicalBufferFrames,{},wasapiBackendFactory_,error,allowUnavailable,wasapiEndpointResolver_);
+    if(!candidate) {
+        physicalHost_->close();next.state="error";next.lastError=error;SetStatus(next);return {false,error};
+    }
+    const auto bindings=candidate->Bindings();
+    const auto activeRoutes=PersistentRoutes::ResolveForClock(configuration.routes,
+        clients_.GetClientSnapshots(),configuration.physicalDriverId,bindings);
     configureVasioClients(clients_, physicalBufferFrames, sampleRate);
     AudioRoutingLayout layout;
-    layout.physicalDriverId = *configuration.physicalDriverId;
+    layout.physicalDriverId = configuration.physicalDriverId.value_or("");
     layout.sampleRate = sampleRate;
     layout.bufferFrames = physicalBufferFrames;
     layout.physicalInputChannels = capabilities.inputChannels;
@@ -765,6 +922,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     layout.clients = clients_.GetClientSnapshots();
     const auto generationClients = layout.clients;
     layout.routes = activeRoutes;
+    layout.wasapiBindings=bindings;
     runtime_ = AudioRoutingRuntime::Create(std::move(layout), error);
     if (!runtime_) {
         physicalHost_->close();
@@ -774,6 +932,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
         SetStatus(next);
         return {false, next.lastError};
     }
+    wasapiManager_=std::move(candidate);
     runtime_->SetStageMeasurementsEnabled(ReadPerformanceMeasurements().enabled);
     for (const auto& client : generationClients)
         if (client.mapping) client.mapping->SetStageMeasurementsEnabled(
@@ -782,12 +941,18 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     // Without an attached client the physical driver remains configured for
     // endpoint discovery. An attached client needs the clock-only callback to
     // exchange compact frames and receive its signal even without routes.
-    if (activeRoutes.empty() && !hasAttachedClient(generationClients)) {
+    // An enabled slave needs a live selected master even while its routes are
+    // dormant, so endpoint recovery can resume WASAPI-to-WASAPI flow. Explicit
+    // StopAudio destroys this manager and prevents retries until StartAudio.
+    const bool enabledBridge=std::any_of(configuration.wasapiBridges.begin(),configuration.wasapiBridges.end(),
+        [](const WasapiBridgeConfiguration& bridge){return bridge.enabled;});
+    if (!software && activeRoutes.empty() && !hasAttachedClient(generationClients) && !enabledBridge) {
         next.state = "stopped";
         next.physicalDriverId = configuration.physicalDriverId;
         next.sampleRate = sampleRate;
         next.bufferFrames = physicalBufferFrames;
         next.routes = activeRoutes;
+        next.clockCapabilities = capabilities;
         next.physicalCapabilities = std::move(capabilities);
         SetStatus(next);
         return {true, {}};
@@ -815,7 +980,8 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     next.sampleRate = sampleRate;
     next.bufferFrames = physicalBufferFrames;
     next.routes = activeRoutes;
-    next.physicalCapabilities = std::move(capabilities);
+    next.clockCapabilities = capabilities;
+    if (!software) next.physicalCapabilities = std::move(capabilities);
     SetStatus(next);
     return {true, {}};
 }

@@ -109,3 +109,7 @@ Le contrôle graphique, l'accès API et les performances doivent atteindre au mo
 - Sonde réelle rendu/loopback réussie : voir [rapport de streaming](2026-10-21-wasapi-stream-smoke.md). Cela ne qualifie ni la capture microphone, ni les applications ASIO réelles, ni les performances prolongées.
 - Comparaison initiale des benchmarks trop variable pour conclure à la parité ; comparaison depuis une référence source contrôlée encore nécessaire.
 - Commits intermédiaires demandés par le mainteneur : ils constituent une sauvegarde révisable du développement, pas une release. Pilote Windows virtuel natif, qualification longue et packaging restent à réaliser. TimoxVasio.dll conserve sa frontière indépendante.
+
+### Vérification avant commits intermédiaires
+
+Reconstruction canonique réussie de `TimoxVirtualAsioEngine`, `AudioControllerWasapiTests` et `WasapiBridgeApiTests`. Ces deux exécutables de tests ont ensuite terminé avec le code 0. CTest DSP pur : 4/4 ; contrats PowerShell API et WASAPI réussis ; frontière du pilote : 13 cas réussis. React : 9 suites, 63 tests ; adaptateur de contrat Node : 7 tests ; client Electron : 10 tests. `git diff --check` réussi. Cette vérification ne remplace pas la qualification matérielle, graphique et de performance encore ouverte ci-dessus.

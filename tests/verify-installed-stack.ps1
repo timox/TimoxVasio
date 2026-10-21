@@ -32,7 +32,7 @@ if (-not $engines.Count) {
 
 try {
     $state = Invoke-RestMethod -Uri 'http://127.0.0.1:52525/api/v1/state' -TimeoutSec 3
-    if ($state.apiVersion -ne '1.0' -or
+    if ($state.apiVersion -notin @('1.0', '1.1') -or
         -not @($state.virtualDrivers | Where-Object id -EQ 'TimoxVasio').Count) {
         $issues.Add('Le service API local ne correspond pas à TimoxVasio.')
     } elseif (-not ($state.PSObject.Properties.Name -contains 'configuredRoutes')) {

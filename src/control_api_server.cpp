@@ -90,6 +90,18 @@ Json errorEnvelope(const std::string& id, const char* code, const std::string& m
     return Json{{"id", id}, {"success", false}, {"error", std::move(error)}};
 }
 
+Json clockSourceJson(const AudioControllerSnapshot& snapshot) {
+    return Json{{"kind", snapshot.clockSource == AudioClockSource::Software ? "software" : "asio"}};
+}
+
+Json clockCapabilitiesJson(const AudioControllerSnapshot& snapshot) {
+    const auto& caps = snapshot.clockCapabilities;
+    if (!snapshot.sampleRate || caps.preferredBufferFrames <= 0) return nullptr;
+    return Json{{"sampleRates", caps.supportedSampleRates}, {"bufferSizes", {
+        {"minimumFrames", caps.minBufferFrames}, {"maximumFrames", caps.maxBufferFrames},
+        {"preferredFrames", caps.preferredBufferFrames}, {"granularity", caps.bufferGranularity}}}};
+}
+
 Json statusEvent(const AudioControllerSnapshot& snapshot) {
     Json physicalId = snapshot.physicalDriverId ? Json(*snapshot.physicalDriverId) : Json(nullptr);
     Json sampleRate = snapshot.sampleRate ? Json(*snapshot.sampleRate) : Json(nullptr);
@@ -97,7 +109,8 @@ Json statusEvent(const AudioControllerSnapshot& snapshot) {
     Json lastError = snapshot.lastError.empty() ? Json(nullptr) :
         Json{{"code", "AUDIO_CONFIGURATION_FAILED"}, {"message", snapshot.lastError}, {"operation", "apply"}};
     return Json{{"event", "engine.status"},
-        {"payload", {{"state", snapshot.state}, {"physicalDriverId", std::move(physicalId)},
+        {"payload", {{"state", snapshot.state}, {"clockSource", clockSourceJson(snapshot)},
+                      {"clockCapabilities", clockCapabilitiesJson(snapshot)}, {"physicalDriverId", std::move(physicalId)},
                       {"sampleRate", std::move(sampleRate)}, {"bufferFrames", std::move(bufferFrames)},
                       {"lastError", std::move(lastError)}}}};
 }
@@ -106,6 +119,133 @@ Json routeJson(const AudioRoute& route) {
     return Json{{"id", route.id}, {"sourceEndpointId", route.sourceEndpointId},
         {"destinationEndpointId", route.destinationEndpointId}, {"gainDb", route.gainDb},
         {"mute", route.mute}};
+}
+
+const char* wasapiKind(WasapiStreamKind kind) {
+    switch (kind) {
+    case WasapiStreamKind::Capture: return "capture";
+    case WasapiStreamKind::Render: return "render";
+    case WasapiStreamKind::EndpointLoopback: return "endpointLoopback";
+    default: return "processLoopback";
+    }
+}
+Json wasapiFormat(const WasapiMixFormat& f) {
+    return {{"sampleRate", f.sampleRate}, {"channels", f.channels}, {"containerBits", f.containerBits},
+        {"validBits", f.validBits}, {"blockAlign", f.blockAlign}, {"channelMask", f.channelMask},
+        {"encoding", f.encoding == WasapiSampleEncoding::IeeeFloat ? "ieeeFloat" : "pcmInteger"}};
+}
+Json wasapiDevicesJson(const AudioControllerSnapshot& state) {
+    Json result = Json::array();
+    for (const auto& device : state.wasapiDevices)
+        result.push_back({{"id", utf8(device.id)}, {"name", utf8(device.name)},
+            {"flow", device.flow == WasapiDataFlow::Capture ? "capture" : "render"}, {"state", device.state},
+            {"mixFormat", device.mixFormat ? wasapiFormat(*device.mixFormat) : Json(nullptr)},
+            {"error", device.formatError.empty() ? Json(nullptr) : Json(device.formatError)}});
+    return result;
+}
+Json wasapiConfigurationsJson(const std::vector<WasapiBridgeConfiguration>& bridges) {
+    Json result = Json::array();
+    for (const auto& bridge : bridges) {
+        Json item{{"id", bridge.id}, {"enabled", bridge.enabled}, {"kind", wasapiKind(bridge.open.kind)},
+            {"bufferDuration100ns", bridge.open.bufferDuration100ns}};
+        if (bridge.open.defaultRole)
+            item["defaultRole"] = *bridge.open.defaultRole == WasapiDefaultRole::Console ? "console" :
+                *bridge.open.defaultRole == WasapiDefaultRole::Multimedia ? "multimedia" : "communications";
+        else item["endpointId"] = utf8(bridge.open.endpointId);
+        result.push_back(std::move(item));
+    }
+    return result;
+}
+bool parseWasapiConfigurations(const Json& value, std::vector<WasapiBridgeConfiguration>& result) {
+    if (!value.is_array() || value.size() > 32) return false;
+    std::vector<WasapiBridgeConfiguration> decoded;
+    for (const auto& item : value) {
+        if (!item.is_object() || !item.contains("id") || !item["id"].is_string() ||
+            !item.contains("kind") || !item["kind"].is_string() ||
+            item.contains("endpointId") == item.contains("defaultRole")) return false;
+        for (auto field = item.begin(); field != item.end(); ++field)
+            if (field.key() != "id" && field.key() != "kind" && field.key() != "enabled" &&
+                field.key() != "endpointId" && field.key() != "defaultRole" && field.key() != "bufferDuration100ns") return false;
+        WasapiBridgeConfiguration bridge;
+        bridge.id = item["id"].get<std::string>();
+        if (item["kind"] == "capture") bridge.open.kind = WasapiStreamKind::Capture;
+        else if (item["kind"] == "render") bridge.open.kind = WasapiStreamKind::Render;
+        else if (item["kind"] == "endpointLoopback") bridge.open.kind = WasapiStreamKind::EndpointLoopback;
+        else return false;
+        if (item.contains("enabled")) {
+            if (!item["enabled"].is_boolean()) return false;
+            bridge.enabled = item["enabled"].get<bool>();
+        }
+        if (item.contains("endpointId")) {
+            if (!item["endpointId"].is_string() ||
+                !WasapiEndpointFromUtf8(item["endpointId"].get<std::string>(), bridge.open.endpointId)) return false;
+        } else {
+            if (!item["defaultRole"].is_string()) return false;
+            if (item["defaultRole"] == "console") bridge.open.defaultRole = WasapiDefaultRole::Console;
+            else if (item["defaultRole"] == "multimedia") bridge.open.defaultRole = WasapiDefaultRole::Multimedia;
+            else if (item["defaultRole"] == "communications") bridge.open.defaultRole = WasapiDefaultRole::Communications;
+            else return false;
+        }
+        if (item.contains("bufferDuration100ns")) {
+            const auto& duration = item["bufferDuration100ns"];
+            if (!duration.is_number_integer() ||
+                (duration.is_number_unsigned() && duration.get<std::uint64_t>() > 10000000)) return false;
+            bridge.open.bufferDuration100ns = duration.get<std::int64_t>();
+        }
+        decoded.push_back(std::move(bridge));
+    }
+    std::string error;
+    if (!ValidateWasapiBridgeConfigurations(decoded, error)) return false;
+    result = std::move(decoded);
+    return true;
+}
+Json wasapiBridgesJson(const AudioControllerSnapshot& state) {
+    Json result = Json::array();
+    for (const auto& bridge : state.wasapiBridges) {
+        Json effective = nullptr, graph = nullptr, nominal = nullptr, ppm = nullptr;
+        Json inputs = Json::array(), outputs = Json::array();
+        if (bridge.effectiveInfo) {
+            const auto& info = *bridge.effectiveInfo;
+            effective = {{"endpointId", utf8(info.endpointId)}, {"kind", wasapiKind(info.kind)},
+                {"format", wasapiFormat(info.format)}, {"bufferFrames", info.bufferFrames},
+                {"streamLatency100ns", info.streamLatency100ns}, {"defaultPeriod100ns", info.defaultPeriod100ns},
+                {"minimumPeriod100ns", info.minimumPeriod100ns}};
+        }
+        if (bridge.graphFormat) {
+            const auto& f = *bridge.graphFormat;
+            graph = {{"sampleRate", f.graphSampleRate}, {"channels", f.channels},
+                {"maxQuantum", f.maxQuantum}, {"capacityFrames", f.capacityFrames}};
+            if (bridge.effectiveInfo && bridge.generation) {
+                const bool render = f.direction == WasapiBridgeDirection::Render;
+                const auto rate = bridge.effectiveInfo->format.sampleRate;
+                if (rate && f.graphSampleRate) {
+                    const double n = render ? static_cast<double>(rate) / f.graphSampleRate :
+                        static_cast<double>(f.graphSampleRate) / rate;
+                    nominal = n;
+                    ppm = (bridge.health.ratio / n - 1.0) * 1000000.0;
+                }
+                for (std::size_t channel = 1; channel <= f.channels; ++channel) {
+                    const auto direction = render ? "output" : "input";
+                    Json port{{"id", "wasapi:" + bridge.id + ":" + direction + ":" + std::to_string(channel)},
+                        {"name", bridge.id + " " + std::to_string(channel)}, {"direction", direction}, {"channel", channel}};
+                    (render ? outputs : inputs).push_back(std::move(port));
+                }
+            }
+        }
+        const auto& h = bridge.health;
+        result.push_back({{"id", bridge.id}, {"state", bridge.state}, {"generationId", std::to_string(bridge.generation)},
+            {"retryAttempt", bridge.retryAttempt}, {"retryInMs", bridge.retryInMs},
+            {"effectiveInfo", std::move(effective)}, {"graphFormat", std::move(graph)},
+            {"inputEndpoints", std::move(inputs)}, {"outputEndpoints", std::move(outputs)},
+            {"health", {{"error", static_cast<std::int32_t>(h.error)}, {"mmcssError", static_cast<std::int32_t>(h.mmcssError)},
+                {"mmcssActive", h.mmcssActive}, {"primingTimedOut", h.primingTimedOut},
+                {"capturedFrames", h.capturedFrames}, {"renderedFrames", h.renderedFrames},
+                {"droppedCaptureFrames", h.droppedCaptureFrames}, {"renderSilencedInputFrames", h.renderSilencedInputFrames},
+                {"renderSilencedDeviceFrames", h.renderSilencedDeviceFrames}, {"discontinuities", h.discontinuities},
+                {"timestampErrors", h.timestampErrors}, {"ratio", h.ratio}, {"nominalRatio", nominal}, {"correctionPpm", ppm},
+                {"bufferedFrames", bridge.bufferedFrames}, {"rejectedFrames", bridge.rejectedFrames}, {"silencedFrames", bridge.silencedFrames}}}});
+    }
+    return result;
 }
 
 Json applicationProfileJson(const ApplicationProfile& profile) {
@@ -449,11 +589,16 @@ struct ControlApiServer::Impl {
         Json configuredRoutes = Json::array();
         for (const auto& route : state.configuredRoutes)
             configuredRoutes.push_back(routeJson(route));
-        return Json{{"apiVersion", "1.0"}, {"configurationRevision", state.configurationRevision},
-            {"engine", {{"state", state.state}, {"physicalDriverId", std::move(physicalId)},
+        return Json{{"apiVersion", "1.1"}, {"configurationRevision", state.configurationRevision},
+            {"engine", {{"state", state.state}, {"clockSource", clockSourceJson(state)},
+                         {"clockCapabilities", clockCapabilitiesJson(state)}, {"physicalDriverId", std::move(physicalId)},
                          {"sampleRate", std::move(sampleRate)}, {"bufferFrames", std::move(bufferFrames)},
                          {"lastError", std::move(lastError)}}},
             {"physicalDrivers", physicalDriversJson()}, {"virtualDrivers", virtualDriversJson()},
+            {"wasapiDevices", wasapiDevicesJson(state)},
+            {"wasapiInventoryError", state.wasapiInventoryError.empty() ? Json(nullptr) : Json(state.wasapiInventoryError)},
+            {"configuredWasapiBridges", wasapiConfigurationsJson(state.configuredWasapiBridges)},
+            {"wasapiBridges", wasapiBridgesJson(state)},
             {"bufferHealth", std::move(bufferHealthJson)},
             {"performanceMeasurements", {{"enabled", measurements.enabled},
                 {"sampleEveryCallbacks", 16}, {"window", std::move(measurementWindow)}}},
@@ -538,8 +683,12 @@ struct ControlApiServer::Impl {
             !payload.contains("routes") || !payload["routes"].is_array())
             return errorEnvelope(id, "INVALID_CONFIGURATION",
                 "Payload must contain the physical selection, sample rate, buffer size and routes", "validate");
-        if (payload.size() != 4 && payload.size() != 5)
-            return errorEnvelope(id, "INVALID_CONFIGURATION", "Unexpected configuration field", "validate");
+        for (auto field = payload.begin(); field != payload.end(); ++field) {
+            if (field.key() != "physicalDriverId" && field.key() != "sampleRate" &&
+                field.key() != "bufferFrames" && field.key() != "routes" &&
+                field.key() != "expectedConfigurationRevision" && field.key() != "clockSource" && field.key() != "wasapiBridges")
+                return errorEnvelope(id, "INVALID_CONFIGURATION", "Unexpected configuration field", "validate");
+        }
         std::optional<std::uint64_t> expectedConfigurationRevision;
         if (payload.contains("expectedConfigurationRevision")) {
             if (!payload["expectedConfigurationRevision"].is_number_unsigned())
@@ -547,10 +696,16 @@ struct ControlApiServer::Impl {
                     "expectedConfigurationRevision must be a nonnegative integer", "validate");
             expectedConfigurationRevision = payload["expectedConfigurationRevision"].get<std::uint64_t>();
         }
-        if (payload.size() == 5 && !expectedConfigurationRevision)
-            return errorEnvelope(id, "INVALID_CONFIGURATION", "Unexpected configuration field", "validate");
-
         AudioControllerConfiguration configuration;
+        if (payload.contains("wasapiBridges") && !parseWasapiConfigurations(payload["wasapiBridges"], configuration.wasapiBridges))
+            return errorEnvelope(id, "INVALID_CONFIGURATION", "Invalid WASAPI bridge configuration", "validate");
+        if (payload.contains("clockSource")) {
+            const auto& source = payload["clockSource"];
+            if (!source.is_object() || source.size() != 1 || !source.contains("kind") ||
+                !source["kind"].is_string() || (source["kind"] != "asio" && source["kind"] != "software"))
+                return errorEnvelope(id, "INVALID_CONFIGURATION", "Invalid clockSource kind", "validate");
+            configuration.clockSource = source["kind"] == "software" ? AudioClockSource::Software : AudioClockSource::Asio;
+        }
         if (payload["physicalDriverId"].is_string())
             configuration.physicalDriverId = payload["physicalDriverId"].get<std::string>();
         if (!payload["sampleRate"].is_null()) {
@@ -597,9 +752,47 @@ struct ControlApiServer::Impl {
         // An existing saved application route remains editable while that client
         // is disconnected. Only IDs already present in the confirmed configuration
         // are accepted outside the current endpoint inventory.
-        const auto savedRoutes = controller.Snapshot().configuredRoutes;
+        const auto bridgeState = controller.Snapshot();
+        const auto& savedRoutes = bridgeState.configuredRoutes;
+        const auto& declaredBridges = payload.contains("wasapiBridges") ? configuration.wasapiBridges : bridgeState.configuredWasapiBridges;
+        for (const auto& bridge : declaredBridges) {
+            std::size_t channels = 0;
+            const auto effective = std::find_if(bridgeState.wasapiBridges.begin(), bridgeState.wasapiBridges.end(),
+                [&](const auto& b) { return b.id == bridge.id; });
+            const auto saved = std::find_if(bridgeState.configuredWasapiBridges.begin(), bridgeState.configuredWasapiBridges.end(),
+                [&](const auto& b) { return b.id == bridge.id; });
+            if (saved != bridgeState.configuredWasapiBridges.end() && effective != bridgeState.wasapiBridges.end() &&
+                effective->effectiveInfo && saved->open.kind == bridge.open.kind &&
+                saved->open.endpointId == bridge.open.endpointId && saved->open.defaultRole == bridge.open.defaultRole)
+                channels = effective->effectiveInfo->format.channels;
+            if (!bridge.open.endpointId.empty()) {
+                for (const auto& device : bridgeState.wasapiDevices)
+                    if (device.id == bridge.open.endpointId && device.mixFormat &&
+                        device.flow == (bridge.open.kind == WasapiStreamKind::Capture ? WasapiDataFlow::Capture : WasapiDataFlow::Render))
+                        channels = device.mixFormat->channels;
+            }
+            const bool render = bridge.open.kind == WasapiStreamKind::Render;
+            for (std::size_t channel = 1; channel <= channels && channel <= 256; ++channel)
+                endpointTypes.emplace("wasapi:" + bridge.id + (render ? ":output:" : ":input:") + std::to_string(channel),
+                    render ? RoutingEndpointType::WasapiRender : RoutingEndpointType::WasapiCapture);
+        }
         for (const auto& saved : savedRoutes) {
             for (const auto& endpoint : {saved.sourceEndpointId, saved.destinationEndpointId}) {
+                for (const auto& bridge : declaredBridges) {
+                    const bool render = bridge.open.kind == WasapiStreamKind::Render;
+                    const auto prefix = "wasapi:" + bridge.id + (render ? ":output:" : ":input:");
+                    if (endpoint.rfind(prefix, 0) == 0)
+                        endpointTypes.emplace(endpoint, render ? RoutingEndpointType::WasapiRender : RoutingEndpointType::WasapiCapture);
+                }
+                // Previously validated hardware routes remain editable when the
+                // device is absent or the graph uses the software clock.
+                if (endpoint.rfind("physical:", 0) == 0) {
+                    if (endpoint.find(":input:") != std::string::npos)
+                        endpointTypes.emplace(endpoint, RoutingEndpointType::PhysicalInput);
+                    else if (endpoint.find(":output:") != std::string::npos)
+                        endpointTypes.emplace(endpoint, RoutingEndpointType::PhysicalOutput);
+                    continue;
+                }
                 if (endpoint.rfind("virtual:TimoxVasio:app:", 0) != 0) continue;
                 if (endpoint.find(":input:") != std::string::npos)
                     endpointTypes.emplace(endpoint, RoutingEndpointType::VirtualInput);
@@ -627,12 +820,13 @@ struct ControlApiServer::Impl {
             }
             if (!RoutingGraph::SupportsLink(source->second, destination->second))
                 return errorEnvelope(id, "INVALID_ROUTE_DIRECTION",
-                    "The route direction is not one of the supported ASIO connections", "validate");
+                    "The route direction is not supported", "validate");
         }
 
         { std::lock_guard<std::mutex> lock(correlationMutex); correlationSelection.reset(); }
         controller.StopCorrelation();
-        const auto applied = controller.ApplyConfiguration(configuration, expectedConfigurationRevision);
+        const auto applied = controller.ApplyConfiguration(configuration, expectedConfigurationRevision,
+            !payload.contains("clockSource"), !payload.contains("wasapiBridges"));
         if (!applied.success) {
             diagnostics.Write(applied.conflict ? EngineDiagnostics::Level::Info :
                 EngineDiagnostics::Level::Error, "audio", applied.error);
@@ -745,6 +939,14 @@ struct ControlApiServer::Impl {
         server.Get("/api/v1/drivers", [this](const httplib::Request& request, httplib::Response& response) {
             setCors(request, response);
             response.set_content(driversJson().dump(), "application/json; charset=utf-8");
+        });
+        server.Get("/api/v1/wasapi-devices", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            controller.EnumerateWasapiDevices();
+            const auto state = controller.Snapshot();
+            response.set_content(Json{{"wasapiDevices", wasapiDevicesJson(state)},
+                {"wasapiInventoryError", state.wasapiInventoryError.empty() ? Json(nullptr) : Json(state.wasapiInventoryError)}}.dump(),
+                "application/json; charset=utf-8");
         });
         server.Get("/api/v1/openapi.json", [this](const httplib::Request& request, httplib::Response& response) {
             setCors(request, response);
@@ -959,7 +1161,7 @@ struct ControlApiServer::Impl {
         if (!readResource(moduleDirectory / L"openapi-v1.json", openApiDocument) ||
             !readResource(moduleDirectory / L"schemas" / L"api-v1.json", schemaDocument)) return false;
         configureRoutes();
-        try { physicalInventory = controller.EnumeratePhysicalDrivers(); }
+        try { physicalInventory = controller.EnumeratePhysicalDrivers(); controller.EnumerateWasapiDevices(); }
         catch (const std::exception& exception) { error = exception.what(); return false; }
         const int selectedPort = requestedPort == 0
             ? server.bind_to_any_port("127.0.0.1")

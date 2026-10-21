@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "TimoxVasio Local Control API",
-    "version": "1.0.0",
-    "description": "Control contract for the local TimoxVasio audio engine. The API binds only to 127.0.0.1. HTTP exposes confirmed engine state and driver inventory; the WebSocket starts and stops audio, applies configuration, measures active-channel levels and stereo correlation, and publishes diagnostics. Audio samples stay on the ASIO/shared-memory path and are never sent through this control API."
+    "version": "1.1.0",
+    "description": "Control contract for the local TimoxVasio audio engine. API 1.1 retains /api/v1 paths and vasio.api.v1 WebSocket subprotocol. The API binds only to 127.0.0.1. HTTP exposes confirmed state, clockSource (asio or software), clockCapabilities and cached ASIO/WASAPI inventory. configuration.apply accepts optional clockSource and wasapiBridges; omission preserves each inside the revision transaction, while wasapiBridges:[] removes all bridges. Bridge arrays replace the complete bridge configuration, with at most 32 unique ASCII IDs of 1..128 letters, digits, underscore or hyphen. Capture, render and endpointLoopback use exactly one explicit endpointId or defaultRole selector. Software mode requires physicalDriverId null, integer sampleRate 8000..384000 and bufferFrames 16..8192. configuredWasapiBridges records intent; wasapiBridges reports one status per configured bridge, including disabled or unavailable bridges. generationId is a decimal string; formats and graph ports are available only for allocated generations. Health counters ending in Frames use frames, duration fields use 100 ns, HRESULT errors are signed integers (0 means success), and correctionPpm=(ratio/nominalRatio-1)*1000000. GET state reads cached inventory; GET wasapi-devices explicitly refreshes it. The WebSocket controls audio, routes, measurements and diagnostics. Audio samples use shared memory and never travel through this API."
   },
   "servers": [
     {
@@ -13,6 +13,14 @@
     }
   ],
   "paths": {
+    "/api/v1/wasapi-devices": {
+      "get": {
+        "operationId":"refreshWasapiDevices",
+        "summary":"Refresh WASAPI capture/render endpoint inventory on the controller worker",
+        "description":"Returns endpoint IDs, names, Windows state flags and native mix formats. wasapiInventoryError distinguishes a failed enumeration from an empty successful inventory. GET state reads this cache without COM enumeration.",
+        "responses":{"200":{"description":"Updated inventory or explicit enumeration error","content":{"application/json":{"schema":{"$ref":"./schemas/api-v1.json#/definitions/wasapiInventory"}}}}}
+      }
+    },
     "/api/v1/state": {
       "get": {
         "operationId": "getEngineState",

@@ -49,9 +49,9 @@ if (-not (Test-Path -LiteralPath $openApiPath -PathType Leaf)) { throw "Missing 
 
 $openApi = Get-Content -LiteralPath $openApiPath -Raw | ConvertFrom-Json -AsHashtable
 if ($openApi.openapi -ne '3.1.0') { throw 'OpenAPI document must use OpenAPI 3.1.0' }
-if ($openApi.info.title -ne 'TimoxVasio Local Control API' -or $openApi.info.version -ne '1.0.0') { throw 'OpenAPI info metadata is missing or inconsistent' }
+if ($openApi.info.title -ne 'TimoxVasio Local Control API' -or $openApi.info.version -ne '1.1.0') { throw 'OpenAPI info metadata is missing or inconsistent' }
 if (-not $api.Contains('openapi-v1.json')) { throw 'API.md does not link to the Swagger/OpenAPI document' }
-foreach ($path in '/api/v1/state', '/api/v1/drivers', '/api/v1/openapi.json', '/api/v1/schemas/api-v1.json', '/api/v1/application-profiles', '/api/v1/ws') {
+foreach ($path in '/api/v1/state', '/api/v1/drivers', '/api/v1/wasapi-devices', '/api/v1/openapi.json', '/api/v1/schemas/api-v1.json', '/api/v1/application-profiles', '/api/v1/ws') {
     if (-not $openApi.paths.ContainsKey($path)) { throw "OpenAPI document lacks path $path" }
 }
 foreach ($method in 'get', 'put') {

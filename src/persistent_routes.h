@@ -3,6 +3,7 @@
 #include "routing_graph.h"
 #include "application_profile.h"
 #include "vasio_client_manager.h"
+#include "audio_routing_runtime.h"
 
 #include <windows.h>
 
@@ -145,6 +146,35 @@ inline std::vector<AudioRoute> Resolve(const std::vector<AudioRoute>& routes,
         result.push_back(std::move(route));
     }
     return result;
+}
+
+inline std::vector<AudioRoute> ResolveForClock(const std::vector<AudioRoute>& routes,
+        const std::vector<VasioClientSnapshot>& clients,
+        const std::optional<std::string>& physicalDriverId,
+        const std::vector<WasapiRoutingBinding>& wasapiBindings = {}) {
+    auto active = Resolve(routes, clients);
+    const auto available = [&physicalDriverId,&wasapiBindings](const std::string& endpoint) {
+        if (endpoint.rfind("physical:", 0) == 0)
+            return physicalDriverId && endpoint.rfind("physical:" + *physicalDriverId + ":", 0) == 0;
+        if (endpoint.rfind("wasapi:",0)!=0)return true;
+        const auto separator=endpoint.find(':',7);
+        if(separator==std::string::npos)return false;
+        const auto id=endpoint.substr(7,separator-7);
+        const auto channelSeparator=endpoint.find(':',separator+1);
+        if(channelSeparator==std::string::npos)return false;
+        const auto direction=endpoint.substr(separator+1,channelSeparator-separator-1);
+        std::uint32_t channel=0;
+        if(!Detail::parseChannel(endpoint.substr(channelSeparator+1),channel))return false;
+        for(const auto& binding:wasapiBindings)if(binding.bridgeId==id && binding.io) {
+            const auto& format=binding.io->Format();
+            return channel<=format.channels && direction==(format.direction==WasapiBridgeDirection::Capture?"input":"output");
+        }
+        return false;
+    };
+    active.erase(std::remove_if(active.begin(), active.end(), [&](const AudioRoute& route) {
+        return !available(route.sourceEndpointId) || !available(route.destinationEndpointId);
+    }), active.end());
+    return active;
 }
 
 inline std::optional<RoutingEndpointType> ProfiledEndpointType(const std::string& id,

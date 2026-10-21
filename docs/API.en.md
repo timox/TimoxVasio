@@ -183,3 +183,21 @@ The engine does not bind external network interfaces. It accepts local WebSocket
 `GET /api/v1/diagnostics?limit=N` returns log level (`info` or `debug`) and recent entries. `limit` defaults to 200 and accepts 1–500. Entries have `timestamp`, `level`, `component`, and `message`.
 
 `PUT /api/v1/diagnostics` accepts exactly `{ "level": "info" }` or `{ "level": "debug" }` and persists it. Logs are written to `%LOCALAPPDATA%\TimoxVasio\logs\engine.log` with four archives. Audio callbacks never write logs. `engine.start` and `engine.stop` control audio without closing the API host; `engine.stop` is refused while a TimoxVasio client is attached.
+
+## Engine clock source
+
+`engine.clockSource` is `{ "kind": "asio" }` or `{ "kind": "software" }`. `engine.clockCapabilities` describes supported sample rates and buffer sizes, or is `null` when no clock is configured. `physicalDrivers` remains the physical ASIO inventory.
+
+`configuration.apply.payload.clockSource` is optional: omission preserves the current source inside the transaction checked by `expectedConfigurationRevision`. Legacy persisted configurations without this field retain ASIO mode. Existing fields remain required. Software mode requires `physicalDriverId: null`, integer `sampleRate` between 8000 and 384000 and `bufferFrames` between 16 and 8192. It clocks the graph without a physical device. Routes to unselected hardware stay saved but inactive.
+
+`engine.start`, `engine.stop` and `engine.reset` also apply to the software clock. A clock worker failure stops audio and publishes an error; recovery is explicit. `engine.status` events expose the same source and capabilities as HTTP state.
+
+## WASAPI bridges — contract 1.1
+
+The `/api/v1` paths and `vasio.api.v1` WebSocket subprotocol remain unchanged. State announces `apiVersion: "1.1"`. `GET /api/v1/wasapi-devices` refreshes endpoint inventory; state reads use cached inventory.
+
+`configuration.apply.payload.wasapiBridges` contains desired configuration: `id`, `kind` (`capture`, `render`, `endpointLoopback`), exactly one selector `endpointId` or `defaultRole` (`console`, `multimedia`, `communications`), and optional `enabled` and `bufferDuration100ns`. Omitting the array preserves existing bridges; `[]` removes them. Associated routes must be explicitly removed when deleting a bridge.
+
+State separates `configuredWasapiBridges` from `wasapiBridges`: the latter reports effective format, generation, retry and `health` counters (loss, silence, drift and errors). Graph ports use `wasapi:<id>:input:<channel>` or `wasapi:<id>:output:<channel>`, with channels starting at 1. Configure a bridge before discovering its ports.
+
+This stage supports shared mode and endpoint loopback. It does not provide a native Windows virtual driver, exclusive mode or process loopback. See the [ASIO/WASAPI guide](ASIO_WASAPI_GUIDE.en.md) and JSON schema for exact fields and limits.

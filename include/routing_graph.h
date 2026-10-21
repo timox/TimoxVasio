@@ -11,6 +11,8 @@ enum class RoutingEndpointType {
     PhysicalOutput,
     VirtualInput,
     VirtualOutput,
+    WasapiCapture,
+    WasapiRender,
 };
 
 struct RoutingEndpoint {

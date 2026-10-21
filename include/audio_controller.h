@@ -5,9 +5,11 @@
 #include "application_profile.h"
 #include "application_profile_store.h"
 #include "audio_configuration_store.h"
-#include "physical_asio_host.h"
+#include "audio_clock_host.h"
 #include "realtime_callback_slot.h"
 #include "routing_graph.h"
+#include "wasapi_bridge_configuration.h"
+#include "wasapi_bridge_manager.h"
 
 #include <windows.h>
 
@@ -30,11 +32,15 @@ class AudioRoutingRuntime;
 class VasioClientManager;
 struct VasioClientSnapshot;
 
+enum class AudioClockSource { Asio, Software };
+
 struct AudioControllerConfiguration {
+    AudioClockSource clockSource = AudioClockSource::Asio;
     std::optional<std::string> physicalDriverId;
     std::optional<std::uint32_t> sampleRate;
     std::optional<std::uint32_t> bufferFrames;
     std::vector<AudioRoute> routes;
+    std::vector<WasapiBridgeConfiguration> wasapiBridges;
 };
 
 struct AudioControllerResult {
@@ -44,6 +50,8 @@ struct AudioControllerResult {
 };
 
 struct AudioControllerSnapshot {
+    AudioClockSource clockSource = AudioClockSource::Asio;
+    AudioClockCapabilities clockCapabilities;
     std::uint64_t revision = 0;
     std::uint64_t configurationRevision = 0;
     std::string state = "stopped";
@@ -53,6 +61,10 @@ struct AudioControllerSnapshot {
     std::string lastError;
     std::vector<AudioRoute> routes;
     std::vector<AudioRoute> configuredRoutes;
+    std::vector<WasapiBridgeConfiguration> configuredWasapiBridges;
+    std::vector<WasapiBridgeSnapshot> wasapiBridges;
+    std::vector<WasapiDeviceInfo> wasapiDevices;
+    std::string wasapiInventoryError;
     PhysicalAsioCapabilities physicalCapabilities;
 };
 
@@ -96,9 +108,14 @@ struct PerformanceMeasurementsSnapshot {
 
 class AudioController final {
 public:
+    // Constructed and destroyed on the controller worker, including after restart.
+    using ClockHostFactory = std::function<std::unique_ptr<AudioClockHost>()>;
     explicit AudioController(VasioClientManager& clients,
         std::wstring configurationPath = AudioConfigurationStore::DefaultPath(),
-        std::wstring applicationProfilesPath = ApplicationProfileStore::DefaultPath());
+        std::wstring applicationProfilesPath = ApplicationProfileStore::DefaultPath(),
+        ClockHostFactory clockHostFactory = {},
+        WasapiBridge::BackendFactory wasapiBackendFactory = {},
+        WasapiBridgeManager::EndpointResolver wasapiEndpointResolver = {});
     ~AudioController();
     AudioController(const AudioController&) = delete;
     AudioController& operator=(const AudioController&) = delete;
@@ -106,8 +123,10 @@ public:
     bool Start();
     void Stop() noexcept;
     std::vector<PhysicalAsioDriverInfo> EnumeratePhysicalDrivers();
+    std::vector<WasapiDeviceInfo> EnumerateWasapiDevices();
     AudioControllerResult ApplyConfiguration(const AudioControllerConfiguration& configuration,
-        std::optional<std::uint64_t> expectedConfigurationRevision = std::nullopt);
+        std::optional<std::uint64_t> expectedConfigurationRevision = std::nullopt,
+        bool preserveClockSource = false, bool preserveWasapiBridges = false);
     AudioControllerResult StartAudio();
     AudioControllerResult ResetAudio();
     AudioControllerResult StopAudio();
@@ -164,7 +183,9 @@ private:
     HANDLE queueEvent_ = nullptr;
     HANDLE startupEvent_ = nullptr;
     HWND hostWindow_ = nullptr;
-    std::unique_ptr<PhysicalAsioHost> physicalHost_;
+    ClockHostFactory clockHostFactory_;
+    std::unique_ptr<AudioClockHost> physicalHost_;
+    AudioClockSource hostClockSource_ = AudioClockSource::Asio;
     std::unique_ptr<AudioRoutingRuntime> runtime_;
     mutable std::mutex stateMutex_;
     AudioControllerSnapshot state_;
@@ -177,11 +198,21 @@ private:
     PerformanceMeasurementsSnapshot performanceMeasurements_;
     std::uint64_t performanceMeasurementsGeneration_ = 0; // Controller worker only.
     void ResetPerformanceMeasurementsWindow() noexcept;
-    AudioControllerResult ApplyConfigurationCore(const AudioControllerConfiguration& configuration);
+    AudioControllerResult ApplyConfigurationCore(const AudioControllerConfiguration& configuration,
+        bool allowUnavailable = false);
+    std::optional<AudioControllerResult> ApplyPreparedLive(const AudioControllerConfiguration& configuration,
+        const AudioControllerConfiguration* durable);
+    void ReconcileWasapiOnWorker();
     bool TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
-        const std::vector<VasioClientSnapshot>& clients);
+        const std::vector<VasioClientSnapshot>& clients,
+        const std::shared_ptr<WasapiBridgeManager>& manager = {});
     void StopPhysicalRuntime() noexcept;
     RealtimeCallbackSlot callbackSlot_;
     std::vector<std::uint32_t> hostPhysicalInputs_;
     std::vector<std::uint32_t> hostPhysicalOutputs_;
+    WasapiBridge::BackendFactory wasapiBackendFactory_;
+    WasapiBridgeManager::EndpointResolver wasapiEndpointResolver_;
+    std::shared_ptr<WasapiBridgeManager> wasapiManager_;
+    std::vector<WasapiDeviceInfo> wasapiDevices_;
+    std::string wasapiInventoryError_;
 };
