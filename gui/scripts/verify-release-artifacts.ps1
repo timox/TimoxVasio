@@ -143,7 +143,7 @@ $sevenZip = Get-Command 7z.exe -ErrorAction SilentlyContinue
 if (-not $sevenZip) { throw '7z.exe est requis pour vérifier la DLL embarquée dans le Setup.' }
 $payloadDirectory = Join-Path $guiRoot 'dist\release-validation-1.2.7-test\setup-payload'
 New-Item -ItemType Directory -Path $payloadDirectory -Force | Out-Null
-& $sevenZip.Source e -tNsis $outputs[0] "-o$payloadDirectory" '-y' '*TimoxVasio.dll' | Out-Null
+& $sevenZip.Source e -tNsis $outputs[0] "-o$payloadDirectory" '-y' '-r' '*TimoxVasio.dll' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Extraction des ressources du Setup impossible : code $LASTEXITCODE" }
 $setupDriver = Join-Path $payloadDirectory 'TimoxVasio.dll'
 Require-SameHash $driverPath $setupDriver 'DLL du Setup/build'
@@ -154,7 +154,7 @@ for ($index = 0; $index -lt $outputs.Count; $index++) {
     $kind = if ($index -eq 0) { 'setup' } else { 'portable' }
     $embeddedDirectory = Join-Path $guiRoot "dist\release-validation-1.2.7-test\$kind-engine"
     New-Item -ItemType Directory -Path $embeddedDirectory -Force | Out-Null
-    & $sevenZip.Source e -tNsis $outputs[$index] "-o$embeddedDirectory" '-y' '*app-64.7z' | Out-Null
+    & $sevenZip.Source e -tNsis $outputs[$index] "-o$embeddedDirectory" '-y' '-r' '*app-64.7z' | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Extraction du payload $kind impossible." }
     $appArchive = Join-Path $embeddedDirectory 'app-64.7z'
     Require-File $appArchive
