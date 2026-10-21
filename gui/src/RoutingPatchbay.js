@@ -6,8 +6,8 @@ import { DEFAULT_ROUTE_COLOR, routeVisualKey } from './route-visuals';
 import { transferProcessConnections } from './process-connection-transfer';
 
 const permitted = (sourceKind, destinationKind) =>
-    sourceKind === 'physical-input' ? destinationKind === 'virtual-input' :
-        sourceKind === 'virtual-output' && ['physical-output', 'virtual-input'].includes(destinationKind);
+    sourceKind === 'physical-input' ? ['virtual-input', 'wasapi-render'].includes(destinationKind) :
+        ['virtual-output', 'wasapi-capture'].includes(sourceKind) && ['physical-output', 'virtual-input', 'wasapi-render'].includes(destinationKind);
 const emptyProfiles = [];
 
 const withSearch = (groups, search) => {
@@ -84,6 +84,7 @@ const graphNodes = (sources, destinations, sourceGroups, destinationGroups) => {
         runtimesByName.get(name).add(runtimeKey(group));
     });
     const nodeKey = group => {
+        if (group.bridgeId) return `wasapi:${group.bridgeId}`;
         if (group.id.startsWith('profile:') || group.id.startsWith('saved:')) {
             const name = processName(group);
             const runtimes = runtimesByName.get(name);
@@ -97,7 +98,7 @@ const graphNodes = (sources, destinations, sourceGroups, destinationGroups) => {
         const key = nodeKey(group);
         if (!nodes.has(key)) nodes.set(key, { key, label: group.label, type: group.id.startsWith('profile:') ? 'profile' :
             group.id.startsWith('saved:') ? 'saved' :
-            group.kind.startsWith('physical') ? 'physical' : 'process', inputs: [], outputs: [] });
+            group.bridgeId ? 'wasapi' : group.kind.startsWith('physical') ? 'physical' : 'process', bridgeId: group.bridgeId, inputs: [], outputs: [] });
         const node = nodes.get(key);
         if ((node.type === 'profile' || node.type === 'saved') && !group.id.startsWith('profile:') && !group.id.startsWith('saved:')) {
             node.type = 'process'; node.label = group.label;
@@ -121,7 +122,8 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
     onBulkChangeRouteVisuals = () => {}, onEditRoute = () => {}, confirmedRoutes = [], activeRoutes = [],
     meters = {}, disabled = false, profiles = emptyProfiles, onAssignProfile = async () => {},
     onRemoveProcessConfiguration = async () => {}, onTransferProcessConnections = () => {},
-    onCreateConnection = () => {}, onShowProcessDetail = () => {} }) {
+    onCreateConnection = () => {}, onShowProcessDetail = () => {},
+    onCreateBridge, onEditBridge = () => {}, onRemoveBridge = () => {}, isConnectionAllowed = () => true }) {
     const [contextMenu, setContextMenu] = useState(null);
     const [processDialogKey, setProcessDialogKey] = useState(null);
     React.useEffect(() => {
@@ -343,7 +345,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
 
     const connect = (destinationId, destinationKind) => {
         const sourceId = selectedSourceRef.current;
-        if (disabled || !sourceId || !permitted(sourceMap.get(sourceId), destinationKind)) return;
+        if (disabled || !sourceId || !permitted(sourceMap.get(sourceId), destinationKind) || !isConnectionAllowed(sourceId, destinationId)) return;
         onToggleRoute(sourceId, destinationId);
         selectSource(null);
     };
@@ -353,7 +355,8 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
             group.id.startsWith('saved:') ? 'Configured ports' : 'Open ports'}</small>}
         <ul>{group.endpoints.map(endpoint => {
             const connected = side === 'destination' && allLinkedDestinations.has(endpoint.id);
-            const invalid = side === 'destination' && selectedSourceId && !permitted(selectedKind, group.kind);
+            const invalid = side === 'destination' && selectedSourceId &&
+                (!permitted(selectedKind, group.kind) || !isConnectionAllowed(selectedSourceId, endpoint.id));
             return <li key={endpoint.id}>
                 <button type="button" className={`patchbay-port nodrag ${side}${selectedSourceId === endpoint.id ? ' selected' : ''}${connected ? ' linked' : ''}${selectedRoute && (side === 'source' ? selectedRoute.sourceEndpointId : selectedRoute.destinationEndpointId) === endpoint.id ? ' route-selected' : ''}`}
                     data-port-id={endpoint.id} data-side={side} disabled={disabled || !!invalid}
@@ -406,7 +409,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                 setCollapsedGroups(current => ({ ...current, [nodeKey]: !collapsed }));
                 if (!collapsed && endpointIds.has(selectedSourceId)) selectSource(null);
             }}>{collapsed ? '▸' : '▾'}</button>
-            <span className={`patchbay-object-icon ${node.type}`} aria-hidden="true">{node.type === 'physical' ? '▣' :
+            <span className={`patchbay-object-icon ${node.type}`} aria-hidden="true">{node.type === 'wasapi' ? '◈' : node.type === 'physical' ? '▣' :
                 node.type === 'profile' ? '◇' : node.type === 'saved' ? '◌' : '▤'}</span>
             <strong title={layout.label || node.label}>{layout.label || node.label}</strong>
             <span>{linkCount} {linkCount === 1 ? 'link' : 'links'}</span>
@@ -434,7 +437,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
 
     const columnY = [30, 30, 30];
     const flowNodes = nodes.map(node => {
-        const column = node.type !== 'physical' ? 1 : node.outputs.length ? 0 : 2;
+        const column = !['physical', 'wasapi'].includes(node.type) ? 1 : node.outputs.length ? 0 : 2;
         const groups = [...node.inputs, ...node.outputs];
         const portCount = groups.reduce((total, group) => total + group.endpoints.length, 0);
         const collapsed = groups.length && isCollapsed(groups[0], node.inputs.length ? 'destination' : 'source');
@@ -470,13 +473,15 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
     const validFlowConnection = connection => {
         const sourceGroup = sourceGroupByEndpoint.get(connection.sourceHandle);
         const destinationGroup = destinationGroupByEndpoint.get(connection.targetHandle);
-        return !!sourceGroup && !!destinationGroup && permitted(sourceGroup.kind, destinationGroup.kind);
+        return !!sourceGroup && !!destinationGroup && permitted(sourceGroup.kind, destinationGroup.kind) &&
+            isConnectionAllowed(connection.sourceHandle, connection.targetHandle);
     };
 
     return <div className="patchbay" style={{ '--selected-route-color': selectedVisual?.color || DEFAULT_ROUTE_COLOR }}>
         <details className="patchbay-legend" aria-label="Graph symbols">
             <summary>Graph key</summary><div>
             <span><b className="physical">▣</b> Physical I/O</span><span><b className="process">▤</b> Process / virtual I/O</span>
+            <span><b>◈</b> Windows audio bridge</span>
             <span><b className="profile">◇</b> Channel profile</span><span><b className="saved">◌</b> Process not open</span>
             <span><i className="line saved" /> Saved</span>
             <span><i className="line pending" /> Pending</span><span><i className="line muted" /> Muted</span>
@@ -749,6 +754,8 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
             onPointerDown={event => event.stopPropagation()}>
             {contextMenu.kind === 'pane' && <button type="button" role="menuitem"
                 onClick={() => menuAction(onCreateConnection)}>Create a new connection</button>}
+            {contextMenu.kind === 'pane' && onCreateBridge && <button type="button" role="menuitem" disabled={disabled}
+                onClick={() => menuAction(onCreateBridge)}>Add Windows audio bridge…</button>}
             {contextMenu.kind === 'pane' && <button type="button" role="menuitem"
                 onClick={() => menuAction(() => onShowProcessDetail(null))}>Process and channel detail</button>}
             {contextMenu.kind === 'pane' && routes.length > 0 && <button type="button" role="menuitem"
@@ -761,7 +768,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                     setEditingNodeKey(contextNode.key);
                     setRenameDraft(layout.label || contextNode.label);
                 })}>Rename block…</button>
-                {contextNode.type !== 'physical' && <>
+                {!['physical', 'wasapi'].includes(contextNode.type) && <>
                 <button type="button" role="menuitem" onClick={() => menuAction(() => {
                     setSelectedNodeKey(contextNode.key); setConnectionDialogOpen(false);
                     setBulkOpen(false); setConfirmProcessRemoval(false); setProcessNotice('');
@@ -781,6 +788,11 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                 </>}
                 {contextNode.type === 'physical' && <button type="button" role="menuitem"
                     onClick={() => menuAction(onCreateConnection)}>Add a connection…</button>}
+                {contextNode.type === 'wasapi' && <>
+                    <button type="button" role="menuitem" disabled={disabled} onClick={() => menuAction(() => onEditBridge(contextNode.bridgeId))}>Configure Windows audio bridge…</button>
+                    <button type="button" role="menuitem" disabled={disabled} onClick={() => menuAction(() => onRemoveBridge(contextNode.bridgeId))}>Remove Windows audio bridge…</button>
+                    <button type="button" role="menuitem" disabled={disabled} onClick={() => menuAction(onCreateConnection)}>Add a connection…</button>
+                </>}
             </>}
             {contextRoute && <>
                 <strong>{describeRoute(contextRoute)}</strong>

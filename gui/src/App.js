@@ -23,6 +23,11 @@ function App() {
     const [apiState, setApiState] = useState(null);
     const [configuration, setConfiguration] = useState(null);
     const [engine, setEngine] = useState(null);
+    const softwareClock = configuration?.clockSource?.kind === 'software';
+    const runningSoftwareClock = engine?.clockSource?.kind === 'software';
+    const invalidSoftwareFormat = softwareClock && (!Number.isInteger(configuration.sampleRate) ||
+        configuration.sampleRate < 8000 || configuration.sampleRate > 384000 ||
+        !Number.isInteger(configuration.bufferFrames) || configuration.bufferFrames < 16 || configuration.bufferFrames > 8192);
     const [applicationProfiles, setApplicationProfiles] = useState(null);
     const [confirmedProfiles, setConfirmedProfiles] = useState([]);
     const [profilesLoading, setProfilesLoading] = useState(true);
@@ -33,6 +38,8 @@ function App() {
     const [applying, setApplying] = useState(false);
     const [selectedRouteId, setSelectedRouteId] = useState(null);
     const [routingDialog, setRoutingDialog] = useState(null);
+    const [bridgeDialog, setBridgeDialog] = useState(null);
+    const [bridgeInventoryBusy, setBridgeInventoryBusy] = useState(false);
     const [migrationLog, setMigrationLog] = useState(readMigrationLog);
     const pendingMigrations = useRef([]);
     const [routeVisuals, setRouteVisuals] = useState(readRouteVisuals);
@@ -122,7 +129,7 @@ function App() {
             else await window.vasio.stopAudio();
             await new Promise(resolve => setTimeout(resolve, 150));
             await refreshState();
-            if (action === 'reset') setNotice('Physical driver reopened with the last saved connections. Pending edits were not applied.');
+            if (action === 'reset') setNotice(`${runningSoftwareClock ? 'Software clock restarted' : 'Physical driver reopened'} with the last saved connections. Pending edits were not applied.`);
         } catch (error) { setDiagnosticsError(error.message); setNotice(error.message); }
         finally { setEngineAction(''); }
     };
@@ -207,6 +214,8 @@ function App() {
                 metersRef.current = {};
                 setMeters({});
             }
+            if (message.event === 'wasapi.bridges.changed')
+                setApiState(current => current && ({ ...current, wasapiBridges: message.payload.wasapiBridges }));
             if (message.event === 'engine.error') setNotice(message.payload.message);
             if (message.event === 'audio.meter') {
                 metersRef.current[message.payload.endpointId] = message.payload;
@@ -284,7 +293,7 @@ function App() {
 
     const endpoints = useMemo(() => {
         if (!apiState) return { all: [], sourceGroups: [], destinationGroups: [] };
-        const physical = apiState.physicalDrivers;
+        const physical = softwareClock ? [] : apiState.physicalDrivers;
         const virtual = apiState.virtualDrivers;
         const physicalInputs = physical.flatMap(driver => driver.inputEndpoints);
         const physicalOutputs = physical.flatMap(driver => driver.outputEndpoints);
@@ -319,10 +328,42 @@ function App() {
                 { id: 'virtual-output', label: 'Virtual outputs', endpoints: virtualOutputs }
             ]
         };
-    }, [apiState, confirmedProfiles]);
+    }, [apiState, confirmedProfiles, softwareClock]);
+    const bridgeGroups = useMemo(() => (configuration?.wasapiBridges || []).map(bridge => {
+        const runtime = apiState?.wasapiBridges?.find(item => item.id === bridge.id);
+        const capture = bridge.kind !== 'render';
+        const direction = capture ? 'input' : 'output';
+        const prefix = `wasapi:${bridge.id}:${direction}:`;
+        const ports = new Map((runtime?.[capture ? 'inputEndpoints' : 'outputEndpoints'] || []).map(port => [port.id, port]));
+        for (const route of configuration.routes) {
+            const id = capture ? route.sourceEndpointId : route.destinationEndpointId;
+            if (id.startsWith(prefix) && !ports.has(id)) ports.set(id, { id, name: `${bridge.id} ${direction} ${id.slice(prefix.length)} (saved)`,
+                direction, channel: Number(id.slice(prefix.length)) });
+        }
+        return { id: `wasapi:${bridge.id}`, bridgeId: bridge.id, kind: capture ? 'wasapi-capture' : 'wasapi-render',
+            label: `${bridge.id} · ${bridge.enabled === false ? 'disabled' : runtime?.state || 'pending'}`,
+            bridgeKind: bridge.kind, enabled: bridge.enabled !== false,
+            resolvedEndpointId: runtime?.effectiveInfo?.endpointId || bridge.endpointId || null,
+            endpoints: [...ports.values()] };
+    }), [configuration, apiState]);
+    const bridgeConnectionAllowed = (sourceId, destinationId) => {
+        const source = bridgeGroups.find(group => group.endpoints.some(port => port.id === sourceId));
+        const destination = bridgeGroups.find(group => group.endpoints.some(port => port.id === destinationId));
+        return source?.enabled !== false && destination?.enabled !== false &&
+            !(source?.bridgeKind === 'endpointLoopback' && destination?.bridgeKind === 'render' &&
+                source.resolvedEndpointId && source.resolvedEndpointId === destination.resolvedEndpointId);
+    };
+    const refreshBridgeInventory = async () => {
+        if (!window.vasio.getWasapiDevices) return;
+        setBridgeInventoryBusy(true);
+        try { const inventory = await window.vasio.getWasapiDevices();
+            setApiState(current => ({ ...current, ...inventory }));
+        } catch (error) { setNotice(error.message); }
+        finally { setBridgeInventoryBusy(false); }
+    };
     const patchbayGroups = useMemo(() => {
         if (!apiState) return { sources: [], destinations: [] };
-        const physical = apiState.physicalDrivers || [];
+        const physical = softwareClock ? [] : apiState.physicalDrivers || [];
         const virtual = apiState.virtualDrivers || [];
         const virtualGroups = direction => virtual.flatMap(driver => (driver.clients || []).map(client => {
             const prefix = `virtual:${driver.id}:${client.pid}:${direction}:`;
@@ -362,6 +403,7 @@ function App() {
         };
         return {
             sources: [
+                ...bridgeGroups.filter(group => group.kind === 'wasapi-capture'),
                 ...virtualGroups('output'),
                 ...profileGroups('output'),
                 ...savedGroups('output'),
@@ -371,6 +413,7 @@ function App() {
                 }))
             ],
             destinations: [
+                ...bridgeGroups.filter(group => group.kind === 'wasapi-render'),
                 ...physical.filter(driver => driver.outputEndpoints.length).map(driver => ({
                     id: `${driver.id}:output`, label: `${driver.name} · Outputs`, kind: 'physical-output',
                     endpoints: driver.outputEndpoints
@@ -380,7 +423,7 @@ function App() {
                 ...savedGroups('input')
             ]
         };
-    }, [apiState, endpoints.profiled, configuration?.routes]);
+    }, [apiState, endpoints.profiled, configuration?.routes, softwareClock, bridgeGroups]);
     const confirmedRoutes = apiState ? configurationFromState(apiState).routes : [];
 
     const configurationLocked = applying || engine?.state === 'reconfiguring';
@@ -396,6 +439,9 @@ function App() {
         configurationLocked || !current ? current : update(current));
     const updateConfiguration = (field, value) => updateDraft(current => ({ ...current, [field]: value }));
     const toggleRoute = (sourceEndpointId, destinationEndpointId) => setConfiguration(current => {
+        if (!current) return current;
+        if (!bridgeConnectionAllowed(sourceEndpointId, destinationEndpointId) && !current.routes.some(route =>
+            route.sourceEndpointId === sourceEndpointId && route.destinationEndpointId === destinationEndpointId)) return current;
         if (configurationLocked || !current) return current;
         sourceEndpointId = stableEndpointId(sourceEndpointId);
         destinationEndpointId = stableEndpointId(destinationEndpointId);
@@ -411,6 +457,7 @@ function App() {
         }] };
     });
     const reconnectRoute = (routeId, sourceEndpointId, destinationEndpointId) => setConfiguration(current => {
+        if (!bridgeConnectionAllowed(sourceEndpointId, destinationEndpointId)) return current;
         sourceEndpointId = stableEndpointId(sourceEndpointId);
         destinationEndpointId = stableEndpointId(destinationEndpointId);
         if (configurationLocked || !current || current.routes.some(route => route.id !== routeId &&
@@ -419,7 +466,7 @@ function App() {
             ? { ...route, sourceEndpointId, destinationEndpointId } : route) };
     });
     const addRoutes = routes => updateDraft(current => ({ ...current,
-        routes: [...current.routes, ...routes.map((route, index) => ({
+        routes: [...current.routes, ...routes.filter(route => bridgeConnectionAllowed(route.sourceEndpointId, route.destinationEndpointId)).map((route, index) => ({
             id: `route-${Date.now()}-${current.routes.length + index}`,
             ...route, sourceEndpointId: stableEndpointId(route.sourceEndpointId),
             destinationEndpointId: stableEndpointId(route.destinationEndpointId),
@@ -548,7 +595,9 @@ function App() {
             return;
         }
         const confirmed = configurationFromState(state);
-        const migrated = { ...confirmed, routes: [...confirmed.routes, ...result.routes] };
+        const affected = new Set(plan.routes.map(route => route.id));
+        const migrated = { ...confirmed, routes: [
+            ...confirmed.routes.filter(route => !affected.has(route.id)), ...result.routes] };
         await window.vasio.applyConfiguration(migrated);
         const final = await refreshState({ resetDraft: true });
         const saved = configurationFromState(final).routes;
@@ -569,9 +618,9 @@ function App() {
         setApplying(true);
         setNotice('Opening the selected physical driver; the existing connections are saved for transfer…');
         try {
-            const affected = new Set(plan.routes.map(route => route.id));
-            await window.vasio.applyConfiguration({ ...configuration,
-                routes: configuration.routes.filter(route => !affected.has(route.id)) });
+            // Keep old-card endpoints persisted while discovering the target.
+            // They remain dormant, and an absent card can still be restored.
+            await window.vasio.applyConfiguration(configuration);
             const opened = await refreshState({ resetDraft: true });
             if (opened.engine.physicalDriverId !== plan.targetDriverId)
                 throw new Error('The selected driver did not open. The original connections remain saved for recovery.');
@@ -588,13 +637,15 @@ function App() {
     };
     const restorePreviousPhysicalDriver = async () => {
         const previous = hardwareTransfer?.previousConfiguration;
-        if (!previous?.physicalDriverId || configurationLocked || !apiState) return;
+        if (!previous || configurationLocked || !apiState) return;
+        const previousSoftwareClock = previous.clockSource?.kind === 'software';
         setApplying(true);
-        setNotice('Restoring the previous physical driver and its connections…');
+        setNotice('Restoring the previous audio configuration and its connections…');
         try {
-            if (apiState.engine.physicalDriverId !== previous.physicalDriverId) {
+            if (!previousSoftwareClock && apiState.engine.physicalDriverId !== previous.physicalDriverId) {
                 const current = configurationFromState(apiState);
                 await window.vasio.applyConfiguration({ ...current,
+                    ...(current.clockSource || previous.clockSource ? { clockSource: previous.clockSource || { kind: 'asio' } } : {}),
                     physicalDriverId: previous.physicalDriverId,
                     sampleRate: previous.sampleRate, bufferFrames: previous.bufferFrames,
                     routes: current.routes.filter(route => ![route.sourceEndpointId, route.destinationEndpointId]
@@ -605,17 +656,20 @@ function App() {
             const restored = await refreshState({ resetDraft: true });
             const saved = configurationFromState(restored).routes;
             if (restored.engine.physicalDriverId !== previous.physicalDriverId ||
+                (restored.engine.clockSource?.kind || 'asio') !== (previous.clockSource?.kind || 'asio') ||
+                (previousSoftwareClock && (restored.engine.sampleRate !== previous.sampleRate ||
+                    restored.engine.bufferFrames !== previous.bufferFrames)) ||
                 !previous.routes.every(route => saved.some(item => item.sourceEndpointId === route.sourceEndpointId &&
                     item.destinationEndpointId === route.destinationEndpointId && item.gainDb === route.gainDb && item.mute === route.mute)))
                 throw new Error('The previous driver or its connections could not be confirmed. The backup remains available.');
             setHardwareTransfer(null);
             saveHardwareTransfer(null);
-            setNotice('Previous driver and connections restored.');
+            setNotice(previousSoftwareClock ? 'Previous software clock and connections restored.' : 'Previous driver and connections restored.');
         } catch (error) { setNotice(error.message); }
         finally { setApplying(false); }
     };
     const applyConfiguration = async () => {
-        if (!configuration || configurationLocked || hardwareTransfer) return;
+        if (!configuration || configurationLocked || hardwareTransfer || invalidSoftwareFormat) return;
         if (incompatiblePhysicalRoutes.length) {
             setNotice('Use “Switch driver and transfer connections” to keep the saved connections when changing the physical driver.');
             return;
@@ -640,11 +694,13 @@ function App() {
                         ` became ${item.to.sourceEndpointId} → ${item.to.destinationEndpointId}` })), ...current].slice(0, 100));
                 pendingMigrations.current = [];
             }
-            setNotice(merged.routes.length === 0
-                ? 'Physical driver configured. The audio engine remains stopped until a route is defined.'
+            setNotice(confirmed.engine.state === 'running'
+                ? 'Configuration applied. Audio engine running.'
+                : confirmed.engine.state === 'stopped' && merged.routes.length === 0
+                    ? 'Configuration applied. Audio engine stopped.'
                 : confirmed.engine.state === 'stopped' && !confirmed.routes.length
                     ? 'Configured routes are waiting for their application channels to open.'
-                : 'Configuration applied. Audio routing was briefly interrupted.');
+                : `Configuration applied. Audio engine ${confirmed.engine.state}.`);
         } catch (error) {
             setNotice(error.message);
         } finally {
@@ -654,9 +710,16 @@ function App() {
 
     const physicalDrivers = apiState?.physicalDrivers || [];
     const selectPhysicalDriver = driverId => updateDraft(current => ({
-        ...current, physicalDriverId: driverId || null, sampleRate: null, bufferFrames: null
+        ...current, ...(current.clockSource ? { clockSource: { kind: 'asio' } } : {}),
+        physicalDriverId: driverId || null, sampleRate: null, bufferFrames: null
     }));
-    const incompatiblePhysicalRoutes = (configuration?.routes || []).filter(route =>
+    const selectClockSource = kind => updateDraft(current => ({ ...current, clockSource: { kind },
+        physicalDriverId: kind === 'software' ? null : engine?.physicalDriverId || null,
+        sampleRate: kind === 'software' ? 48000 : null,
+        bufferFrames: kind === 'software' ? 256 : null }));
+    const dormantPhysicalRoutes = softwareClock ? (configuration?.routes || []).filter(route =>
+        [route.sourceEndpointId, route.destinationEndpointId].some(endpointId => endpointId.startsWith('physical:'))) : [];
+    const incompatiblePhysicalRoutes = softwareClock ? [] : (configuration?.routes || []).filter(route =>
         [route.sourceEndpointId, route.destinationEndpointId].some(endpointId =>
             endpointId.startsWith('physical:') &&
             (!configuration.physicalDriverId ||
@@ -664,8 +727,13 @@ function App() {
     const keepRunningPhysicalDriver = () => {
         if (!apiState) return;
         const confirmed = configurationFromState(apiState);
-        updateDraft(current => ({ ...current, physicalDriverId: confirmed.physicalDriverId,
-            sampleRate: confirmed.sampleRate, bufferFrames: confirmed.bufferFrames }));
+        updateDraft(current => {
+            const restored = { ...current, physicalDriverId: confirmed.physicalDriverId,
+                sampleRate: confirmed.sampleRate, bufferFrames: confirmed.bufferFrames };
+            if (confirmed.clockSource) restored.clockSource = confirmed.clockSource;
+            else delete restored.clockSource;
+            return restored;
+        });
         if (hardwareTransfer && hardwareTransfer.targetDriverId !== confirmed.physicalDriverId &&
             incompatiblePhysicalRoutes.length > 0) {
             setHardwareTransfer(null);
@@ -678,7 +746,8 @@ function App() {
     const transferTarget = physicalDrivers.find(driver => driver.id === hardwareTransfer?.targetDriverId);
     const transferMissingPorts = hardwareTransfer && transferTarget?.capabilitiesKnown
         ? transferRoutesToDriver(hardwareTransfer.routes, transferTarget).missing : [];
-    const physicalDriverChangePending = configuration?.physicalDriverId !== engine?.physicalDriverId;
+    const clockSourceChangePending = softwareClock !== runningSoftwareClock;
+    const physicalDriverChangePending = configuration?.physicalDriverId !== engine?.physicalDriverId || clockSourceChangePending;
     const availableRates = selectedPhysical?.sampleRates || [];
     const bufferSizes = (() => {
         const limits = selectedPhysical?.bufferSizes;
@@ -724,7 +793,7 @@ function App() {
         } catch (error) { setMeasurementsError(error.message); }
         finally { setMeasurementsBusy(false); }
     };
-    const activeClockDriver = physicalDrivers.find(driver => driver.id === engine?.physicalDriverId)?.name || 'Selected physical ASIO driver';
+    const activeClockDriver = runningSoftwareClock ? 'Software clock' : physicalDrivers.find(driver => driver.id === engine?.physicalDriverId)?.name || 'Selected physical ASIO driver';
     const blockMs = bufferHealth ? (bufferHealth.blockPeriodNs / 1000000).toFixed(2) : null;
     const worstMs = bufferHealth ? (bufferHealth.worstProcessingNs / 1000000).toFixed(2) : null;
     const worstDisplay = bufferHealth?.worstProcessingNs < 1000000
@@ -771,6 +840,7 @@ function App() {
         setNotice('Pending edits discarded. Saved connections remain unchanged.');
     };
     const physicalSettingsPending = !!(configuration && engine && (
+        clockSourceChangePending ||
         configuration.physicalDriverId !== engine.physicalDriverId ||
         (configuration.sampleRate && configuration.sampleRate !== engine.sampleRate) ||
         (configuration.bufferFrames && configuration.bufferFrames !== engine.bufferFrames)));
@@ -810,14 +880,14 @@ function App() {
             </header>
             <nav className="view-tabs" aria-label="Application sections">
                 <div className="view-tabs-heading">Sections</div>
-                {[['configuration', 'ASIO setup'], ['channels', 'Routing'], ['analysis', 'Analysis'], ['performance', 'Performance'], ['api', 'API and Swagger'], ['diagnostics', 'Logs']].map(([id, label]) =>
+                {[['configuration', 'Audio setup'], ['channels', 'Routing'], ['analysis', 'Analysis'], ['performance', 'Performance'], ['api', 'API and Swagger'], ['diagnostics', 'Logs']].map(([id, label]) =>
                     <button key={id} type="button" className={activeView === id ? 'selected' : ''} aria-current={activeView === id ? 'page' : undefined}
                         onClick={() => { setRoutingDialog(null); setActiveView(id); if (id === 'diagnostics') refreshDiagnostics(); }}>{label}</button>)}
                 {activeView === 'channels' && <div className="view-tabs-actions">
                     <span className={configurationDirty ? 'draft-indicator pending' : 'draft-indicator'}>
                         {configurationDirty ? 'Changes pending' : 'Configuration applied'}</span>
                     <button type="button" className="apply-configuration" onClick={applyConfiguration}
-                        disabled={!apiState || !configuration || !configurationDirty || configurationLocked || !!hardwareTransfer || incompatiblePhysicalRoutes.length > 0}>Apply configuration</button>
+                        disabled={!apiState || !configuration || !configurationDirty || configurationLocked || !!hardwareTransfer || invalidSoftwareFormat || incompatiblePhysicalRoutes.length > 0}>Apply configuration</button>
                     {configurationDirty && <button type="button" className="discard-draft" onClick={discardDraft}
                         disabled={configurationLocked || !!hardwareTransfer}>Discard pending edits</button>}
                 </div>}
@@ -892,8 +962,8 @@ function App() {
                 </section>
             </main> : activeView === 'performance' ? <main className="main-content api-console">
                 <BufferTimingDiagram sampleRate={engine?.sampleRate} bufferFrames={engine?.bufferFrames} />
-                <section className="section buffer-health" aria-label="Physical callback performance">
-                    <h2>Physical ASIO callback</h2>
+                <section className="section buffer-health" aria-label={runningSoftwareClock ? 'Software callback performance' : 'Physical callback performance'}>
+                    <h2>{runningSoftwareClock ? 'Software clock callback' : 'Physical ASIO callback'}</h2>
                     {!bufferHealth ? <p>No callback observation yet. Open an ASIO application and wait for a five-second window.</p> : <>
                         <p role="status">{bufferHealth.state === 'warning' ? 'Callback timing incidents were observed.' :
                             bufferHealth.state === 'insufficient' ? 'Insufficient callback data for this window.' :
@@ -960,18 +1030,19 @@ function App() {
                 </section>
                 <section className="section clock-source" aria-label="Audio clock source">
                     <span className="performance-kicker">Audio clock</span>
-                    <h2>One card sets the pace</h2>
+                    <h2>{runningSoftwareClock ? 'Software clock sets the pace' : 'One card sets the pace'}</h2>
                     <div className="clock-flow">
-                        <div><strong>{activeClockDriver}</strong><span>Physical ASIO callbacks</span></div>
+                        <div><strong>{activeClockDriver}</strong><span>{runningSoftwareClock ? 'Software clock callbacks' : 'Physical ASIO callbacks'}</span></div>
                         <span aria-hidden="true">→</span>
                         <div><strong>TimoxVasio</strong><span>Publishes virtual blocks</span></div>
                         <span aria-hidden="true">→</span>
                         <div><strong>ASIO applications</strong><span>Wake on those blocks</span></div>
                     </div>
-                    <p>TimoxVasio follows the selected card's audio clock instead of running an independent timer. This avoids accumulating clock drift between its virtual stream and that card. Callback jitter can still occur, and a separate audio device can still drift.</p>
+                    {runningSoftwareClock ? <p>TimoxVasio schedules virtual blocks at the configured sample rate and quantum without a physical audio card. Timer jitter can still occur; callback measurements show the observed timing.</p> :
+                        <p>TimoxVasio follows the selected card's audio clock instead of running an independent timer. This avoids accumulating clock drift between its virtual stream and that card. Callback jitter can still occur, and a separate audio device can still drift.</p>}
                 </section>
                 <section className="section performance-flow" aria-label="Audio latency path">
-                    <h2>From the ASIO application to the audio output</h2>
+                    <h2>{runningSoftwareClock ? 'Between ASIO applications' : 'From the ASIO application to the audio output'}</h2>
                     <div className="stage-controls">
                         <label className="stage-toggle"><input type="checkbox" checked={!!measurements?.enabled}
                             disabled={measurementsBusy || !measurements}
@@ -993,7 +1064,7 @@ function App() {
                                     <small>The full work the application performs during its ASIO callback.</small>
                                     {stageDuration('Virtual ring write', client.ringWrite)}
                                 </div>) : <span>—</span>}</div></li>
-                        <li><strong>Engine reads the shared ring</strong><span>At the next physical callback, the engine reads the completed block and applies the configured routes.</span>
+                        <li><strong>Engine reads the shared ring</strong><span>At the next {runningSoftwareClock ? 'software clock' : 'physical'} callback, the engine reads the completed block and applies the configured routes.</span>
                             <div className="stage-measurements">{measurementWindow?.clients.length ? measurementWindow.clients.map(client =>
                                 <div className="stage-client" key={client.processId}>
                                     <h3>{client.driverId} · PID {client.processId}</h3>
@@ -1001,22 +1072,22 @@ function App() {
                                     <small>From publication to reading the same complete block; not acoustic latency.</small>
                                     <small>Discarded blocks: {client.ringWaitDiscardedBlocks}</small>
                                 </div>) : <span>—</span>}</div></li>
-                        <li><strong>Physical ASIO driver receives the block</strong><span>The routed output is handed to the selected card; hardware conversion adds its own delay.</span>
+                        <li><strong>{runningSoftwareClock ? 'Application inputs receive the routed block' : 'Physical ASIO driver receives the block'}</strong><span>{runningSoftwareClock ? 'The engine delivers the routed samples through virtual application channels.' : 'The routed output is handed to the selected card; hardware conversion adds its own delay.'}</span>
                             <div className="stage-measurements">
                                 {stageDuration('Client read', hasApplicationPath ? measurementWindow?.physical.clientRead : null)}
                                 {stageDuration('Routing', hasApplicationPath ? measurementWindow?.physical.routing : null)}
-                                {stageDuration('Physical output copy', hasApplicationPath ? measurementWindow?.physical.outputCopy : null)}
+                                {!runningSoftwareClock && stageDuration('Physical output copy', hasApplicationPath ? measurementWindow?.physical.outputCopy : null)}
                             </div></li>
                     </ol>
-                    <p>If the route passes through SuperCollider, the engine first delivers a block to that application. SuperCollider then publishes its output for a following physical callback. A direct route skips this extra application stage.</p>
-                    <p className="hint">At the selected rate and buffer size, one block represents {engine?.sampleRate && engine?.bufferFrames ? `${(engine.bufferFrames * 1000 / engine.sampleRate).toFixed(2)} ms` : 'an unknown duration'}. The complete application-to-speaker latency is not measured. The callback measurement above shows whether TimoxVasio finished routing each physical block within the time available.</p>
+                    <p>If the route passes through SuperCollider, the engine first delivers a block to that application. SuperCollider then publishes its output for a following {runningSoftwareClock ? 'software clock' : 'physical'} callback. A direct route skips this extra application stage.</p>
+                    <p className="hint">At the selected rate and buffer size, one block represents {engine?.sampleRate && engine?.bufferFrames ? `${(engine.bufferFrames * 1000 / engine.sampleRate).toFixed(2)} ms` : 'an unknown duration'}. The complete application-to-speaker latency is not measured. The callback measurement above shows whether TimoxVasio finished routing each {runningSoftwareClock ? 'software clock' : 'physical'} block within the time available.</p>
                 </section>
             </main> : activeView === 'diagnostics' ? <main className="main-content api-console">
                 <section className="section diagnostics-view"><div className="section-heading"><div><h2>Engine logs</h2><p className="hint">Persistent file: %LOCALAPPDATA%\TimoxVasio\logs\engine.log</p></div>
                     <div className="diagnostics-actions"><label className="field">Log level<select value={diagnostics.level} onChange={event => setDiagnosticLevel(event.target.value)}><option value="info">Standard</option><option value="debug">Detailed</option></select></label>
                         <button type="button" onClick={refreshDiagnostics} disabled={diagnosticsLoading}>{diagnosticsLoading ? 'Refreshing…' : 'Refresh'}</button>
                         {(connectionError || engine?.state !== 'running') && <button type="button" className="engine-start" onClick={() => manageEngine('start')} disabled={!!engineAction}>{engineAction === 'start' ? 'Starting…' : 'Start audio engine'}</button>}
-                        {!connectionError && engine?.physicalDriverId && <button type="button" className="engine-stop" onClick={() => manageEngine('stop')} disabled={!!engineAction || (virtualDriver?.clients.length || 0) > 0} title={(virtualDriver?.clients.length || 0) > 0 ? 'Close connected ASIO applications before stopping the engine.' : undefined}>{engineAction === 'stop' ? 'Stopping…' : 'Stop audio engine'}</button>}</div></div>
+                        {!connectionError && (engine?.physicalDriverId || runningSoftwareClock) && <button type="button" className="engine-stop" onClick={() => manageEngine('stop')} disabled={!!engineAction || (virtualDriver?.clients.length || 0) > 0} title={(virtualDriver?.clients.length || 0) > 0 ? 'Close connected ASIO applications before stopping the engine.' : undefined}>{engineAction === 'stop' ? 'Stopping…' : 'Stop audio engine'}</button>}</div></div>
                     {diagnosticsError && <div className="error-panel">{diagnosticsError}</div>}
                     {migrationLog.length > 0 && <div className="migration-log" aria-label="Connection migrations">
                         <h3>Connection migration history</h3>
@@ -1029,6 +1100,8 @@ function App() {
             </main> : <main className="main-content api-console">
                 {engine?.lastError && <div className="error-panel">{engine.lastError.message}</div>}
                 {notice && <div className="notice" role="status">{notice}</div>}
+                {['configuration', 'channels'].includes(activeView) && dormantPhysicalRoutes.length > 0 &&
+                    <p className="hint" role="status">{dormantPhysicalRoutes.length} physical connections remain saved and inactive with the software clock. They resume when a compatible physical ASIO driver is selected.</p>}
                 {['configuration', 'channels'].includes(activeView) && incompatiblePhysicalRoutes.length > 0 &&
                     <div className="driver-change-blocker" role="alert">
                         <strong>{physicalDriverChangePending ? 'Physical driver change not applied' : 'Connections target another physical driver'}</strong>
@@ -1059,20 +1132,33 @@ function App() {
                             <button type="button" disabled={configurationLocked || !transferTarget?.capabilitiesKnown || transferMissingPorts.length > 0}
                                 onClick={retryHardwareTransfer}>Restore connections on the new driver</button> :
                             <p>Open the target driver to discover its ports, then restore these connections.</p>}
-                        {hardwareTransfer.previousConfiguration?.physicalDriverId &&
+                        {hardwareTransfer.previousConfiguration &&
                             <button type="button" disabled={configurationLocked} onClick={restorePreviousPhysicalDriver}>
-                                Restore previous driver and connections
+                                {hardwareTransfer.previousConfiguration.clockSource?.kind === 'software'
+                                    ? 'Restore previous software clock and connections' : 'Restore previous driver and connections'}
                             </button>}
                     </div>}
 
                 {activeView === 'configuration' && <section className="section setup-physical">
-                    <div className="setup-heading"><div><span className="setup-kind">▣ Hardware</span><h2>Physical ASIO driver</h2></div>
-                        <span className={`setup-state ${physicalSettingsPending ? 'pending' : 'applied'}`}>{physicalSettingsPending ? 'Changes pending' : engine?.physicalDriverId ? 'Configured' : 'No driver selected'}</span></div>
-                    {engine?.physicalDriverId && <div className="analysis-actions"><button type="button" className="engine-reset"
+                    <div className="setup-heading"><div><span className="setup-kind">▣ Audio clock</span><h2>{softwareClock ? 'Software clock' : 'Physical ASIO driver'}</h2></div>
+                        <span className={`setup-state ${physicalSettingsPending ? 'pending' : 'applied'}`}>{physicalSettingsPending ? 'Changes pending' : engine?.physicalDriverId || runningSoftwareClock ? 'Configured' : 'No driver selected'}</span></div>
+                    <label className="field">Clock source<select aria-label="Clock source" disabled={configurationLocked || !!hardwareTransfer}
+                        value={softwareClock ? 'software' : 'asio'} onChange={event => selectClockSource(event.target.value)}>
+                        <option value="asio">Physical ASIO driver</option><option value="software">Software clock (no audio card required)</option>
+                    </select></label>
+                    {clockSourceChangePending && !incompatiblePhysicalRoutes.length && <button type="button" onClick={keepRunningPhysicalDriver}>Keep running clock</button>}
+                    {(engine?.physicalDriverId || runningSoftwareClock) && <div className="analysis-actions"><button type="button" className="engine-reset"
                         disabled={!!engineAction || applying || configurationLocked}
-                        onClick={() => manageEngine('reset')}>{engineAction === 'reset' ? 'Reopening driver…' : 'Reset physical driver'}</button>
+                        onClick={() => manageEngine('reset')}>{engineAction === 'reset' ? 'Restarting clock…' : runningSoftwareClock ? 'Reset software clock' : 'Reset physical driver'}</button>
                         <span className="hint">Briefly interrupts audio and reopens the last saved configuration; saved connections are kept.</span></div>}
-                    {incompatiblePhysicalRoutes.length > 0 ?
+                    {softwareClock ? <>
+                        <label className="field">Software sample rate (Hz)<input aria-label="Software sample rate" type="number" min="8000" max="384000" step="1"
+                            disabled={configurationLocked} value={configuration.sampleRate ?? ''} onChange={event => updateConfiguration('sampleRate', Number(event.target.value))} /></label>
+                        <label className="field">Software quantum (frames)<input aria-label="Software quantum" type="number" min="16" max="8192" step="1"
+                            disabled={configurationLocked} value={configuration.bufferFrames ?? ''} onChange={event => updateConfiguration('bufferFrames', Number(event.target.value))} /></label>
+                        <p className="hint">Routes between ASIO applications run without a physical audio card. Default: 48000 Hz / 256 frames.</p>
+                        {invalidSoftwareFormat && <p role="alert">Use an integer rate from 8000 to 384000 Hz and quantum from 16 to 8192 frames.</p>}
+                    </> : incompatiblePhysicalRoutes.length > 0 ?
                         <p className="hint">Choose the replacement driver in the warning above, or keep the running driver.</p> :
                         <label className="field">Selected driver
                             <select disabled={configurationLocked} value={configuration?.physicalDriverId || ''}
@@ -1128,11 +1214,22 @@ function App() {
                         ? 'Pending changes — Apply configuration to activate the draft; audio routing will briefly pause.'
                         : 'Configuration applied — saved routes match the engine. Check active counts below.'}</span>
                     <button className="apply-configuration" onClick={applyConfiguration}
-                        disabled={!apiState || !configuration || !configurationDirty || configurationLocked || !!hardwareTransfer || incompatiblePhysicalRoutes.length > 0}>Apply configuration</button>
+                        disabled={!apiState || !configuration || !configurationDirty || configurationLocked || !!hardwareTransfer || invalidSoftwareFormat || incompatiblePhysicalRoutes.length > 0}>Apply configuration</button>
                     {configurationDirty && <button type="button" className="discard-draft" onClick={discardDraft}
                         disabled={configurationLocked || !!hardwareTransfer}>Discard pending edits</button>}
                 </div>}
 
+                {activeView === 'configuration' && apiState?.apiVersion === '1.1' && <section className="section" aria-label="Windows audio bridges">
+                    <h2>Windows audio bridges</h2>
+                    <p className="hint">Capture a Windows input, play to a Windows output, or capture an output with endpoint loopback. Right-click the Routing background to add a bridge, or its block to configure it. Apply a new bridge first to discover its channels, then add connections.</p>
+                    <div className="analysis-actions"><button type="button" onClick={() => setActiveView('channels')}>Open Routing for Windows audio</button>
+                        <button type="button" disabled={bridgeInventoryBusy || !window.vasio.getWasapiDevices} onClick={refreshBridgeInventory}>Refresh Windows endpoints</button></div>
+                    {apiState.wasapiInventoryError && <p role="alert">Windows endpoint discovery: {apiState.wasapiInventoryError}</p>}
+                    {!(configuration?.wasapiBridges || []).length && <p>No Windows audio bridges configured.</p>}
+                    {(configuration?.wasapiBridges || []).map(bridge => <article className="application-channel-card" key={bridge.id}>
+                        <h3>{bridge.id} · {bridge.kind}</h3><BridgeStatus bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} />
+                    </article>)}
+                </section>}
                 {activeView === 'channels' && <section className="section routing-workspace-section">
                     <h2>Routing</h2>
                     <p className="hint">Right-click the background, a process, or a cable for its actions. Details open in a dialog.</p>
@@ -1148,6 +1245,10 @@ function App() {
                         onTransferProcessConnections={moveProcessConnections}
                         onCreateConnection={processName => setRoutingDialog({ kind: 'add', processName })}
                         onShowProcessDetail={processName => setRoutingDialog({ kind: 'process', processName })}
+                        onCreateBridge={apiState?.apiVersion === '1.1' ? () => setBridgeDialog({ kind: 'add' }) : undefined}
+                        onEditBridge={id => setBridgeDialog({ kind: 'edit', bridge: configuration.wasapiBridges.find(item => item.id === id) })}
+                        onRemoveBridge={id => setBridgeDialog({ kind: 'remove', bridge: configuration.wasapiBridges.find(item => item.id === id) })}
+                        isConnectionAllowed={bridgeConnectionAllowed}
                         disabled={configurationLocked} />
                 </section>}
                 {activeView === 'channels' && routingDialog && createPortal(<div className="routing-dialog-backdrop" onMouseDown={event => {
@@ -1158,6 +1259,7 @@ function App() {
                     {routingDialog.kind === 'add' ? <QuickRouting sourceGroups={patchbayGroups.sources}
                         destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
                         onAddRoutes={addRoutes} resolveEndpointId={stableEndpointId}
+                        isConnectionAllowed={bridgeConnectionAllowed}
                         preferredProcessName={routingDialog.processName || ''}
                         disabled={configurationLocked} /> : <>
                     <p className="hint">“Open” shows channels advertised by the application. “Routed” shows channels connected in the displayed configuration. Open channels are not routed automatically.</p>
@@ -1179,13 +1281,107 @@ function App() {
 
 
 
-                {activeView === 'configuration' && <div className="analysis-actions"><button className="apply-configuration" onClick={applyConfiguration} disabled={!apiState || !configuration || configurationLocked || !!hardwareTransfer || incompatiblePhysicalRoutes.length > 0}>
+                {bridgeDialog && <BridgeDialog key={`${bridgeDialog.kind}:${bridgeDialog.bridge?.id || ''}`} dialog={bridgeDialog}
+                    bridges={configuration?.wasapiBridges || []} routes={configuration?.routes || []}
+                    devices={apiState?.wasapiDevices || []} runtime={apiState?.wasapiBridges?.find(item => item.id === bridgeDialog.bridge?.id)}
+                    inventoryError={apiState?.wasapiInventoryError} disabled={configurationLocked || !!hardwareTransfer}
+                    onClose={() => setBridgeDialog(null)} onSave={bridge => {
+                        updateDraft(current => ({ ...current, wasapiBridges: [...(current.wasapiBridges || []).filter(item => item.id !== bridge.id), bridge] }));
+                        setBridgeDialog(null);
+                    }} onRemove={id => {
+                        updateDraft(current => ({ ...current, wasapiBridges: current.wasapiBridges.filter(item => item.id !== id),
+                            routes: current.routes.filter(route => ![route.sourceEndpointId, route.destinationEndpointId].some(endpoint => endpoint.startsWith(`wasapi:${id}:`))) }));
+                        setBridgeDialog(null);
+                    }} />}
+                {activeView === 'configuration' && <div className="analysis-actions"><button className="apply-configuration" onClick={applyConfiguration} disabled={!apiState || !configuration || configurationLocked || !!hardwareTransfer || invalidSoftwareFormat || incompatiblePhysicalRoutes.length > 0}>
                     Apply configuration
                 </button>{configurationDirty && <button type="button" className="discard-draft" onClick={discardDraft}
                     disabled={configurationLocked || !!hardwareTransfer}>Discard pending edits</button>}</div>}
             </main>}
         </div>
     );
+}
+
+function BridgeStatus({ bridge, runtime, devices }) {
+    const device = devices.find(item => item.id === (runtime?.effectiveInfo?.endpointId || bridge.endpointId));
+    const format = runtime?.effectiveInfo?.format;
+    return <>
+        <p>Desired: {bridge.enabled === false ? 'disabled' : 'enabled'} · Stream: {runtime?.state || 'not opened'} · {device?.name || bridge.endpointId || `Default ${bridge.defaultRole}`}</p>
+        {runtime?.effectiveInfo?.endpointId && <p className="hint">Resolved endpoint: {runtime.effectiveInfo.endpointId}</p>}
+        {format && <p>{format.sampleRate} Hz · {format.channels} channels · {format.encoding} {format.validBits}/{format.containerBits} bits</p>}
+        {device?.error && <p role="alert">{device.error}</p>}
+        {runtime?.state === 'retrying' && <p>Retry {runtime.retryAttempt} in {runtime.retryInMs} ms</p>}
+        {runtime?.health && <p className="hint">Buffered: {runtime.health.bufferedFrames ?? '—'} graph frames · Rejected: {runtime.health.rejectedFrames ?? '—'} graph frames · Silenced: {runtime.health.silencedFrames ?? '—'} graph frames
+            {runtime.health.error ? ` · Stream error: ${runtime.health.error}` : ''}
+            {runtime.health.mmcssError ? ` · Scheduling error: ${runtime.health.mmcssError}` : ''}
+            {runtime.health.primingTimedOut ? ' · Priming timed out' : ''}</p>}
+    </>;
+}
+
+function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryError, disabled, onClose, onSave, onRemove }) {
+    const [draft, setDraft] = useState(() => ({ id: '', kind: 'capture', enabled: true, bufferDuration100ns: 0, endpointId: '', ...dialog.bridge }));
+    const [selection, setSelection] = useState(dialog.bridge?.defaultRole ? 'default' : 'endpoint');
+    const dialogRef = useRef(null);
+    const closeRef = useRef(onClose);
+    closeRef.current = onClose;
+    useEffect(() => {
+        const previous = document.activeElement;
+        dialogRef.current?.querySelector('input,button')?.focus();
+        const keydown = event => {
+            if (event.key === 'Escape') closeRef.current();
+            if (event.key !== 'Tab') return;
+            const controls = [...dialogRef.current.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled)')];
+            const first = controls[0], last = controls[controls.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        };
+        document.addEventListener('keydown', keydown);
+        return () => { document.removeEventListener('keydown', keydown); previous?.focus(); };
+    }, []);
+    const set = (key, value) => setDraft(current => ({ ...current, [key]: value }));
+    const choices = devices.filter(item => item.flow === (draft.kind === 'capture' ? 'capture' : 'render'));
+    const selected = choices.find(item => item.id === draft.endpointId);
+    const usedRoutes = routes.filter(route => [route.sourceEndpointId, route.destinationEndpointId].some(id => id.startsWith(`wasapi:${draft.id}:`)));
+    const valid = /^[A-Za-z0-9_-]{1,128}$/.test(draft.id) &&
+        (dialog.kind !== 'add' || (bridges.length < 32 && !bridges.some(item => item.id === draft.id))) &&
+        Number.isInteger(draft.bufferDuration100ns) && draft.bufferDuration100ns >= 0 && draft.bufferDuration100ns <= 10000000 &&
+        (selection === 'default' || !!draft.endpointId);
+    const save = () => {
+        if (!valid || disabled) return;
+        const { endpointId, defaultRole, ...common } = draft;
+        onSave({ ...common, ...(selection === 'default' ? { defaultRole: defaultRole || 'console' } : { endpointId }) });
+    };
+    return createPortal(<div className="routing-dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+        <div className="routing-dialog" role="dialog" aria-modal="true" aria-label={dialog.kind === 'remove' ? 'Remove Windows audio bridge' : 'Configure Windows audio bridge'} ref={dialogRef}>
+            <div className="routing-dialog-heading"><h2>{dialog.kind === 'remove' ? 'Remove Windows audio bridge' : 'Windows audio bridge'}</h2><button type="button" onClick={onClose}>Close</button></div>
+            {dialog.kind === 'remove' ? <><p>Remove {draft.id} and {usedRoutes.length} saved connection{usedRoutes.length === 1 ? '' : 's'}? This takes effect when you apply the configuration.</p>
+                <button type="button" disabled={disabled} onClick={() => onRemove(draft.id)}>Remove bridge and its connections</button></> : <>
+                <label className="field">Bridge ID<input aria-label="Bridge ID" maxLength="128" disabled={disabled || dialog.kind !== 'add'} value={draft.id} onChange={event => set('id', event.target.value)} /></label>
+                <p className="hint">Use letters, digits, underscores or hyphens. The ID stays fixed so saved channel connections remain stable.</p>
+                <label className="field">Mode<select aria-label="Bridge kind" disabled={disabled || (dialog.kind !== 'add' && usedRoutes.length > 0)} value={draft.kind}
+                    onChange={event => setDraft(current => ({ ...current, kind: event.target.value, endpointId: '' }))}>
+                    <option value="capture">Capture Windows input</option><option value="render">Play to Windows output</option><option value="endpointLoopback">Capture Windows output (endpoint loopback)</option>
+                </select></label>
+                {usedRoutes.length > 0 && <p className="hint">Mode is fixed while this bridge has saved connections. Disabling the bridge keeps those connections.</p>}
+                <label className="field">Endpoint selection<select aria-label="Bridge selection" disabled={disabled} value={selection} onChange={event => setSelection(event.target.value)}>
+                    <option value="endpoint">Specific endpoint</option><option value="default">Windows default role</option></select></label>
+                {selection === 'default' ? <label className="field">Role<select aria-label="Default endpoint role" disabled={disabled} value={draft.defaultRole || 'console'} onChange={event => set('defaultRole', event.target.value)}>
+                    <option value="console">Console</option><option value="multimedia">Multimedia</option><option value="communications">Communications</option></select></label> :
+                    <label className="field">Windows endpoint<select aria-label="Windows endpoint" disabled={disabled} value={draft.endpointId || ''} onChange={event => set('endpointId', event.target.value)}>
+                        <option value="">Select an endpoint</option>
+                        {draft.endpointId && !selected && <option value={draft.endpointId}>{draft.endpointId} (unavailable)</option>}
+                        {choices.map(item => <option key={item.id} value={item.id}>{item.name}{item.state === 1 ? '' : ' (unavailable)'}</option>)}
+                    </select></label>}
+                {selected?.error && <p role="alert">{selected.error}</p>}
+                {inventoryError && <p role="alert">Windows endpoint discovery: {inventoryError}</p>}
+                <label className="field"><input type="checkbox" aria-label="Bridge enabled" disabled={disabled} checked={draft.enabled} onChange={event => set('enabled', event.target.checked)} /> Enabled</label>
+                <label className="field">Requested buffer duration (100 ns; 0 = system default)<input aria-label="Bridge buffer duration" type="number" min="0" max="10000000" step="1" disabled={disabled} value={draft.bufferDuration100ns} onChange={event => set('bufferDuration100ns', Number(event.target.value))} /></label>
+                {runtime && <BridgeStatus bridge={dialog.bridge} runtime={runtime} devices={devices} />}
+                <p className="hint">Windows audio uses its own clock. Bridges adapt rate and add buffering. Endpoint loopback to the same Windows output is not allowed.</p>
+                {!valid && <p role="status">Choose an endpoint or default role, a unique valid ID, and an integer duration between 0 and 10000000.</p>}
+                <button type="button" disabled={disabled || !valid} onClick={save}>Save bridge to draft</button>
+            </>}
+        </div></div>, document.body);
 }
 
 function ChannelMeter({ endpoint, meter }) {

@@ -2,6 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { configurationFromState, applyCommand, endpointLabel } = require('./api-contract.js');
 
+test('software clock configuration survives state decoding without runtime capabilities', () => {
+    const decoded = configurationFromState({ ...state,
+        engine: { ...state.engine, physicalDriverId: null, sampleRate: 48000, bufferFrames: 256,
+            clockSource: { kind: 'software' }, clockCapabilities: { inputChannels: 0 } } });
+    assert.deepEqual(decoded.clockSource, { kind: 'software' });
+    assert.equal('clockCapabilities' in decoded, false);
+});
+
 const state = {
     apiVersion: '1.0',
     engine: { state: 'stopped', physicalDriverId: null, sampleRate: null, bufferFrames: null, lastError: null },
@@ -13,6 +21,16 @@ const state = {
         clients: [], inputEndpoints: [], outputEndpoints: [] }],
     routes: [{ id: 'r1', sourceEndpointId: 'out', destinationEndpointId: 'in', gainDb: -3, mute: false }]
 };
+
+test('API 1.1 copies desired bridges, never runtime state, and legacy omits bridges', () => {
+    const bridge = { id: 'mic', kind: 'capture', defaultRole: 'communications', enabled: true, bufferDuration100ns: 0 };
+    const decoded = configurationFromState({ ...state, apiVersion: '1.1', configuredWasapiBridges: [bridge], wasapiBridges: [{ id: 'mic', state: 'failed' }] });
+    assert.deepEqual(decoded.wasapiBridges, [bridge]);
+    assert.notEqual(decoded.wasapiBridges[0], bridge);
+    assert.equal('wasapiBridges' in configurationFromState({ ...state, configuredWasapiBridges: [bridge] }), false);
+    assert.equal('wasapiBridges' in configurationFromState({ ...state, apiVersion: '1.1' }), false);
+    assert.deepEqual(configurationFromState({ ...state, apiVersion: '1.1', configuredWasapiBridges: [] }).wasapiBridges, []);
+});
 
 test('configuration is derived solely from the documented API state', () => {
     assert.deepEqual(configurationFromState(state), {

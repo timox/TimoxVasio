@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 
 const compatible = (source, destination) => source === 'physical-input'
-    ? destination === 'virtual-input'
-    : source === 'virtual-output' && ['virtual-input', 'physical-output'].includes(destination);
+    ? ['virtual-input', 'wasapi-render'].includes(destination)
+    : ['virtual-output', 'wasapi-capture'].includes(source) && ['virtual-input', 'physical-output', 'wasapi-render'].includes(destination);
 
 const startsFor = (group, stereo) => {
     const endpoints = group?.endpoints || [];
@@ -22,7 +22,7 @@ const pickStart = (starts, selected, used, group, stereo, preferredChannel, reso
     || starts[0];
 
 export default function QuickRouting({ sourceGroups = [], destinationGroups = [], routes = [], onAddRoutes,
-    resolveEndpointId = id => id, disabled = false, preferredProcessName = '' }) {
+    resolveEndpointId = id => id, disabled = false, preferredProcessName = '', isConnectionAllowed = () => true }) {
     const preferredSource = sourceGroups.find(group => group.label.split(' · ')[0].toLocaleLowerCase() === preferredProcessName.toLocaleLowerCase());
     const preferredDestination = destinationGroups.find(group => group.label.split(' · ')[0].toLocaleLowerCase() === preferredProcessName.toLocaleLowerCase());
     const [sourceGroupId, setSourceGroupId] = useState(preferredSource?.id || '');
@@ -31,7 +31,8 @@ export default function QuickRouting({ sourceGroups = [], destinationGroups = []
     const [destinationStartId, setDestinationStartId] = useState('');
     const [stereo, setStereo] = useState(true);
     const sourceGroup = sourceGroups.find(group => group.id === sourceGroupId) || sourceGroups[0];
-    const destinations = destinationGroups.filter(group => sourceGroup && compatible(sourceGroup.kind, group.kind));
+    const destinations = destinationGroups.filter(group => sourceGroup && compatible(sourceGroup.kind, group.kind) &&
+        sourceGroup.endpoints.some(source => group.endpoints.some(destination => isConnectionAllowed(source.id, destination.id))));
     const destinationGroup = destinations.find(group => group.id === destinationGroupId) || destinations[0];
     const usedSources = new Set(routes.map(route => route.sourceEndpointId));
     const usedDestinations = new Set(routes.map(route => route.destinationEndpointId));
@@ -44,7 +45,8 @@ export default function QuickRouting({ sourceGroups = [], destinationGroups = []
     const sources = pair(sourceGroup, sourceStart, stereo);
     const targets = pair(destinationGroup, destinationStart, stereo);
     const proposed = sources.map((source, index) => ({ sourceEndpointId: source.id,
-        destinationEndpointId: targets[index]?.id })).filter(route => route.destinationEndpointId);
+        destinationEndpointId: targets[index]?.id })).filter(route => route.destinationEndpointId &&
+            isConnectionAllowed(route.sourceEndpointId, route.destinationEndpointId));
     const missing = proposed.filter(route => !routes.some(existing =>
         existing.sourceEndpointId === resolveEndpointId(route.sourceEndpointId) &&
         existing.destinationEndpointId === resolveEndpointId(route.destinationEndpointId)));
