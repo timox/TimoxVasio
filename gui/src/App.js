@@ -1374,11 +1374,11 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryErro
                     </select></label>}
                 {selected?.error && <p role="alert">{selected.error}</p>}
                 {inventoryError && <p role="alert">Windows endpoint discovery: {inventoryError}</p>}
-                <label className="field"><input type="checkbox" aria-label="Bridge enabled" disabled={disabled} checked={draft.enabled} onChange={event => set('enabled', event.target.checked)} /> Enabled</label>
-                <label className="field">Requested buffer duration (100 ns; 0 = system default)<input aria-label="Bridge buffer duration" type="number" min="0" max="10000000" step="1" disabled={disabled} value={draft.bufferDuration100ns} onChange={event => set('bufferDuration100ns', Number(event.target.value))} /></label>
+                <label className="bridge-enabled-field"><input type="checkbox" aria-label="Bridge enabled" disabled={disabled} checked={draft.enabled} onChange={event => set('enabled', event.target.checked)} /> Enabled</label>
+                <label className="field">Requested buffer duration (ms; 0 = system default)<input aria-label="Bridge buffer duration (ms)" type="number" min="0" max="1000" step="0.0001" disabled={disabled} value={draft.bufferDuration100ns / 10000} onChange={event => set('bufferDuration100ns', Math.round(Number(event.target.value) * 10000))} /></label>
                 {runtime && <BridgeStatus bridge={dialog.bridge} runtime={runtime} devices={devices} />}
                 <p className="hint">Windows audio uses its own clock. Bridges adapt rate and add buffering. Endpoint loopback to the same Windows output is not allowed.</p>
-                {!valid && <p role="status">Choose an endpoint or default role, a unique valid ID, and an integer duration between 0 and 10000000.</p>}
+                {!valid && <p role="status">Choose an endpoint or default role, a unique valid ID, and a duration between 0 and 1000 ms.</p>}
                 <button type="button" disabled={disabled || !valid} onClick={save}>Save bridge to draft</button>
             </>}
         </div></div>, document.body);

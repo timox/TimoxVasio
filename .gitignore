@@ -17,6 +17,8 @@
 # Local runtime/session artifacts
 *.pid.json
 *.log
+/.playwright-cli/
+/output/playwright/
 
 # Local Mixxx source/build used for compatibility investigation
 /vendor/mixxx-2.7-256/

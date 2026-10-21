@@ -113,3 +113,11 @@ Le contrôle graphique, l'accès API et les performances doivent atteindre au mo
 ### Vérification avant commits intermédiaires
 
 Reconstruction canonique réussie de `TimoxVirtualAsioEngine`, `AudioControllerWasapiTests` et `WasapiBridgeApiTests`. Ces deux exécutables de tests ont ensuite terminé avec le code 0. CTest DSP pur : 4/4 ; contrats PowerShell API et WASAPI réussis ; frontière du pilote : 13 cas réussis. React : 9 suites, 63 tests ; adaptateur de contrat Node : 7 tests ; client Electron : 10 tests. `git diff --check` réussi. Cette vérification ne remplace pas la qualification matérielle, graphique et de performance encore ouverte ci-dessus.
+
+## Qualification du 22 octobre
+
+- [Vrai trajet ASIO→ASIO sans carte](2026-10-22-real-asio-software-clock.md) : DLL inchangée chargée dans deux processus, 48 kHz/2048 frames, cinq secondes analysées, SNR 129,56 dB. Control/moteur installés rétablis, configuration utilisateur inchangée et état sain confirmé. Ce résultat ne qualifie pas encore les ponts WASAPI ni dix minutes de stabilité.
+- [Comparaison de performances contrôlée par sources](2026-10-22-audio-path-comparison.md) : quatre exécutions réussies mais variabilité persistante ; aucune conclusion de parité.
+- API : quatre réponses HTTP réelles du test natif (initial, ponts désactivés, suppression, inventaire) exportées et validées par `Test-Json`, en plus des fixtures. Pas de preuve de flux matériel dans ce test.
+- GUI : modale vérifiée à 768×800 et graphe à 1440×1000 avec données simulées ; checkbox corrigée, durée présentée en millisecondes en conservant la précision du contrat 100 ns. Suite React complète : dix suites, 69 tests réussis. Voir le [rapport visuel](2026-10-22-wasapi-gui-visual-check.md).
+- [Pilote Windows natif](../specs/2026-10-22-native-windows-audio-driver.md) : conception PortCls/WaveRT et premier contrat de paquets portable `native-windows-audio/`. Compilation C/C++ réussie, CTest 1/1 réussi et revue indépendante sans blocage. Ce lot ne fournit encore aucun endpoint, IOCTL ou pilote noyau ; outillage WDK à compléter.

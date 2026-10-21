@@ -121,6 +121,28 @@ test.each(['render', 'endpointLoopback'])('Windows bridge %s selects render endp
     });
 });
 
+test.each([0, 1, 123456, 10000000])('Windows bridge duration shows milliseconds and preserves API precision (%i)', async duration => {
+    const bridge = { id: 'speakers', kind: 'render', enabled: true, defaultRole: 'multimedia', bufferDuration100ns: duration };
+    await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: [bridge], wasapiBridges: [], wasapiDevices: [] }, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        const open = () => chooseContextAction(container.querySelector('[data-node-key="wasapi:speakers"]'), 'Configure Windows audio bridge…');
+        const save = () => Simulate.click([...document.querySelectorAll('button')].find(button => button.textContent === 'Save bridge to draft'));
+        await open();
+        expect(document.querySelector('[aria-label="Bridge buffer duration (ms)"]').value).toBe(String(duration / 10000));
+        await act(async () => save());
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration.mock.calls[0][0].wasapiBridges[0].bufferDuration100ns).toBe(duration);
+        await open();
+        const field = document.querySelector('[aria-label="Bridge buffer duration (ms)"]');
+        await act(async () => Simulate.change(field, { target: { value: '1000.1' } }));
+        expect([...document.querySelectorAll('button')].find(button => button.textContent === 'Save bridge to draft').disabled).toBe(true);
+        await act(async () => Simulate.change(field, { target: { value: '10' } }));
+        await act(async () => save());
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration.mock.calls[1][0].wasapiBridges[0].bufferDuration100ns).toBe(100000);
+    });
+});
+
 test('WASAPI capture and render routes apply stable ports while loopback self-render and disabled capture are unavailable', async () => {
     const desired = [
         { id: 'mic', kind: 'capture', endpointId: 'microphone', enabled: true, bufferDuration100ns: 0 },
