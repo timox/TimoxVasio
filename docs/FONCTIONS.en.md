@@ -2,7 +2,7 @@
 
 [Français](FONCTIONS.md) | **English**
 
-This guide describes [TimoxVasio 1.2.6](https://github.com/timox/TimoxVasio/releases/tag/v1.2.6). The application has six views:
+This guide describes [TimoxVasio 1.2.7](https://github.com/timox/TimoxVasio/releases/tag/v1.2.7). The application has six views:
 
 | View | Main use |
 | --- | --- |
@@ -28,11 +28,13 @@ Samples follow the audio path. Control, Swagger, and the console use the local A
 
 ## Open channels, routes, and meters
 
-**Routing** opens on the patchbay and shows saved connections. **Connection pair** focuses one source/destination pair; **Show all ports** reveals available ports. **Add a connection** opens the mono/stereo form. A process block holds its inputs on the left and outputs on the right, including ports from its saved profile. The −, +, and **Fit** controls change zoom; drag the background to pan the graph. The ✥ handle moves a block and ✎ gives it a display name; these choices are saved locally in Control and do not change any ASIO names.
+**Routing** opens on the patchbay and shows saved connections. **Connection pair** focuses one source/destination pair. Right-click the background or a process and choose **Add a connection…** to add a mono/stereo connection. A process block holds its inputs on the left and outputs on the right, including ports from its saved profile. The −, + and **Recenter graph** controls adjust the view; drag the background to pan. The ✥ handle moves a block; **Rename block…** in its context menu assigns a local name without changing its ASIO name.
 
-The ⚙ button on a present process in Routing assigns its ASIO input/output capacity profile, initially suggesting 2/2. The profile applies to the executable the next time it opens ASIO; 256 is an internal limit, not a set of ports shown by default. In the same panel, **Remove this configuration** removes the process connections and its profile after confirmation without closing the Windows process. Only channels opened by the application become active endpoints. An open channel is not automatically connected. Process and meter details remain collapsed below the graph.
+**Auto-arrange**, next to the zoom controls, automatically arranges visible blocks: physical inputs on the left, applications in the middle, physical outputs on the right. Spacing follows block dimensions and the view is recentered. Positions are saved locally; names, connections and audio settings are preserved. No **Apply configuration** action is needed.
 
-Graph blocks distinguish physical hardware, a running process, and a saved profile. Physical and virtual ports use different colors and shapes. A solid cable is saved, a dashed cable has pending changes, and a dotted cable is muted; ▲ indicates positive gain. Selecting a cable shows its state, gain, mute, and a matrix restricted to linked channels between the two blocks. An applied connection becomes active only when both ASIO channels are open. Audio changes remain pending until **Apply configuration**. Custom labels and colors are local to Control and do not affect audio processing.
+The context menu of a present process in Routing opens a dialog to assign its ASIO input/output capacity profile, initially suggesting 2/2. The profile applies to the executable the next time it opens ASIO; 256 is an internal limit, not a set of ports shown by default. In that dialog, **Remove this configuration** removes the process connections and its profile after confirmation without closing the Windows process. Only channels opened by the application become active endpoints. An open channel is not automatically connected. Process and meter details remain collapsed below the graph.
+
+Graph blocks distinguish physical hardware, a running process, and a saved profile. Physical and virtual ports use different colors and shapes. A solid cable is saved, a dashed cable has pending changes, and a dotted cable is muted; ▲ indicates positive gain. Right-clicking a cable opens its properties in a dialog: state, gain, mute, and a matrix restricted to linked channels between the two blocks. Selecting a cable alone does not open a panel. An applied connection becomes active only when both ASIO channels are open. Audio changes remain pending until **Apply configuration**. Custom labels and colors are local to Control and do not affect audio processing.
 
 ```mermaid
 flowchart LR

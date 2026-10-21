@@ -4,6 +4,7 @@ import { ReactFlow, Background, Handle, Position, useNodesState, useReactFlow } 
 import '@xyflow/react/dist/style.css';
 import { DEFAULT_ROUTE_COLOR, routeVisualKey } from './route-visuals';
 import { transferProcessConnections } from './process-connection-transfer';
+import { arrangePatchbayNodes } from './patchbay-layout';
 
 const permitted = (sourceKind, destinationKind) =>
     sourceKind === 'physical-input' ? ['virtual-input', 'wasapi-render'].includes(destinationKind) :
@@ -19,7 +20,7 @@ const withSearch = (groups, search) => {
 
 const PatchbayFlowNode = ({ data }) => data.render();
 const flowNodeTypes = { patchbay: PatchbayFlowNode };
-const PatchbayZoom = ({ visibleKey }) => {
+const PatchbayZoom = ({ visibleKey, onAutoArrange, empty }) => {
     const { zoomIn, zoomOut, fitView } = useReactFlow();
     const previousKey = useRef(visibleKey);
     React.useEffect(() => {
@@ -33,9 +34,11 @@ const PatchbayZoom = ({ visibleKey }) => {
         <button type="button" aria-label="Zoom out" onClick={() => zoomOut()}>−</button>
         <button type="button" aria-label="Zoom in" onClick={() => zoomIn()}>+</button>
         <button type="button" onClick={() => fitView({ padding: 0.15, maxZoom: 1, duration: 0 })}>Recenter graph</button>
+        <button type="button" disabled={empty} onClick={onAutoArrange}
+            title="Arrange blocks automatically without changing connections or names">Auto-arrange</button>
     </div>;
 };
-const PatchbayCanvas = ({ modelNodes, edges, visibleKey, layoutResetVersion, onSavePosition,
+const PatchbayCanvas = ({ modelNodes, edges, visibleKey, layoutResetVersion, onSavePosition, onSaveLayout,
     disabled, validConnection, onConnect, onReconnect, onEdgeClick, onPaneContextMenu,
     onNodeContextMenu, onEdgeContextMenu }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState(modelNodes);
@@ -66,7 +69,12 @@ const PatchbayCanvas = ({ modelNodes, edges, visibleKey, layoutResetVersion, onS
         onNodeContextMenu={(event, node) => { event.preventDefault(); onNodeContextMenu(event, node.id); }}
         onEdgeContextMenu={(event, edge) => { event.preventDefault(); onEdgeContextMenu(event, edge.id); }}>
         <Background color="#dbe5ea" gap={20} />
-        <PatchbayZoom visibleKey={visibleKey} />
+        <PatchbayZoom visibleKey={visibleKey ? `${visibleKey}:${layoutResetVersion}` : ''} empty={!nodes.length}
+            onAutoArrange={() => {
+                const arranged = arrangePatchbayNodes(nodes);
+                setNodes(arranged);
+                onSaveLayout(arranged);
+            }} />
     </ReactFlow>;
 };
 
@@ -446,7 +454,8 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
         const legacyGroup = node.outputs[0] || node.inputs[0];
         const layout = nodeLayout[node.key] || nodeLayout[layoutKey(legacyGroup, node.outputs.length ? 'source' : 'destination')] || {};
         return { id: node.key, type: 'patchbay', position: { x: layout.x ?? base.x + (layout.dx || 0),
-            y: layout.y ?? base.y + (layout.dy || 0) }, data: { render: () => renderNode(node) },
+            y: layout.y ?? base.y + (layout.dy || 0) }, data: { render: () => renderNode(node),
+                layoutColumn: column, layoutHeight: collapsed ? 66 : 82 + portCount * 35 },
             draggable: true, selectable: false };
     });
     const visibleNodeKeys = new Set(flowNodes.map(node => node.id));
@@ -535,6 +544,21 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
             <PatchbayCanvas modelNodes={flowNodes} edges={flowEdges}
                 visibleKey={flowNodes.length ? visibleKey : ''} layoutResetVersion={layoutResetVersion}
                 disabled={disabled} validConnection={validFlowConnection}
+                onSaveLayout={arranged => {
+                    setNodeLayout(current => {
+                        const next = { ...current };
+                        arranged.forEach(node => {
+                            const model = nodes.find(item => item.key === node.id);
+                            if (!model) return;
+                            const group = model.outputs[0] || model.inputs[0];
+                            const previous = current[node.id] || current[layoutKey(group,
+                                model.outputs.length ? 'source' : 'destination')] || {};
+                            next[node.id] = { ...previous, ...node.position };
+                        });
+                        return next;
+                    });
+                    setLayoutResetVersion(current => current + 1);
+                }}
                 onSavePosition={(nodeId, position) => setNodeLayout(current => ({ ...current,
                     [nodeId]: { ...current[nodeId], x: position.x, y: position.y } }))}
                 onConnect={connection => {
