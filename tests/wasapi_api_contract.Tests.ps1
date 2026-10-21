@@ -1,3 +1,4 @@
+param([string]$NativeMessages)
 $ErrorActionPreference = 'Stop'
 $schema = Join-Path $PSScriptRoot '../api/schemas/api-v1.json'
 function Assert-Contract($Value, [bool]$Expected, [string]$Label) {
@@ -60,3 +61,9 @@ $state.apiVersion='1.0';$state.Remove('wasapiDevices');$state.Remove('configured
 Assert-Contract $state $true 'complete legacy state still accepted'
 Assert-Contract @{wasapiDevices=@();wasapiInventoryError='Enumeration unavailable'} $true 'inventory error is distinct from empty success'
 'WASAPI API 1.1 schema fixtures passed.'
+if ($NativeMessages) {
+    $actual = Get-Content -LiteralPath $NativeMessages -Raw | ConvertFrom-Json
+    if ($actual.Count -lt 4) { throw 'Expected initial, configured, cleared and inventory HTTP messages.' }
+    foreach ($message in $actual) { Assert-Contract $message $true 'actual native HTTP response' }
+    "Actual native HTTP messages validated: $($actual.Count)"
+}

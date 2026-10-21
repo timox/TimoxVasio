@@ -120,6 +120,11 @@ if(WIN32)
     target_compile_definitions(WasapiBridgeProbe PRIVATE NOMINMAX)
     target_link_libraries(WasapiBridgeProbe PRIVATE avrt ole32 propsys uuid)
 
+    # Opt-in hosts load the real virtual ASIO DLL; they never emulate its transport.
+    add_executable(AsioEngineSignalProbe tests/asio_engine_signal_probe.cpp)
+    target_include_directories(AsioEngineSignalProbe PRIVATE ${CMAKE_SOURCE_DIR}/asiosdk/common)
+    target_link_libraries(AsioEngineSignalProbe PRIVATE ole32)
+
     add_executable(WasapiBridgeIoTests tests/wasapi_bridge_io_tests.cpp)
     target_include_directories(WasapiBridgeIoTests PRIVATE ${INCLUDE_DIR} ${SRC_DIR})
 

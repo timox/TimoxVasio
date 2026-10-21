@@ -6,11 +6,15 @@
 #include "vasio_client_manager.h"
 #include <windows.h>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 
 // Disabled bridges exercise the actual HTTP/WebSocket/controller transaction
 // without opening a Windows audio endpoint or depending on installed hardware.
-int wmain() {
+int wmain(int argc, wchar_t** argv) {
     using Json = nlohmann::json;
+    if (argc != 1 && (argc != 3 || std::wstring(argv[1]) != L"--snapshot-file")) return 2;
+    Json messages = Json::array();
     wchar_t directory[MAX_PATH]{};
     if (!GetTempPathW(MAX_PATH, directory)) return 2;
     const auto base = std::wstring(directory) + L"TimoxVasio-wasapi-api-" + std::to_wstring(GetCurrentProcessId());
@@ -34,6 +38,7 @@ int wmain() {
         return response && response->status == 200 ? Json::parse(response->body) : Json::object();
     };
     auto initial = state();
+    messages.push_back(initial);
     check(initial.value("apiVersion", "") == "1.1" && initial.contains("wasapiInventoryError") &&
         initial.value("configuredWasapiBridges", Json{}) == Json::array(), "API 1.1 exposes empty bridge configuration and inventory status");
     httplib::Headers headers{{"Sec-WebSocket-Protocol", "vasio.api.v1"}};
@@ -60,6 +65,7 @@ int wmain() {
                 {{"id", "loopback_b"}, {"enabled", false}, {"kind", "endpointLoopback"}, {"endpointId", "test-render-endpoint"}, {"bufferDuration100ns", 100000}}})}};
         check(apply(payload).value("success", false), "API accepts disabled default and explicit loopback configurations");
         const auto configured = state();
+        messages.push_back(configured);
         const auto bridges = configured.value("configuredWasapiBridges", Json{});
         check(bridges.is_array() && bridges.size() == 2, "state preserves both bridge selectors");
         const auto effective = configured.value("wasapiBridges", Json::array());
@@ -81,6 +87,7 @@ int wmain() {
         payload["wasapiBridges"] = Json::array();
         check(apply(payload).value("success", false), "explicit empty bridges removes all bridges");
         const auto cleared = state();
+        messages.push_back(cleared);
         check(cleared.value("configuredWasapiBridges", Json{}) == Json::array() && cleared.value("wasapiBridges", Json{}) == Json::array(),
             "removal clears desired and effective state");
         ws.close();
@@ -88,7 +95,14 @@ int wmain() {
     const auto inventory = http.Get("/api/v1/wasapi-devices");
     check(inventory && inventory->status == 200 && Json::parse(inventory->body).contains("wasapiInventoryError"),
         "inventory refresh returns explicit success or error state");
+    if (inventory && inventory->status == 200) messages.push_back(Json::parse(inventory->body));
     api.Stop(); controller.Stop();
     DeleteFileW(config.c_str()); DeleteFileW(profiles.c_str());
+    if (argc == 3) {
+        std::ofstream output(std::filesystem::path(argv[2]), std::ios::binary);
+        output << messages.dump(2);
+        output.flush();
+        check(output.good(), "write actual HTTP snapshots for JSON Schema validation");
+    }
     return passed ? 0 : 1;
 }
