@@ -6,7 +6,10 @@ Audio optimization prerelease. Version 1.2.6 remains the stable release.
 - Notify compatible physical drivers when output processing is complete (`outputReady`).
 - Select PCM conversion once per channel and process whole blocks, preserving sample bits.
 
-Release x64 builds, conversion and routing tests, and seven DriverAudioProbe scenarios pass.
+Release x64 builds, conversion and routing tests pass. Seven DriverAudioProbe scenarios
+passed after M1. During publication checks, preparation of `--reinit-after-detach` failed
+twice, followed by three successful repetitions. This intermittent result with an active
+engine still needs an isolated validation.
 Block conversion matches the scalar implementation across 18 formats, exhaustive 16-bit
 values and million-sample random cases. The latest local conversion-only benchmark was
 roughly 3.5–4.2 times faster; this is not a whole-engine performance measurement.

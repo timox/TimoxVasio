@@ -137,3 +137,19 @@ Ces limites restent ouvertes pour la préversion demandée, sans promesse de gai
 
 L'utilisateur demande ensuite une release avec suffixe `-test` : préparation de `1.2.7-test`
 dans un commit de version distinct ; M4 reste exclue.
+
+### Vérification finale de la préversion
+
+Version numérique des ressources Windows : 1.2.7.0 ; ProductVersion : 1.2.7-test.
+Conversion scalaire/bloc, routage et inventaire : PASS après reconstruction versionnée.
+Six scénarios DriverAudioProbe passent ; le septième (`--reinit-after-detach`) échoue deux
+fois avant sa branche spécifique, avec le message générique de préparation du transport.
+Trois répétitions ultérieures passent sur la DLL test, en alternance avec la DLL stable.
+Le moteur installé découvre les mappings de driver 1 et peut concurrencer le moteur simulé
+du probe (voir `VasioClientManager::Refresh`), mais la cause précise de ces deux échecs
+n'est pas démontrée. Aucun changement du produit pour masquer l'échec ; limite publiée.
+
+| État | Binaire | Horodatage UTC | SHA-256 |
+|---|---|---|---|
+| 1.2.7-test | `build_driver_110/Release/TimoxVasio.dll` | 2026-10-21T06:03:48.2195236Z | `F4FC8AA0EDB929B74DB2459D6B69652955A1BE9FB21370C6A109DDB96983A0B6` |
+| 1.2.7-test | `build_codex_110/Release/TimoxVirtualAsioEngine.exe` | 2026-10-21T06:03:58.5519785Z | `42366FE26E9AA8494B646870B2196D6C60C534D804211D30A17A41A042D8B28B` |

@@ -34,7 +34,10 @@ relancer les applications audio.
 ## Vérifications et limites
 
 Compilation Release x64 et tests de conversion, routage et transport réussis.
-Les sept scénarios DriverAudioProbe passent. DriverProbe présente un échec préexistant
+Les sept scénarios DriverAudioProbe ont passé après M1. Au contrôle de publication,
+la préparation du scénario `--reinit-after-detach` échoue deux fois, puis trois répétitions
+réussissent ; cette intermittence avec un moteur actif reste à isoler.
+DriverProbe présente un échec préexistant
 sur une taille de bloc fixe (granularité nulle). PhysicalAsioProbe vérifie l'inventaire,
 pas le fonctionnement audio d'une carte.
 
