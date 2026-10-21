@@ -1,0 +1,49 @@
+# Contrat des paquets du futur pilote Windows audio
+
+Ce dossier implémente **N0 : validation portable du format des paquets PCM** du [lot pilote natif](../docs/superpowers/specs/2026-10-22-native-windows-audio-driver.md). Il ne crée aucun endpoint Windows et ne contient ni pilote noyau, ni IOCTL, ni broker. Il reste indépendant du build moteur/ASIO.
+
+`include/native_audio_protocol.h` fournit le vocabulaire compatible C ; `include/native_audio_packet_validation.h` fournit le validateur C++17 sans dépendance Windows. Celui-ci décode des octets potentiellement non alignés, vérifie les bornes et renvoie les métadonnées acceptées, ou une erreur avec métadonnées nulles. Il n'alloue pas, ne verrouille pas, ne fait aucune syscall et ne parcourt pas le payload.
+
+## Wire v1.0
+
+Tous les entiers sont little-endian ; aucune structure C/C++ n'est directement sérialisée. Le paquet possède exactement 64 octets d'en-tête puis le PCM interleavé signé 32 bits, deux canaux à 48 kHz. C'est le format initial explicitement supporté ; tout autre format est refusé.
+
+| Offset octet | Taille | Champ |
+|---|---|---|
+| 0 | 4 | ASCII `TVWA` |
+| 4 | 4 | Taille en-tête : 64 |
+| 8 / 10 | 2 / 2 | Version majeure 1 / mineure 0 |
+| 12 | 2 | Opcode : 1 paquet rendu, 2 paquet capture |
+| 14 | 2 | Direction : 1 Windows rendu → moteur, 2 moteur → Windows capture |
+| 16 | 8 | Génération non nulle de session |
+| 24 | 8 | Numéro de séquence de paquet |
+| 32 | 8 | Timestamp QPC, nul sans flag QPC_VALID |
+| 40 | 4 | Nombre de frames : 1 à capacité négociée, maximum 4096 |
+| 44 | 4 | Fréquence : 48000 |
+| 48 / 50 | 2 / 2 | Canaux : 2 / format : 1 (PCM S32) |
+| 52 | 4 | Taille payload : exactement frames × 8 |
+| 56 | 4 | Flags : bit 0 discontinuité, bit 1 timestamp valide |
+| 60 | 4 | Réservé : zéro |
+| 64 | frames × 8 | PCM interleavé, y compris pour du silence |
+
+Maximum : 32832 octets, en-tête inclus. Pas de frame partielle, paquet vide, données suffixes ni extension de version implicite. La capacité et la génération attendues sont **des données de session de confiance**, jamais reprises du paquet pour les valider. Un paquet rendu ne peut pas être accepté sur le trajet capture et vice versa, même si le PCM a le même format.
+
+La génération sera attribuée à l'ouverture par le propriétaire de session et changera après retrait/reconnexion. Le validateur est sans état : il vérifie l'égalité de génération, pas l'authenticité du client, les doublons, l'ordre de séquence ou la monotonie QPC. Ces derniers contrôles appartiendront à la session de transport. Le timestamp décrit la première frame au point de production du paquet ; il ne signifie pas sa date de lecture/présentation dans Windows. Les deux directions peuvent signaler une discontinuité ou un timestamp valide. Un flag de timestamp avec valeur zéro est permis (valeur d'horloge initiale) ; il ne dispense pas le consommateur de connaître l'unité/fréquence QPC de la session.
+
+## Conditions d'appel et limite de sécurité
+
+Le buffer doit déjà être lisible et immuable pendant l'appel, par exemple un system buffer issu d'un futur IOCTL `METHOD_BUFFERED`. La taille fournie est la taille réellement disponible. Ce code ne vérifie pas une adresse utilisateur arbitraire et ne protège pas d'une modification concurrente : ne jamais l'appeler directement sur une zone utilisateur partagée sans protocole de copie/snapshot validé. Le validateur ne retourne pas de pointeur payload ; le consommateur peut utiliser l'offset 64 seulement après succès, avant la libération du même buffer.
+
+Les futurs IOCTL doivent vérifier ACL, droits, longueurs d'entrée/sortie et durée de vie des requêtes avant d'appeler ce code. Les valeurs opcode ici ne sont **pas** des codes IOCTL Windows. GET_CAPABILITIES/OPEN/CLOSE, annulation, mapping, files bornées, alimentation des buffers WaveRT et accès multi-session restent à implémenter. Le validateur n'est pas intégré au callback du graphe et n'a pas encore été compilé avec le WDK.
+
+## Tests autonomes
+
+Depuis la racine du dépôt, après `git rev-parse --show-toplevel` et `git status --short` :
+
+```powershell
+cmake -S native-windows-audio -B build_native_audio_protocol -G "Visual Studio 18 2026" -A x64
+cmake --build build_native_audio_protocol --config Release
+ctest --test-dir build_native_audio_protocol -C Release --output-on-failure
+```
+
+Les tests utilisent un paquet indépendant encodé octet par octet, compilent également le vocabulaire en C et vérifient les deux directions, la version, les formats, les bornes, les générations, l'alignement, les flags et les longueurs extrêmes. Le projet n'a aucune dépendance au SDK ASIO, au WDK ou à du matériel audio. Ces tests prouvent la validation des paquets, pas le transport ni le chargement d'un pilote.
