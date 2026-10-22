@@ -72,3 +72,43 @@ est inchangé. Mixxx, Traktor et SuperCollider sont restés présents : cet essa
 prouve la présence du signal et la stabilité observée, pas la parité CPU/latence,
 la transparence bit à bit, ni une stabilité prolongée. Un nouveau test long reste
 nécessaire pour comparer à la session précédente de dix minutes.
+
+## Nouvelle qualification de dix minutes
+
+Essai de 610 secondes terminé le 22 octobre 2026. Session locale
+`build_wasapi_e2e/session-0c3eb9e3e9df48b78722d6431f30efb1/asio-engine-0eb0ed40079041f9a72e17d91b7a6ca4`.
+Même chemin SSL 12, graphe 48 kHz / 2048, FIFO 16384 et buffer natif 1056.
+Le moteur inclut aussi le dimensionnement corrigé, qui conserve cette capacité
+à ce quantum. SHA-256 moteur :
+`06BCB2A59ABC7053B2300F430E43351AFFA705095BA7BA67194989BDFCDAC9E6`
+(1 181 184 octets, 06:08:15 UTC). DLL et probe ont les mêmes hashes que ci-dessus.
+
+- Présence : **24339/24400 fenêtres valides (99,75 %)** sur 29 280 000 frames.
+- Aucune frame nulle/non finie et aucune demande de reset.
+- Stabilité : 550 observations sur 609,0939667 s après amorçage ; intervalle
+  maximal 1,2503497 s, aucune issue signalée et aucun accroissement des sept
+  compteurs d'incidents surveillés ; générations inchangées.
+- Sur toute cette période : un seul relevé rendu à +2000 ppm, aucun en capture.
+  Après 120 s : rendu −148,65 à +152,67 ppm ; capture −85,09 à +102,63 ppm,
+  sur 443 relevés par pont, sans saturation observée. Fins : −38,40 / +33,93 ppm.
+- `controlBacklogUpdates` reste nul. Les silences d'amorçage restent constants
+  (rendu natif 11616 frames, capture graphe 8192), ainsi que l'unique discontinuité
+  de démarrage capture.
+
+Les **61 fenêtres rejetées forment un seul intervalle de 1,525 s**, de 364,275 s
+à 365,800 s du signal analysé. Toutes échouent au critère d'énergie combinée des
+tonalités ; aucune n'a une amplitude de tonalité sous le seuil. Les métadonnées
+montrent une énergie supplémentaire importante (pic jusqu'à 0,149 dans les
+premières fenêtres conservées), sans zéros ni échantillons proches du plein
+niveau. Cela est compatible avec un autre son mélangé à la sortie Windows
+partagée, mais **sa provenance n'est pas démontrée** : aucun PCM ni inventaire
+des sessions WASAPI concurrentes n'a été enregistré. Ne pas classer ces fenêtres
+comme parfaites, ni affirmer qu'elles proviennent du pont ou d'une application.
+
+Le seuil de présence reste 90 %, inchangé avant/après correction. Ce test prouve
+la stabilité observée et une amélioration de la régulation dans cette configuration,
+pas l'absence absolue d'artefacts, la latence ou la parité CPU. Le moteur installé
+API 1.0 est de nouveau running sans erreur, avec les mêmes 14 routes actives et
+22 configurées ; le hash de configuration utilisateur est inchangé. La comparaison
+avec le test précédent reste descriptive : environnement partagé et activité
+concurrente non contrôlée, donc pas une expérience de performance isolée.
