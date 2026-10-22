@@ -153,6 +153,38 @@ son. Il vérifie vingt-quatre cas à 44,1/48/96 kHz : phases libres, dérive ±0
 atténuation de 40 dB, puis refus du silence, d'un ton à 1100 Hz, d'un bruit
 déterministe, d'un seul des tons attendus et de NaN.
 
+Le résultat bridge comprend aussi `toneDiagnostics`, sans changer le critère
+de réussite. Les statistiques couvrent toutes les fenêtres complètes : nombre
+de rejets, longueur et début de la plus longue suite de rejets, et compteurs de
+motifs. Seules les seize premières fenêtres rejetées et la dernière gardent
+leurs métadonnées détaillées ; `omittedRejectedWindows` compte les autres.
+Le stockage est fixe, sans PCM conservé ni allocation ajoutée au callback.
+L'impression JSON intervient après l'arrêt du callback.
+
+| Bit de `reasonMask` | Critère non satisfait |
+|---|---|
+| 1 | Au moins une valeur non finie |
+| 2 / 4 | Amplitude 997 / 1709 Hz insuffisante |
+| 8 / 16 | Fraction d'énergie 997 / 1709 Hz insuffisante |
+| 32 | Fraction d'énergie combinée insuffisante |
+| 64 | Rapport d'amplitude des deux tons hors limites |
+
+Plusieurs motifs peuvent concerner une même fenêtre ; leur somme peut donc
+dépasser le nombre de rejets. Chaque détail contient RMS, crête, amplitudes,
+fractions d'énergie, nombres de zéros exacts et d'échantillons dont la valeur
+absolue atteint 0,999. `windowIndex` est indexé depuis zéro ; `startSeconds` est
+relatif au début de l'analyse **après** la préchauffe, et utilise la durée réelle
+de fenêtre arrondie au nombre entier de frames. Les fractions sont des
+projections de fenêtres courtes, pas un partage spectral exact ni un SNR.
+
+Ces indices permettent de comparer un affaiblissement des deux tons, une hausse
+d'énergie extérieure aux tons ou des suites de silence. Ils n'identifient pas
+avec certitude une perte, une contamination Windows, un saut de phase ou un
+défaut de ratio. Les premières fenêtres conservées ne constituent pas un
+échantillon représentatif de tous les rejets. L'autotest vérifie également la
+troncature des métadonnées, les motifs et deux suites connues de silence
+intermittent, tout en conservant la tolérance de présence initiale de 90 %.
+
 ### Stabilité observée des ponts
 
 Ajouter `-RequireStableBridges` au mode `WasapiLoopback` pour exiger une preuve

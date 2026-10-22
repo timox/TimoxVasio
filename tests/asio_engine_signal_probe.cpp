@@ -119,10 +119,59 @@ bool TestBridgeAnalysis() {
                     static_cast<unsigned long long>(analyzer.Matched()), static_cast<unsigned long long>(analyzer.Windows()));
                 ++failures;
             }
+            const auto& d = analyzer.DiagnosticSummary();
+            if (d.rejectedWindows != analyzer.Windows() - analyzer.Matched() ||
+                (expected && (d.storedRejected || d.longestRejectedRun)) ||
+                (!expected && (d.storedRejected != 16 || d.lastRejected.index != analyzer.Windows() - 1 ||
+                    d.longestRejectedRun != analyzer.Windows() || d.longestRunStart != 0))) ++failures;
+            if (scenario == 3 && (d.firstRejected[0].zeroSamples != static_cast<std::uint64_t>(std::llround(rate * .025)) ||
+                !(d.firstRejected[0].reasons & BridgeToneAnalyzer::LowAmplitude997))) ++failures;
+            if (scenario == 5 && !(d.firstRejected[0].reasons & BridgeToneAnalyzer::LowCombinedEnergy)) ++failures;
+            if (scenario == 7 && !(d.firstRejected[0].reasons & BridgeToneAnalyzer::Nonfinite)) ++failures;
         }
     }
-    std::printf("Bridge analyzer controls: %s (24 cases)\n", failures ? "FAIL" : "PASS");
+    BridgeToneAnalyzer intermittent;
+    intermittent.Prepare(48000);
+    for (unsigned i = 0; i < 96000; ++i) {
+        const auto window = i / 1200;
+        const bool mute = (window >= 5 && window <= 7) || (window >= 20 && window <= 21);
+        const double angle = 2 * kPi * i / 48000;
+        intermittent.Process(mute ? 0 : kAmplitude * (std::sin(997 * angle) + std::sin(1709 * angle)));
+    }
+    const auto& intermittentInfo = intermittent.DiagnosticSummary();
+    if (!intermittent.Passed() || intermittentInfo.rejectedWindows != 5 || intermittentInfo.longestRejectedRun != 3 ||
+        intermittentInfo.longestRunStart != 5 || intermittentInfo.storedRejected != 5 ||
+        intermittentInfo.firstRejected[0].index != 5 || intermittentInfo.lastRejected.index != 21 ||
+        intermittentInfo.firstRejected[0].startSeconds != .125) ++failures;
+    std::printf("Bridge analyzer controls: %s (24 signal cases plus bounded diagnostics and intermittent loss)\n", failures ? "FAIL" : "PASS");
     return failures == 0;
+}
+void PrintWindowDiagnostic(const BridgeToneAnalyzer::WindowDiagnostic& d) {
+    std::printf("{\"windowIndex\":%llu,\"startSeconds\":%.12g,\"reasonMask\":%u,\"rms\":%.12g,\"peak\":%.12g,"
+        "\"amplitude997\":%.12g,\"amplitude1709\":%.12g,\"energyFraction997\":%.12g,\"energyFraction1709\":%.12g,"
+        "\"zeroSamples\":%llu,\"nearFullScaleSamples\":%llu}", static_cast<unsigned long long>(d.index), d.startSeconds,
+        d.reasons, d.rms, d.peak, d.amplitude997, d.amplitude1709, d.energyFraction997, d.energyFraction1709,
+        static_cast<unsigned long long>(d.zeroSamples), static_cast<unsigned long long>(d.nearFullScaleSamples));
+}
+void PrintBridgeDiagnostics(const BridgeToneAnalyzer::Diagnostics& d) {
+    const char* names[] = {"nonfinite", "lowAmplitude997", "lowAmplitude1709", "lowEnergy997",
+        "lowEnergy1709", "lowCombinedEnergy", "unbalancedTones"};
+    std::printf("{\"rejectedWindows\":%llu,\"longestRejectedRun\":%llu,\"longestRunStartIndex\":%llu,\"reasonCounts\":{",
+        static_cast<unsigned long long>(d.rejectedWindows), static_cast<unsigned long long>(d.longestRejectedRun),
+        static_cast<unsigned long long>(d.longestRunStart));
+    for (unsigned i = 0; i < d.reasonCounts.size(); ++i)
+        std::printf("%s\"%s\":%llu", i ? "," : "", names[i], static_cast<unsigned long long>(d.reasonCounts[i]));
+    std::printf("},\"omittedRejectedWindows\":%llu,\"firstRejected\":[",
+        static_cast<unsigned long long>(d.rejectedWindows - d.storedRejected -
+            (d.rejectedWindows > d.storedRejected ? 1 : 0)));
+    for (std::size_t i = 0; i < d.storedRejected; ++i) {
+        if (i) std::printf(",");
+        PrintWindowDiagnostic(d.firstRejected[i]);
+    }
+    std::printf("],\"lastRejected\":");
+    if (d.rejectedWindows) PrintWindowDiagnostic(d.lastRejected);
+    else std::printf("null");
+    std::printf("}");
 }
 }
 
@@ -216,12 +265,15 @@ int wmain(int argc, wchar_t** argv) {
     std::printf("{\"event\":\"result\",\"passed\":%s,\"callbacks\":%llu,\"measuredFrames\":%llu,"
         "\"zeros\":%llu,\"nonfinite\":%llu,\"reset\":%s,\"amplitude997\":%s,\"amplitude1709\":%s,"
         "\"rms\":%.12g,\"snrDb\":%s,\"analysis\":\"%s\",\"qualificationScope\":\"%s\",\"toneWindows\":%llu,\"matchedToneWindows\":%llu,"
-        "\"windowAmplitude997\":%.12g,\"windowAmplitude1709\":%.12g}\n", passed ? "true" : "false",
+        "\"windowAmplitude997\":%.12g,\"windowAmplitude1709\":%.12g,\"toneDiagnostics\":", passed ? "true" : "false",
         static_cast<unsigned long long>(context.callbacks), static_cast<unsigned long long>(context.measured),
         static_cast<unsigned long long>(context.zeros), static_cast<unsigned long long>(context.nonfinite),
         context.reset.load() ? "true" : "false", amplitude1Json, amplitude2Json, std::sqrt(power), snrJson,
         bridgeMode ? "bridge-tone-presence" : "direct-strict", bridgeMode ? "tone-presence-only" : "direct-signal-integrity",
         static_cast<unsigned long long>(context.bridge.Windows()),
         static_cast<unsigned long long>(context.bridge.Matched()), context.bridge.Amplitude1(), context.bridge.Amplitude2());
+    if (bridgeMode) PrintBridgeDiagnostics(context.bridge.DiagnosticSummary());
+    else std::printf("null");
+    std::printf("}\n");
     return passed ? 0 : 12;
 }
