@@ -10,6 +10,8 @@
 #include "routing_graph.h"
 #include "wasapi_bridge_configuration.h"
 #include "wasapi_bridge_manager.h"
+#include "native_audio_configuration.h"
+#include "native_audio_manager.h"
 
 #include <windows.h>
 
@@ -41,6 +43,7 @@ struct AudioControllerConfiguration {
     std::optional<std::uint32_t> bufferFrames;
     std::vector<AudioRoute> routes;
     std::vector<WasapiBridgeConfiguration> wasapiBridges;
+    NativeAudioConfiguration nativeAudio;
 };
 
 struct AudioControllerResult {
@@ -62,6 +65,8 @@ struct AudioControllerSnapshot {
     std::vector<AudioRoute> routes;
     std::vector<AudioRoute> configuredRoutes;
     std::vector<WasapiBridgeConfiguration> configuredWasapiBridges;
+    NativeAudioConfiguration configuredNativeAudio;
+    NativeAudioManagerSnapshot nativeAudio;
     std::vector<WasapiBridgeSnapshot> wasapiBridges;
     std::vector<WasapiDeviceInfo> wasapiDevices;
     std::string wasapiInventoryError;
@@ -115,7 +120,8 @@ public:
         std::wstring applicationProfilesPath = ApplicationProfileStore::DefaultPath(),
         ClockHostFactory clockHostFactory = {},
         WasapiBridge::BackendFactory wasapiBackendFactory = {},
-        WasapiBridgeManager::EndpointResolver wasapiEndpointResolver = {});
+        WasapiBridgeManager::EndpointResolver wasapiEndpointResolver = {},
+        NativeAudioManager::TransportFactory nativeTransportFactory = {});
     ~AudioController();
     AudioController(const AudioController&) = delete;
     AudioController& operator=(const AudioController&) = delete;
@@ -124,9 +130,12 @@ public:
     void Stop() noexcept;
     std::vector<PhysicalAsioDriverInfo> EnumeratePhysicalDrivers();
     std::vector<WasapiDeviceInfo> EnumerateWasapiDevices();
+    // Legacy callers cannot implicitly clear native desire. A caller that owns
+    // that field must explicitly pass preserveNativeAudio=false to replace it.
     AudioControllerResult ApplyConfiguration(const AudioControllerConfiguration& configuration,
         std::optional<std::uint64_t> expectedConfigurationRevision = std::nullopt,
-        bool preserveClockSource = false, bool preserveWasapiBridges = false);
+        bool preserveClockSource = false, bool preserveWasapiBridges = false,
+        bool preserveNativeAudio = true);
     AudioControllerResult StartAudio();
     AudioControllerResult ResetAudio();
     AudioControllerResult StopAudio();
@@ -199,10 +208,12 @@ private:
     std::uint64_t performanceMeasurementsGeneration_ = 0; // Controller worker only.
     void ResetPerformanceMeasurementsWindow() noexcept;
     AudioControllerResult ApplyConfigurationCore(const AudioControllerConfiguration& configuration,
-        bool allowUnavailable = false);
+        bool allowUnavailable = false,const std::shared_ptr<NativeAudioManager>& retainedNative = {});
     std::optional<AudioControllerResult> ApplyPreparedLive(const AudioControllerConfiguration& configuration,
         const AudioControllerConfiguration* durable);
     void ReconcileWasapiOnWorker();
+    void ReconcileNativeOnWorker() noexcept;
+    std::vector<NativeRoutingBinding> NativeBindings() const;
     bool TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
         const std::vector<VasioClientSnapshot>& clients,
         const std::shared_ptr<WasapiBridgeManager>& manager = {});
@@ -213,6 +224,10 @@ private:
     WasapiBridge::BackendFactory wasapiBackendFactory_;
     WasapiBridgeManager::EndpointResolver wasapiEndpointResolver_;
     std::shared_ptr<WasapiBridgeManager> wasapiManager_;
+    NativeAudioManager::TransportFactory nativeTransportFactory_;
+    std::shared_ptr<NativeAudioManager> nativeManager_;
+    // Actual slot publication, independent of fallible snapshot/acknowledgement.
+    std::uint64_t nativePublishedEpoch_=0;
     std::vector<WasapiDeviceInfo> wasapiDevices_;
     std::string wasapiInventoryError_;
 };

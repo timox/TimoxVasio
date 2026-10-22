@@ -56,6 +56,31 @@ int wmain() {
     bool passed = require(missing == ConfigurationLoadStatus::Missing,
         "a missing configuration is reported as missing");
 
+    passed = require(writeConfiguration(path,
+        R"({"version":1,"physicalDriverId":null,"sampleRate":null,"bufferFrames":null,"routes":[],"nativeAudio":{"enabled":true}})") &&
+        store.Load(restored, error) == ConfigurationLoadStatus::Loaded,
+        "native desired configuration loads without activating a backend") && passed;
+    passed = require(restored.nativeAudio.enabled, "native enabled desire decoded") && passed;
+    const std::string nativePrefix = R"({"version":1,"physicalDriverId":null,"sampleRate":null,"bufferFrames":null,"routes":[],"nativeAudio":)";
+    for (const auto* invalid : {"null", "true", "{}", R"({"enabled":1})",
+            R"({"enabled":"true"})", R"({"enabled":false,"transport":"direct"})"}) {
+        restored.nativeAudio.enabled = true;
+        passed = require(writeConfiguration(path, nativePrefix + invalid + "}") &&
+            store.Load(restored, error) == ConfigurationLoadStatus::Error && restored.nativeAudio.enabled,
+            "malformed native configuration rejected without mutating output") && passed;
+    }
+    passed = require(writeConfiguration(path,
+        R"({"version":1,"physicalDriverId":null,"sampleRate":null,"bufferFrames":null,"routes":[]})") &&
+        store.Load(restored, error) == ConfigurationLoadStatus::Loaded && !restored.nativeAudio.enabled,
+        "legacy store resets native desire to disabled") && passed;
+    for (const bool enabled : {true, false}) {
+        AudioControllerConfiguration native;
+        native.nativeAudio.enabled = enabled;
+        passed = require(store.Save(native, error) && store.Load(restored, error) == ConfigurationLoadStatus::Loaded &&
+            restored.nativeAudio.enabled == enabled,
+            "native desired configuration round trips both boolean values") && passed;
+    }
+
     AudioControllerConfiguration expected;
     expected.physicalDriverId = "{physical-driver}";
     expected.sampleRate = 48000;

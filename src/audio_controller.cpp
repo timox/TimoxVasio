@@ -11,6 +11,7 @@
 #include <cmath>
 #include <algorithm>
 #include <chrono>
+#include <charconv>
 #include <stdexcept>
 #include <utility>
 
@@ -81,6 +82,35 @@ bool hasAttachedClient(const std::vector<VasioClientSnapshot>& clients) noexcept
     });
 }
 
+// Reserve only valid desired native/physical pairs, even before native IO exists.
+// These remain dormant graph routes; opening ASIO channels does not activate them.
+// Channel vectors contain global zero-based indices, not compact plane indices.
+void reserveNativePhysicalChannels(const std::vector<AudioRoute>& routes,
+    const std::optional<std::string>& driver,const PhysicalAsioCapabilities& caps,
+    std::vector<std::uint32_t>& inputs,std::vector<std::uint32_t>& outputs) {
+    if(!driver)return;
+    const auto add=[&](const std::string& id,const char* direction,long count,
+                       std::vector<std::uint32_t>& channels) {
+        const auto prefix="physical:"+*driver+":"+direction+":";
+        if(count<=0 || id.compare(0,prefix.size(),prefix)!=0)return;
+        const auto text=id.substr(prefix.size());std::uint32_t channel=0;
+        const auto parsed=std::from_chars(text.data(),text.data()+text.size(),channel);
+        if(parsed.ec!=std::errc{} || parsed.ptr!=text.data()+text.size() || !channel ||
+           channel>static_cast<unsigned long>(count) || text!=std::to_string(channel))return;
+        channels.push_back(channel-1);
+    };
+    for(const auto& route:routes) {
+        if(PersistentRoutes::NativeEndpointType(route.destinationEndpointId)==RoutingEndpointType::NativeDestination)
+            add(route.sourceEndpointId,"input",caps.inputChannels,inputs);
+        if(PersistentRoutes::NativeEndpointType(route.sourceEndpointId)==RoutingEndpointType::NativeSource)
+            add(route.destinationEndpointId,"output",caps.outputChannels,outputs);
+    }
+    for(auto* channels:{&inputs,&outputs}) {
+        std::sort(channels->begin(),channels->end());
+        channels->erase(std::unique(channels->begin(),channels->end()),channels->end());
+    }
+}
+
 void acknowledgePublishedGenerations(const std::vector<VasioClientSnapshot>& clients,
     std::uint32_t sampleRate, std::uint32_t bufferFrames) noexcept {
     for (const auto& client : clients) {
@@ -94,21 +124,24 @@ AudioController::AudioController(VasioClientManager& clients, std::wstring confi
                                  std::wstring applicationProfilesPath,
                                  ClockHostFactory clockHostFactory,
                                  WasapiBridge::BackendFactory wasapiBackendFactory,
-                                 WasapiBridgeManager::EndpointResolver wasapiEndpointResolver)
+                                 WasapiBridgeManager::EndpointResolver wasapiEndpointResolver, NativeAudioManager::TransportFactory nativeTransportFactory)
     : clients_(clients), configurationStore_(std::move(configurationPath)),
       applicationProfileStore_(std::move(applicationProfilesPath)),
       clockHostFactory_(std::move(clockHostFactory)),
       callbackSlot_(&AudioRoutingRuntime::PhysicalCallback),
       wasapiBackendFactory_(std::move(wasapiBackendFactory)),
-      wasapiEndpointResolver_(std::move(wasapiEndpointResolver)) {}
+      wasapiEndpointResolver_(std::move(wasapiEndpointResolver)), nativeTransportFactory_(std::move(nativeTransportFactory)) {}
 AudioController::~AudioController() { Stop(); }
 
 void AudioController::StopPhysicalRuntime() noexcept {
     ResetPerformanceMeasurementsWindow();
     callbackSlot_.Publish(nullptr);
+    nativePublishedEpoch_=0;
     if (physicalHost_) physicalHost_->stop();
     callbackSlot_.WaitForQuiescence();
     runtime_.reset();
+    if(nativeManager_)nativeManager_->StopAfterQuiescence(NativeAudioManager::Clock::now());
+    nativeManager_.reset();
     wasapiManager_.reset(); // Graph retired first; session destruction joins workers off RT.
     hostPhysicalInputs_.clear();
     hostPhysicalOutputs_.clear();
@@ -121,7 +154,9 @@ bool AudioController::TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
     const auto current = Snapshot();
     const auto manager=requestedManager?requestedManager:wasapiManager_;
     const auto bindings=manager?manager->Bindings():std::vector<WasapiRoutingBinding>{};
-    const auto activeRoutes = PersistentRoutes::ResolveForClock(routes, clients, current.physicalDriverId,bindings);
+    const auto nativeBindings=NativeBindings();
+    const auto nativeEpoch=nativeBindings.empty()?0:nativeBindings.front().generation->epoch;
+    const auto activeRoutes = PersistentRoutes::ResolveForClock(routes, clients, current.physicalDriverId,bindings,nativeBindings);
     if (current.state != "running" || !runtime_ || !physicalHost_ ||
         !current.sampleRate || !current.bufferFrames ||
         current.clockSource != desiredConfiguration_.clockSource ||
@@ -138,7 +173,7 @@ bool AudioController::TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
     layout.physicalOutputChannels = current.physicalCapabilities.outputChannels;
     layout.clients = clients;
     layout.routes = activeRoutes;
-    layout.wasapiBindings=bindings;
+    layout.wasapiBindings=bindings;layout.nativeBindings=nativeBindings;
     std::string error;
     auto replacement = AudioRoutingRuntime::Create(std::move(layout), error);
     if (!replacement ||
@@ -159,6 +194,7 @@ bool AudioController::TryHotSwapRoutes(const std::vector<AudioRoute>& routes,
     auto retired = std::move(runtime_);
     runtime_ = std::move(replacement);
     callbackSlot_.Publish(runtime_.get());
+    nativePublishedEpoch_=nativeEpoch;
     callbackSlot_.WaitForQuiescence();
     retired.reset();
     wasapiManager_=manager;
@@ -268,6 +304,59 @@ void AudioController::ReconcileWasapiOnWorker() {
     }
 }
 
+std::vector<NativeRoutingBinding> AudioController::NativeBindings() const {
+    if(!nativeManager_)return {};
+    const auto status=nativeManager_->Snapshot(NativeAudioManager::Clock::now());
+    if(status.state!=NativeAudioManagerState::Prepared && status.state!=NativeAudioManagerState::Attached)return {};
+    const auto generation=nativeManager_->Generation();
+    return generation?std::vector<NativeRoutingBinding>{{"windows",generation}}:std::vector<NativeRoutingBinding>{};
+}
+
+void AudioController::ReconcileNativeOnWorker() noexcept {
+    try {
+        {std::lock_guard<std::mutex> lock(queueMutex_);if(stopping_)return;}
+        const auto current=Snapshot();
+        if(audioStoppedByCommand_ || current.state!="running" || !current.sampleRate || !current.bufferFrames)return;
+        bool changed=!nativeManager_;
+        if(!nativeManager_)nativeManager_=std::make_shared<NativeAudioManager>(nativeTransportFactory_);
+        const auto before=nativeManager_->Snapshot(NativeAudioManager::Clock::now());
+        changed=changed || before.enabled!=desiredConfiguration_.nativeAudio.enabled || !before.masterRunning ||
+            before.desiredRate!=*current.sampleRate || before.desiredQuantum!=*current.bufferFrames;
+        nativeManager_->SetDesired(desiredConfiguration_.nativeAudio.enabled,true,*current.sampleRate,*current.bufferFrames);
+        const auto now=NativeAudioManager::Clock::now();
+        auto action=nativeManager_->Inspect(now);
+        changed=changed || action!=NativeAudioAction::None;
+        if(action==NativeAudioAction::Detach) {
+            // NativeBindings excludes detaching sessions. Keep the sole owner
+            // until a graph without its IO has been published and quiesced.
+            if(!TryHotSwapRoutes(desiredConfiguration_.routes,clients_.GetClientSnapshots()))return;
+            nativeManager_->StopAfterQuiescence(now);
+            action=nativeManager_->Inspect(now);
+        }
+        if(action==NativeAudioAction::AttemptOpen) {
+            const auto opened=nativeManager_->AttemptOpen(now);
+            if(opened.code==NativeTransferCode::Ok) {
+                if(TryHotSwapRoutes(desiredConfiguration_.routes,clients_.GetClientSnapshots()))
+                    nativeManager_->MarkAttached();
+                else nativeManager_->StopAfterQuiescence(now,{NativeTransferCode::InvalidPacket});
+            } else if(nativeManager_->Inspect(now)==NativeAudioAction::Detach) {
+                // Failed preparation was never published, so no graph borrower.
+                nativeManager_->StopAfterQuiescence(now);
+            }
+        }
+        if(changed)SetStatus(Snapshot());
+    } catch(...) {
+        // An optional native preparation/publication must not stop the master.
+        // Publication can succeed before a later snapshot allocation throws.
+        // attached is an acknowledgement, not proof that no graph borrows IO.
+        if(nativeManager_) {
+            const auto generation=nativeManager_->Generation();
+            if(generation && generation->epoch==nativePublishedEpoch_)nativeManager_->MarkAttached();
+            else nativeManager_->StopAfterQuiescence(NativeAudioManager::Clock::now(),{NativeTransferCode::Failed});
+        }
+    }
+}
+
 std::optional<AudioControllerResult> AudioController::ApplyPreparedLive(
     const AudioControllerConfiguration& configuration,const AudioControllerConfiguration* durable) {
     const auto current=Snapshot();
@@ -281,28 +370,38 @@ std::optional<AudioControllerResult> AudioController::ApplyPreparedLive(
     if(!candidate)return AudioControllerResult{false,error};
     auto clients=clients_.GetClientSnapshots();
     auto bindings=candidate->Bindings();
-    const auto routes=PersistentRoutes::ResolveForClock(configuration.routes,clients,current.physicalDriverId,bindings);
+    const auto nativeBindings=configuration.nativeAudio.enabled?NativeBindings():std::vector<NativeRoutingBinding>{};
+    const auto nativeEpoch=nativeBindings.empty()?0:nativeBindings.front().generation->epoch;
+    const auto routes=PersistentRoutes::ResolveForClock(configuration.routes,clients,current.physicalDriverId,bindings,
+        nativeBindings);
     AudioRoutingLayout layout;
     layout.physicalDriverId=current.physicalDriverId.value_or("");
     layout.sampleRate=*current.sampleRate;layout.bufferFrames=*current.bufferFrames;
     layout.physicalInputChannels=current.physicalCapabilities.inputChannels;
     layout.physicalOutputChannels=current.physicalCapabilities.outputChannels;
     layout.clients=clients;layout.routes=routes;layout.wasapiBindings=std::move(bindings);
+    layout.nativeBindings=nativeBindings;
     auto replacement=AudioRoutingRuntime::Create(std::move(layout),error);
     if(!replacement)return AudioControllerResult{false,error};
+    auto requiredInputs=replacement->RoutedPhysicalInputChannels();
+    auto requiredOutputs=replacement->RoutedPhysicalOutputChannels();
+    reserveNativePhysicalChannels(configuration.routes,current.physicalDriverId,
+        current.physicalCapabilities,requiredInputs,requiredOutputs);
     if(!std::includes(hostPhysicalInputs_.begin(),hostPhysicalInputs_.end(),
-          replacement->RoutedPhysicalInputChannels().begin(),replacement->RoutedPhysicalInputChannels().end()) ||
+          requiredInputs.begin(),requiredInputs.end()) ||
        !std::includes(hostPhysicalOutputs_.begin(),hostPhysicalOutputs_.end(),
-          replacement->RoutedPhysicalOutputChannels().begin(),replacement->RoutedPhysicalOutputChannels().end()))
+          requiredOutputs.begin(),requiredOutputs.end()))
         return std::nullopt;
     // All fallible preparation precedes persistence and callback publication.
     auto updated=current;updated.routes=routes;updated.configuredRoutes=configuration.routes;
     updated.configuredWasapiBridges=configuration.wasapiBridges;
+    updated.configuredNativeAudio=configuration.nativeAudio;
     replacement->SetStageMeasurementsEnabled(ReadPerformanceMeasurements().enabled);
     if(durable && !configurationStore_.Save(*durable,error))return AudioControllerResult{false,error};
     ResetPerformanceMeasurementsWindow();
     auto retired=std::move(runtime_);runtime_=std::move(replacement);
-    callbackSlot_.Publish(runtime_.get());callbackSlot_.WaitForQuiescence();retired.reset();
+    callbackSlot_.Publish(runtime_.get());nativePublishedEpoch_=nativeEpoch;
+    callbackSlot_.WaitForQuiescence();retired.reset();
     wasapiManager_=std::move(candidate);
     acknowledgePublishedGenerations(clients,*current.sampleRate,*current.bufferFrames);
     SetStatus(updated);
@@ -411,9 +510,10 @@ AudioControllerResult AudioController::SetPerformanceMeasurementsEnabled(bool en
 
 AudioControllerResult AudioController::ApplyConfiguration(
     const AudioControllerConfiguration& configuration,
-    std::optional<std::uint64_t> expectedConfigurationRevision, bool preserveClockSource,bool preserveWasapiBridges) {
+    std::optional<std::uint64_t> expectedConfigurationRevision, bool preserveClockSource,bool preserveWasapiBridges,
+    bool preserveNativeAudio) {
     try {
-        return Invoke([this, configuration, expectedConfigurationRevision, preserveClockSource,preserveWasapiBridges] {
+        return Invoke([this, configuration, expectedConfigurationRevision, preserveClockSource,preserveWasapiBridges,preserveNativeAudio] {
             if (expectedConfigurationRevision &&
                 *expectedConfigurationRevision != configurationRevision_)
                 return AudioControllerResult{false,
@@ -421,6 +521,7 @@ AudioControllerResult AudioController::ApplyConfiguration(
             auto effective = configuration;
             if (preserveClockSource) effective.clockSource = desiredConfiguration_.clockSource;
             if (preserveWasapiBridges) effective.wasapiBridges=desiredConfiguration_.wasapiBridges;
+            if (preserveNativeAudio) effective.nativeAudio=desiredConfiguration_.nativeAudio;
             return ApplyOnWorker(effective);
         });
     } catch (const std::exception& exception) {
@@ -434,7 +535,7 @@ AudioControllerResult AudioController::StartAudio() {
             if (!audioStoppedByCommand_ && Snapshot().state == "running")
                 return AudioControllerResult{true, {}};
             const auto result = ApplyConfigurationCore(desiredConfiguration_);
-            if (result.success) audioStoppedByCommand_ = false;
+            if (result.success) {audioStoppedByCommand_ = false;ReconcileNativeOnWorker();}
             return result;
         });
     } catch (const std::exception& exception) {
@@ -446,7 +547,7 @@ AudioControllerResult AudioController::ResetAudio() {
     try {
         return Invoke([this] {
             const auto result = ApplyConfigurationCore(desiredConfiguration_);
-            if (result.success) audioStoppedByCommand_ = false;
+            if (result.success) {audioStoppedByCommand_ = false;ReconcileNativeOnWorker();}
             return result;
         });
     } catch (const std::exception& exception) {
@@ -512,6 +613,12 @@ void AudioController::SetStatus(const AudioControllerSnapshot& snapshot) {
     std::lock_guard<std::mutex> lock(stateMutex_);
     const auto revision = state_.revision + 1;
     state_ = snapshot;
+    if(nativeManager_)state_.nativeAudio=nativeManager_->Snapshot(NativeAudioManager::Clock::now());
+    else {
+        state_.nativeAudio={};state_.nativeAudio.enabled=state_.configuredNativeAudio.enabled;
+        state_.nativeAudio.masterRunning=state_.state=="running";
+        state_.nativeAudio.state=state_.configuredNativeAudio.enabled?NativeAudioManagerState::WaitingForMaster:NativeAudioManagerState::Disabled;
+    }
     state_.wasapiBridges=wasapiManager_?wasapiManager_->Snapshots():std::vector<WasapiBridgeSnapshot>{};
     if(!wasapiManager_)for(const auto& config:state_.configuredWasapiBridges) {
         WasapiBridgeSnapshot bridge;bridge.id=config.id;bridge.state=config.enabled?"stopped":"disabled";
@@ -588,13 +695,14 @@ void AudioController::Run() noexcept {
             if (!audioStoppedByCommand_ && (desiredConfiguration_.physicalDriverId ||
                     desiredConfiguration_.clockSource == AudioClockSource::Software)) {
                 ReconcileWasapiOnWorker();
-                if(wasapiManager_ && std::chrono::steady_clock::now()>=nextWasapiHealth) {
+                ReconcileNativeOnWorker();
+                if((wasapiManager_ || nativeManager_) && std::chrono::steady_clock::now()>=nextWasapiHealth) {
                     SetStatus(Snapshot());nextWasapiHealth=std::chrono::steady_clock::now()+std::chrono::milliseconds(250);
                 }
                 const auto clients = clients_.GetClientSnapshots();
                 const auto resolved = PersistentRoutes::ResolveForClock(desiredConfiguration_.routes,
                     clients, desiredConfiguration_.physicalDriverId,
-                    wasapiManager_?wasapiManager_->Bindings():std::vector<WasapiRoutingBinding>{});
+                    wasapiManager_?wasapiManager_->Bindings():std::vector<WasapiRoutingBinding>{},NativeBindings());
                 const auto current = Snapshot();
                 const bool attachedClient = hasAttachedClient(clients);
                 const bool routesChanged = !sameRoutes(resolved, current.routes);
@@ -754,14 +862,21 @@ AudioControllerResult AudioController::ApplyOnWorker(
     const AudioControllerConfiguration& configuration, bool persist) {
     const auto previous=Snapshot();
     const auto oldConfiguration=desiredConfiguration_;
+    // Keep the exclusive native owner alive across a master reconstruction.
+    // It is detached from the member before Core tears down the old runtime;
+    // failed persistence can then reattach the same IO/epoch without reopening.
+    auto retainedNative=nativeManager_;
+    bool coreStarted=false,committed=false;
     const auto restore=[&] {
+        if(!coreStarted || committed)return;
         if(previous.state=="running" && Snapshot().revision!=previous.revision) {
-            const auto result=ApplyConfigurationCore(oldConfiguration,true);
+            const auto result=ApplyConfigurationCore(oldConfiguration,true,retainedNative);
             if(!result.success) {
+                StopPhysicalRuntime();
                 auto failed=Snapshot();failed.lastError="Configuration rollback failed: "+result.error;
                 SetStatus(failed);
             }
-        }
+        }else nativeManager_=retainedNative;
     };
     try {
         std::string routeError;
@@ -770,8 +885,13 @@ AudioControllerResult AudioController::ApplyOnWorker(
             clients_.GetClientSnapshots(), routeError);
         if (!routeError.empty()) return {false, routeError};
         const auto live=ApplyPreparedLive(configuration,persist?&durable:nullptr);
-        auto applied = live?*live:ApplyConfigurationCore(configuration);
-        if (!applied.success) {if(!live)restore();return applied;}
+        AudioControllerResult applied;
+        if(live)applied=*live;
+        else {
+            coreStarted=true;nativeManager_.reset();
+            applied=ApplyConfigurationCore(configuration);
+        }
+        if (!applied.success) {restore();return applied;}
         if(!persist)return applied;
         std::string error;
         if (!live && !configurationStore_.Save(durable, error)) {
@@ -779,13 +899,22 @@ AudioControllerResult AudioController::ApplyOnWorker(
             else {StopPhysicalRuntime();auto failed=previous;failed.lastError=error;SetStatus(failed);}
             return {false, error};
         }
+        committed=true;
         desiredConfiguration_ = std::move(durable);
         ++configurationRevision_;
+        if(coreStarted && retainedNative) {
+            // Core already retired every old graph borrower. Only now, after
+            // durable commit, release the old owner before a replacement Open.
+            retainedNative->StopAfterQuiescence(NativeAudioManager::Clock::now());
+            retainedNative.reset();
+        }
         auto status = Snapshot();
         status.configuredRoutes = desiredConfiguration_.routes;
         status.configuredWasapiBridges=desiredConfiguration_.wasapiBridges;
+        status.configuredNativeAudio=desiredConfiguration_.nativeAudio;
         SetStatus(status);
         audioStoppedByCommand_ = false;
+        ReconcileNativeOnWorker();
         return applied;
     } catch (const std::exception& exception) {
         restore();return {false, exception.what()};
@@ -793,7 +922,6 @@ AudioControllerResult AudioController::ApplyOnWorker(
         restore();return {false,"Unknown audio controller failure"};
     }
 }
-
 void AudioController::RestoreConfigurationOnWorker() {
     AudioControllerConfiguration configuration;
     std::string error;
@@ -811,6 +939,7 @@ void AudioController::RestoreConfigurationOnWorker() {
     if (restored.success) {
         ++configurationRevision_;
         SetStatus(Snapshot());
+        ReconcileNativeOnWorker();
     }
     if (!restored.success) {
         StopPhysicalRuntime();
@@ -823,7 +952,7 @@ void AudioController::RestoreConfigurationOnWorker() {
 }
 
 AudioControllerResult AudioController::ApplyConfigurationCore(
-    const AudioControllerConfiguration& configuration,bool allowUnavailable) {
+    const AudioControllerConfiguration& configuration,bool allowUnavailable,const std::shared_ptr<NativeAudioManager>& retainedNative) {
     const bool software = configuration.clockSource == AudioClockSource::Software;
     if (configuration.clockSource != AudioClockSource::Asio && !software)
         return {false, "Unsupported audio clock source"};
@@ -851,6 +980,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     next.state = "reconfiguring";
     next.configuredRoutes = configuration.routes;
     next.configuredWasapiBridges=configuration.wasapiBridges;
+    next.configuredNativeAudio=configuration.nativeAudio;
     SetStatus(next);
     StopPhysicalRuntime();
     if (hostClockSource_ != configuration.clockSource) {
@@ -909,9 +1039,12 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     if(!candidate) {
         physicalHost_->close();next.state="error";next.lastError=error;SetStatus(next);return {false,error};
     }
+    nativeManager_=retainedNative;
     const auto bindings=candidate->Bindings();
+    const auto nativeBindings=NativeBindings();
+    const auto nativeEpoch=nativeBindings.empty()?0:nativeBindings.front().generation->epoch;
     const auto activeRoutes=PersistentRoutes::ResolveForClock(configuration.routes,
-        clients_.GetClientSnapshots(),configuration.physicalDriverId,bindings);
+        clients_.GetClientSnapshots(),configuration.physicalDriverId,bindings,nativeBindings);
     configureVasioClients(clients_, physicalBufferFrames, sampleRate);
     AudioRoutingLayout layout;
     layout.physicalDriverId = configuration.physicalDriverId.value_or("");
@@ -922,7 +1055,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     layout.clients = clients_.GetClientSnapshots();
     const auto generationClients = layout.clients;
     layout.routes = activeRoutes;
-    layout.wasapiBindings=bindings;
+    layout.wasapiBindings=bindings;layout.nativeBindings=nativeBindings;
     runtime_ = AudioRoutingRuntime::Create(std::move(layout), error);
     if (!runtime_) {
         physicalHost_->close();
@@ -942,11 +1075,12 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     // endpoint discovery. An attached client needs the clock-only callback to
     // exchange compact frames and receive its signal even without routes.
     // An enabled slave needs a live selected master even while its routes are
-    // dormant, so endpoint recovery can resume WASAPI-to-WASAPI flow. Explicit
+    // dormant, so WASAPI or native recovery can resume routed flow. Explicit
     // StopAudio destroys this manager and prevents retries until StartAudio.
     const bool enabledBridge=std::any_of(configuration.wasapiBridges.begin(),configuration.wasapiBridges.end(),
         [](const WasapiBridgeConfiguration& bridge){return bridge.enabled;});
-    if (!software && activeRoutes.empty() && !hasAttachedClient(generationClients) && !enabledBridge) {
+    if (!software && activeRoutes.empty() && !hasAttachedClient(generationClients) &&
+        !enabledBridge && !configuration.nativeAudio.enabled) {
         next.state = "stopped";
         next.physicalDriverId = configuration.physicalDriverId;
         next.sampleRate = sampleRate;
@@ -958,9 +1092,14 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
         return {true, {}};
     }
 
+    auto reservedInputs=runtime_->RoutedPhysicalInputChannels();
+    auto reservedOutputs=runtime_->RoutedPhysicalOutputChannels();
+    reserveNativePhysicalChannels(configuration.routes,configuration.physicalDriverId,
+        capabilities,reservedInputs,reservedOutputs);
     callbackSlot_.Publish(runtime_.get());
-    if (!physicalHost_->start(physicalBufferFrames, runtime_->RoutedPhysicalInputChannels(),
-                               runtime_->RoutedPhysicalOutputChannels(),
+    nativePublishedEpoch_=nativeEpoch;
+    if (!physicalHost_->start(physicalBufferFrames, reservedInputs,
+                               reservedOutputs,
                                &RealtimeCallbackSlot::Dispatch, &callbackSlot_, error)) {
         StopPhysicalRuntime();
         next.state = "error";
@@ -971,8 +1110,8 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
         SetStatus(next);
         return {false, next.lastError};
     }
-    hostPhysicalInputs_ = runtime_->RoutedPhysicalInputChannels();
-    hostPhysicalOutputs_ = runtime_->RoutedPhysicalOutputChannels();
+    hostPhysicalInputs_ = std::move(reservedInputs);
+    hostPhysicalOutputs_ = std::move(reservedOutputs);
     physicalHost_->setStageMeasurementsEnabled(ReadPerformanceMeasurements().enabled);
     acknowledgePublishedGenerations(generationClients, sampleRate, physicalBufferFrames);
     next.state = "running";
