@@ -50,6 +50,13 @@ $state = @{apiVersion='1.1';configurationRevision=2;engine=@{state='running';clo
     wasapiDevices=@(@{id='opaque';name='Speakers';flow='render';state=1;mixFormat=$format;error=$null});
     wasapiInventoryError=$null;configuredWasapiBridges=@($bridge);wasapiBridges=@($effective)}
 Assert-Contract $state $true 'complete 1.1 state with exact generation string'
+$health.controlBacklogUpdates=3
+Assert-Contract $state $true 'optional cumulative control backlog diagnostic'
+$health.controlBacklogUpdates=-1
+Assert-Contract $state $false 'negative control backlog counter'
+$health.controlBacklogUpdates=0.5
+Assert-Contract $state $false 'fractional control backlog counter'
+$health.controlBacklogUpdates=0
 $effective.generationId=42
 Assert-Contract $state $false 'numeric generation loses identity precision'
 $effective.generationId='0';$effective.state='disabled';$effective.effectiveInfo=$null;$effective.graphFormat=$null

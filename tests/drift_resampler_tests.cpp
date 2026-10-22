@@ -156,7 +156,88 @@ void Boundaries() {
     Require(allocations==0, "streaming operation allocated");
 }
 
+// Two independent event clocks, not the fluid/continuous FIFO approximation.
+// A graph callback moves a whole quantum; each native wake moves one packet.
+// Observe steady-state mean error AND modulation: a bounded FIFO alone does
+// not prove the SRC ratio is estimating clock drift rather than packet phase.
+void PacketizedClockDrift() {
+    double worstRms=0,worstMeanError=0,smallestMargin=std::numeric_limits<double>::infinity();
+    for(auto direction : {FillLevelController::Direction::Capture,FillLevelController::Direction::Render})
+    for(unsigned quantum : {512U,2048U,8192U})
+    for(unsigned graphRate : {44100U,48000U})
+    for(double nativeRate : {44100.0,48000.0})
+    for(unsigned packet : {480U,960U})for(double phase : {0.001,0.013,0.037})
+    for(double ppm : {-1000.0,-100.0,0.0,100.0,1000.0}) {
+        const double target=4.0*quantum,capacity=8.0*quantum;
+        auto controller=FillLevelController::ForPacketCadence(direction,target,3e-6,1e-6,graphRate,quantum);
+        const bool capture=direction==FillLevelController::Direction::Capture;
+        // Opposite nominal rates exercise both up/down SRC. The FIFO remains
+        // graph-rate, so native packet sizes must be converted to graph frames.
+        const double graphPeriod=static_cast<double>(quantum)/graphRate;
+        const double speed=0.5*(std::min)(1.0,(2048.0/48000)/graphPeriod);
+        const double settleSeconds=120/speed;
+        double graphIdeal=std::fmod(phase,graphPeriod),graphTime=graphIdeal;
+        double nativeIdeal=packet/nativeRate,nativeTime=nativeIdeal,previousNative=0;
+        double fill=target,ratio=1;
+        unsigned nativeTick=0,graphTick=0;
+        double sum=0,sumSquares=0;unsigned count=0,clipped=0;
+        // Observe at least ten steady-state minutes, matching the hardware
+        // qualification horizon rather than one favorable packet beat phase.
+        while((std::min)(graphTime,nativeTime)<7*settleSeconds) {
+            if(graphTime<nativeTime) {
+                fill+=capture?-static_cast<double>(quantum):quantum;
+                graphIdeal+=graphPeriod;++graphTick;
+                graphTime=graphIdeal+(graphTick%4==1?0.002:0);
+            } else {
+                const double graphPacket=packet*graphRate/nativeRate;
+                const double movement=capture?graphPacket*ratio:-graphPacket/ratio;
+                const double before=fill;
+                fill+=movement;
+                ratio=controller.Update((before+fill)*0.5,nativeTime-previousNative);
+                previousNative=nativeTime;
+                if(nativeTime>=2*settleSeconds) {
+                    const auto correction=(ratio-1)*1e6;
+                    sum+=correction;sumSquares+=correction*correction;++count;
+                    if(std::abs(correction)>=1999.9)++clipped;
+                }
+                // At one settling interval, step the physical mismatch from
+                // -ppm to +ppm. Bounded scheduling stalls occasionally bunch
+                // successive packets; the data clock does not stop with them.
+                const double drift=nativeIdeal<settleSeconds?-ppm:ppm;
+                nativeIdeal+=packet/(nativeRate*(1+drift*1e-6));++nativeTick;
+                const double delay=nativeTick%307==0?0.012:nativeTick%4==1?0.001:0;
+                nativeTime=(std::max)(nativeTime+1e-9,nativeIdeal+delay);
+            }
+            if(!(fill>0 && fill<capacity))std::cerr<<"FIFO case capture="<<capture<<" q="<<quantum<<" graph="<<graphRate
+                <<" packet="<<packet<<" phase="<<phase<<" ppm="<<ppm<<" fill="<<fill<<" time="<<nativeTime<<'\n';
+            Require(fill>0 && fill<capacity,"packetized drift starves or overflows FIFO during transient");
+            smallestMargin=(std::min)(smallestMargin,(std::min)(fill,capacity-fill));
+        }
+        const double expected=(capture?1/(1+ppm*1e-6):1+ppm*1e-6);
+        const double mean=sum/count;
+        const double rms=std::sqrt((std::max)(0.0,sumSquares/count-mean*mean));
+        worstRms=(std::max)(worstRms,rms);
+        worstMeanError=(std::max)(worstMeanError,std::abs(mean-(expected-1)*1e6));
+        if(std::abs(mean-(expected-1)*1e6)>=5 || rms>=100 || clipped)
+            std::cerr<<"PI case capture="<<capture<<" q="<<quantum<<" graph="<<graphRate<<" packet="<<packet
+                <<" phase="<<phase<<" ppm="<<ppm<<" mean="<<mean<<" rms="<<rms<<" clipped="<<clipped<<'\n';
+        Require(std::abs(mean-(expected-1)*1e6)<5,"packetized PI mean correction misses physical drift");
+        // Ratio ripple must be below the smallest injected clock mismatch, and
+        // normal packet cadence must not spend steady state at the safety clamp.
+        Require(rms<100,"packet cadence modulates SRC more than 100 ppm RMS");
+        Require(clipped==0,"normal packet cadence saturates SRC correction");
+    }
+    std::cout<<"Packetized PI worst RMS "<<worstRms<<" ppm; mean error "<<worstMeanError
+        <<" ppm; minimum FIFO boundary margin "<<smallestMargin<<" frames\n";
+}
+
 void ClockDrift() {
+    for(double invalid : {-1.0,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}) {
+        bool rejected=false;
+        try {FillLevelController controller(FillLevelController::Direction::Capture,2048,3e-6,1e-6,0.002,invalid);}
+        catch(const std::invalid_argument&){rejected=true;}
+        Require(rejected,"invalid occupancy filter time accepted");
+    }
     for (double target : {0.0, -1.0, std::numeric_limits<double>::infinity()}) {
         bool rejected=false;
         try { FillLevelController invalid(FillLevelController::Direction::Capture, target, 0.000003, 0.000001); }
@@ -279,7 +360,7 @@ void VariableRatioFlush() {
 }
 
 int main() {
-    try { Quality(); Boundaries(); ClockDrift(); VariableRatio(); VariableRatioFlush(); }
+    try { PacketizedClockDrift(); Quality(); Boundaries(); ClockDrift(); VariableRatio(); VariableRatioFlush(); }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
     std::cout << "drift_resampler_tests passed\n";
 }

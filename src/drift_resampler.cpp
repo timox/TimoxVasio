@@ -117,18 +117,42 @@ void DriftResampler::Reset() noexcept {
 }
 
 FillLevelController::FillLevelController(Direction direction, double targetFrames, double kp,
-                                         double ki, double maxDeviation)
-    : target_(targetFrames), kp_(kp), ki_(ki), limit_(maxDeviation) {
+                                         double ki, double maxDeviation,double measurementTimeConstantSeconds)
+    : target_(targetFrames), kp_(kp), ki_(ki), limit_(maxDeviation),
+      measurementTimeConstant_(measurementTimeConstantSeconds),measuredFill_(targetFrames) {
     if ((direction != Direction::Capture && direction != Direction::Render) ||
         !std::isfinite(targetFrames) || targetFrames <= 0 || !std::isfinite(kp) || kp < 0 ||
         !std::isfinite(ki) || ki < 0 || !std::isfinite(maxDeviation) ||
-        maxDeviation <= 0 || maxDeviation > 0.002)
+        maxDeviation <= 0 || maxDeviation > 0.002 ||
+        !std::isfinite(measurementTimeConstantSeconds) || measurementTimeConstantSeconds<0)
         throw std::invalid_argument("Invalid fill controller configuration");
+}
+
+FillLevelController FillLevelController::ForPacketCadence(Direction direction,double targetFrames,
+    double referenceKp,double referenceKi,double graphRate,std::uint32_t maxQuantum) {
+    if(!std::isfinite(graphRate) || graphRate<8000 || graphRate>384000 || maxQuantum<16 || maxQuantum>8192)
+        throw std::invalid_argument("Invalid fill controller packet cadence");
+    // The averaged plant has gain approximately graphRate. Its filtered PI
+    // characteristic is tau*p^3+p^2+a*kp*p+a*ki. Scaling kp by speed, ki by
+    // speed^2 and tau by 1/speed preserves normalized poles and damping;
+    // rateScale removes a's rate dependence. With default gains kp/(tau*ki)=3,
+    // retaining the continuous-time Routh stability margin at every quantum.
+    const double speed=0.5*(std::min)(1.0,(2048.0/48000)/(maxQuantum/graphRate));
+    const double rateScale=48000/graphRate;
+    return FillLevelController(direction,targetFrames,referenceKp*rateScale*speed,
+        referenceKi*rateScale*speed*speed,0.002,1/speed);
 }
 
 double FillLevelController::Update(double fillFrames, double elapsedSeconds) noexcept {
     if (!std::isfinite(fillFrames) || fillFrames < 0 || !std::isfinite(elapsedSeconds) || elapsedSeconds <= 0)
         return correction_;
+    if(measurementTimeConstant_>0) {
+        // Exact one-pole coefficient for irregular native event intervals.
+        // expm1 preserves precision for short successive bounded worker passes.
+        const double weight=-std::expm1(-elapsedSeconds/measurementTimeConstant_);
+        measuredFill_+=weight*(fillFrames-measuredFill_);
+        fillFrames=measuredFill_;
+    }
     const double error = target_-fillFrames;
     const double proportional = kp_*error;
     const double increment = ki_*error*elapsedSeconds;

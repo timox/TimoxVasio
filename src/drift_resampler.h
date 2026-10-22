@@ -61,10 +61,20 @@ class FillLevelController final {
 public:
     enum class Direction { Capture, Render };
     FillLevelController(Direction direction, double targetFrames, double kp,
-                        double ki, double maxDeviation = 0.002);
+                        double ki, double maxDeviation = 0.002,
+                        double measurementTimeConstantSeconds = 0);
+    // Gains are the reference 48 kHz gains. Normalize the loop's frame-rate
+    // sensitivity, and slow large callback quanta without changing damping.
+    // At <=2048/48000 seconds per callback, occupancy is smoothed over 2 s;
+    // the reference loop is slowed 2x to reject 44.1/48 kHz packet beats.
+    // Larger quanta scale all loop times together; the FIFO must retain its
+    // proportional capacity/quantum margin. Call only during preparation.
+    static FillLevelController ForPacketCadence(Direction direction,double targetFrames,
+        double referenceKp,double referenceKi,double graphRate,std::uint32_t maxQuantum);
     double Update(double fillFrames, double elapsedSeconds) noexcept;
 
 private:
-    const double target_, kp_, ki_, limit_;
+    const double target_, kp_, ki_, limit_, measurementTimeConstant_;
+    double measuredFill_;
     double integral_ = 0, correction_ = 1;
 };

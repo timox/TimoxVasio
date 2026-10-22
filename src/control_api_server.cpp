@@ -242,7 +242,8 @@ Json wasapiBridgesJson(const AudioControllerSnapshot& state) {
                 {"capturedFrames", h.capturedFrames}, {"renderedFrames", h.renderedFrames},
                 {"droppedCaptureFrames", h.droppedCaptureFrames}, {"renderSilencedInputFrames", h.renderSilencedInputFrames},
                 {"renderSilencedDeviceFrames", h.renderSilencedDeviceFrames}, {"discontinuities", h.discontinuities},
-                {"timestampErrors", h.timestampErrors}, {"ratio", h.ratio}, {"nominalRatio", nominal}, {"correctionPpm", ppm},
+                {"timestampErrors", h.timestampErrors}, {"controlBacklogUpdates", h.controlBacklogUpdates},
+                {"ratio", h.ratio}, {"nominalRatio", nominal}, {"correctionPpm", ppm},
                 {"bufferedFrames", bridge.bufferedFrames}, {"rejectedFrames", bridge.rejectedFrames}, {"silencedFrames", bridge.silencedFrames}}}});
     }
     return result;

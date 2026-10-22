@@ -200,4 +200,6 @@ The `/api/v1` paths and `vasio.api.v1` WebSocket subprotocol remain unchanged. S
 
 State separates `configuredWasapiBridges` from `wasapiBridges`: the latter reports effective format, generation, retry and `health` counters (loss, silence, drift and errors). Graph ports use `wasapi:<id>:input:<channel>` or `wasapi:<id>:output:<channel>`, with channels starting at 1. Configure a bridge before discovering its ports.
 
+`health.controlBacklogUpdates` counts control observations forced after 100 ms of unfinished draining. Cumulative within the current generation, it indicates an observation of a partial processing span, not lost audio. Its absence on an older API 1.1 engine means unavailable, not zero. `correctionPpm` includes the response to FIFO occupancy and does not directly measure hardware clock drift.
+
 This stage supports shared mode and endpoint loopback. It does not provide a native Windows virtual driver, exclusive mode or process loopback. See the [ASIO/WASAPI guide](ASIO_WASAPI_GUIDE.en.md) and JSON schema for exact fields and limits.

@@ -71,6 +71,9 @@ int wmain(int argc, wchar_t** argv) {
         const auto effective = configured.value("wasapiBridges", Json::array());
         check(effective.size() == 2 && effective[0]["state"] == "disabled" && effective[0]["generationId"].is_string() &&
             effective[0]["effectiveInfo"].is_null(), "disabled bridge has status without invented device format");
+        check(effective[0]["health"].contains("controlBacklogUpdates") &&
+            effective[0]["health"]["controlBacklogUpdates"] == 0,
+            "API exposes cumulative control backlog diagnostic even for a disabled bridge");
         payload.erase("wasapiBridges"); payload.erase("clockSource");
         payload["expectedConfigurationRevision"] = configured.at("configurationRevision");
         check(apply(payload).value("success", false), "omitted bridge field is accepted");

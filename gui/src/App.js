@@ -1335,7 +1335,8 @@ function BridgeStatus({ bridge, runtime, devices }) {
         {runtime?.health && <p className="hint">Buffered: {runtime.health.bufferedFrames ?? '—'} graph frames · Rejected: {runtime.health.rejectedFrames ?? '—'} graph frames · Silenced: {runtime.health.silencedFrames ?? '—'} graph frames
             {runtime.health.error ? ` · Stream error: ${runtime.health.error}` : ''}
             {runtime.health.mmcssError ? ` · Scheduling error: ${runtime.health.mmcssError}` : ''}
-            {runtime.health.primingTimedOut ? ' · Priming timed out' : ''}</p>}
+            {runtime.health.primingTimedOut ? ' · Priming timed out' : ''}
+            {runtime.health.controlBacklogUpdates != null ? ` · Control backlog observations: ${runtime.health.controlBacklogUpdates}` : ''}</p>}
     </>;
 }
 

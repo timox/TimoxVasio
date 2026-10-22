@@ -74,12 +74,18 @@ struct WasapiBridge::Impl {
     std::atomic<std::uint64_t> capturedFrames{0}, renderedFrames{0}, droppedCaptureFrames{0};
     std::atomic<std::uint64_t> renderSilencedInputFrames{0}, renderSilencedDeviceFrames{0};
     std::atomic<std::uint64_t> discontinuities{0}, timestampErrors{0};
+    std::atomic<std::uint64_t> controlBacklogUpdates{0};
     std::atomic<double> ratio{1};
 
     Impl(WasapiBridgeConfig options, WasapiBridgeIo& generation, BackendFactory create)
         : config(std::move(options)), io(generation), factory(std::move(create)) {}
     bool Stopping() const noexcept { return WaitForSingleObject(stop.value, 0) == WAIT_OBJECT_0; }
     double Target() const noexcept { return config.targetFillFrames ? config.targetFillFrames : io.Format().capacityFrames*0.5; }
+    Clock::time_point Now() const noexcept {
+        if(!config.controlTimeNanoseconds)return Clock::now();
+        return Clock::time_point(std::chrono::duration_cast<Clock::duration>(
+            std::chrono::nanoseconds(config.controlTimeNanoseconds(config.controlTimeContext))));
+    }
     HRESULT Validate() const noexcept {
         const bool render = config.endpoint.kind == WasapiStreamKind::Render;
         if (!factory || !config.maxFramesPerPass || config.maxFramesPerPass > 8192 ||
@@ -124,7 +130,7 @@ struct WasapiBridge::Impl {
         std::vector<float> input, output;
         std::uint32_t rawOffset=0, rawRemaining=0, inputOffset=0, inputRemaining=0;
         bool rawSilent=false;
-        Clock::time_point primingSince=Clock::now(), lastUpdate=primingSince;
+        Clock::time_point primingSince=owner.Now(), lastUpdate=primingSince;
 
         Processing(Impl& workerOwner,IWasapiBackend& native,const WasapiStreamInfo& effective)
             : owner(workerOwner),backend(native),info(effective),render(effective.kind==WasapiStreamKind::Render),
@@ -134,17 +140,21 @@ struct WasapiBridge::Impl {
               nominal(render ? static_cast<double>(info.format.sampleRate)/owner.io.Format().graphSampleRate
                              : static_cast<double>(owner.io.Format().graphSampleRate)/info.format.sampleRate),
               src(channels,nominal),
-              controller(render ? FillLevelController::Direction::Render : FillLevelController::Direction::Capture,
-                         owner.Target(),owner.config.kp,owner.config.ki),
+              controller(FillLevelController::ForPacketCadence(
+                  render ? FillLevelController::Direction::Render : FillLevelController::Direction::Capture,
+                  owner.Target(),owner.config.kp,owner.config.ki,owner.io.Format().graphSampleRate,
+                  static_cast<std::uint32_t>(owner.io.Format().maxQuantum))),
               raw(render ? 0 : static_cast<std::size_t>(info.bufferFrames)*info.format.blockAlign,0),
               input(static_cast<std::size_t>(inputCapacity)*channels,0),
               output(static_cast<std::size_t>(owner.config.maxFramesPerPass)*channels,0) {
             owner.ratio.store(nominal,std::memory_order_relaxed);
         }
 
-        void UpdateControl() noexcept {
-            const auto now=Clock::now();
-            const double fill=static_cast<double>(owner.io.BufferedFrames())+(render ? inputRemaining : 0);
+        double ControlFill() const noexcept {
+            return static_cast<double>(owner.io.BufferedFrames())+(render ? inputRemaining : 0);
+        }
+        void UpdateControl(double fill) noexcept {
+            const auto now=owner.Now();
             if (owner.state.load(std::memory_order_relaxed)==WasapiBridgeState::Priming) {
                 const bool timedOut=now-primingSince>=std::chrono::milliseconds(owner.config.primingTimeoutMs);
                 if (timedOut) owner.primingTimedOut.store(true,std::memory_order_relaxed);
@@ -271,7 +281,7 @@ struct WasapiBridge::Impl {
             if (priming) owner.renderSilencedDeviceFrames.fetch_add(frames,std::memory_order_relaxed);
             if (underflow) {
                 owner.state.store(WasapiBridgeState::Priming,std::memory_order_release);
-                primingSince=Clock::now();
+                primingSince=owner.Now();
             }
             more=writable>frames;
             return S_OK;
@@ -306,6 +316,9 @@ struct WasapiBridge::Impl {
         state.store(WasapiBridgeState::Priming,std::memory_order_release);
         CompleteStartup(S_OK);
         bool more=true;
+        bool observing=false;
+        double observationStartFill=0;
+        Clock::time_point observationSince{};
         while (!Stopping()) {
             if (!more) {
                 const auto wait=backend.Wait(stop.value,config.waitTimeoutMs);
@@ -314,9 +327,28 @@ struct WasapiBridge::Impl {
                     return FAILED(wait.status) ? wait.status : E_FAIL;
             }
             if (Stopping()) break;
-            processing.UpdateControl();
+            if(state.load(std::memory_order_relaxed)==WasapiBridgeState::Priming) {
+                observing=false;
+                processing.UpdateControl(processing.ControlFill());
+            }
+            if(!observing && state.load(std::memory_order_relaxed)==WasapiBridgeState::Running) {
+                observationStartFill=processing.ControlFill();observationSince=Now();observing=true;
+            }
             hr=processing.render ? processing.RenderPass(more) : processing.CapturePass(more);
             if (FAILED(hr)) return hr;
+            // Observe the whole native drain, including retained input/output
+            // SRC tails. Updating each bounded pass would assign the complete
+            // wake interval to only the first fraction of a packet. Endpoints
+            // give a burst-midpoint estimate, not an exact time integral when
+            // graph callbacks interleave with a long drain.
+            if(observing && state.load(std::memory_order_relaxed)==WasapiBridgeState::Running) {
+                const bool prolonged=more && Now()-observationSince>=std::chrono::milliseconds(100);
+                if(!more || prolonged) {
+                    processing.UpdateControl((observationStartFill+processing.ControlFill())*0.5);
+                    observing=false;
+                    if(prolonged)controlBacklogUpdates.fetch_add(1,std::memory_order_relaxed);
+                }
+            } else observing=false;
         }
         return backend.Stop();
     }
@@ -357,6 +389,7 @@ WasapiBridgeHealth WasapiBridge::Health() const noexcept {
     h.primingTimedOut=p.primingTimedOut.load(std::memory_order_relaxed);
     h.capturedFrames=p.capturedFrames.load(std::memory_order_relaxed);h.renderedFrames=p.renderedFrames.load(std::memory_order_relaxed);
     h.droppedCaptureFrames=p.droppedCaptureFrames.load(std::memory_order_relaxed);
+    h.controlBacklogUpdates=p.controlBacklogUpdates.load(std::memory_order_relaxed);
     h.renderSilencedInputFrames=p.renderSilencedInputFrames.load(std::memory_order_relaxed);
     h.renderSilencedDeviceFrames=p.renderSilencedDeviceFrames.load(std::memory_order_relaxed);
     h.discontinuities=p.discontinuities.load(std::memory_order_relaxed);h.timestampErrors=p.timestampErrors.load(std::memory_order_relaxed);

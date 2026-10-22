@@ -14,6 +14,11 @@ struct WasapiBridgeConfig {
     double targetFillFrames = 0; // Zero selects half the immutable graph FIFO.
     double kp = 0.000003;
     double ki = 0.000001;
+    // Optional deterministic worker clock. Null uses steady_clock. The callback
+    // returns monotonic nanoseconds, must not allocate/block, and its context
+    // must remain alive until Stop joins. Never invoked by the graph callback.
+    std::int64_t (*controlTimeNanoseconds)(void*) noexcept = nullptr;
+    void* controlTimeContext = nullptr;
 };
 
 enum class WasapiBridgeState { Idle, Starting, Priming, Running, Stopped, Failed };
@@ -30,6 +35,7 @@ struct WasapiBridgeHealth {
     std::uint64_t renderSilencedDeviceFrames = 0; // Native silence submitted during priming.
     std::uint64_t discontinuities = 0;
     std::uint64_t timestampErrors = 0;
+    std::uint64_t controlBacklogUpdates = 0; // A drain exceeded 100 ms; PI observed its partial span.
     double ratio = 1; // Actual SRC output/input ratio, including bounded correction.
 };
 
@@ -60,9 +66,9 @@ public:
     // Priming keeps the PI at its previous ratio (initially nominal). Render
     // submits native silence until graph occupancy reaches target; underflow
     // re-enters priming without resetting SRC history (a silence gap is possible).
-    // Capture should normally fill before graph publication. If consumption
-    // prevents target occupancy for primingTimeoutMs, capture enables PI and
-    // exposes primingTimedOut. Render keeps waiting for real input, cancellably.
+    // Capture graph reads are gated to silence until prefill reaches target.
+    // A priming timeout is diagnostic only: both directions continue waiting
+    // for real input, cancellably, without activating PI on an unfilled FIFO.
     // MMCSS failure is exposed as degraded scheduling; it does not hide otherwise
     // usable audio. No latency/performance qualification is implied by Start.
 private:

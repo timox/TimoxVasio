@@ -83,6 +83,7 @@
         "renderSilencedInputFrames":{"type":"integer","minimum":0,"description":"Graph-rate frames replaced with zeros."},
         "renderSilencedDeviceFrames":{"type":"integer","minimum":0,"description":"Native frames silenced during priming."},
         "discontinuities":{"type":"integer","minimum":0},"timestampErrors":{"type":"integer","minimum":0},
+        "controlBacklogUpdates":{"type":"integer","minimum":0,"description":"Cumulative PI observations forced after 100 ms of unfinished draining in this generation; not an audio-loss count. Optional on earlier API 1.1 engines."},
         "ratio":{"type":"number","exclusiveMinimum":0,"description":"Actual SRC output/input ratio."},
         "nominalRatio":{"type":["number","null"],"exclusiveMinimum":0},
         "correctionPpm":{"type":["number","null"],"description":"(ratio / nominalRatio - 1) * 1e6; null without an effective generation."},

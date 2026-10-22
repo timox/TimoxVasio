@@ -43,6 +43,14 @@ struct FakeState {
     std::uint32_t capturePacket=97, renderPacket=37;
     std::atomic<std::uint32_t> renderLimit{0};
     std::atomic<unsigned> captureLimit{UINT32_MAX};
+    bool manualControlClock=false;
+    std::atomic<std::int64_t> controlNanos{0};
+    std::int64_t advanceClockOnCaptureRelease=0;
+    std::atomic<bool> waitingAfterCapture{false};
+    WasapiBridgeIo* graphIo=nullptr;
+    unsigned graphReadAt=0;
+    std::atomic<unsigned> graphReads{0};
+    float graphLeft[2048]{},graphRight[2048]{};
     bool captureSilent=false, captureFlags=false;
     HRESULT openError=S_OK, startError=S_OK, waitError=S_OK, releaseError=S_OK;
     std::atomic<unsigned> captureOffset{0}, renderedFrames{0}, starts{0}, closes{0}, stops{0}, waits{0}, allocations{0};
@@ -79,13 +87,18 @@ public:
     void Close() noexcept override { CheckThread(); s->held=false; ++s->closes; }
     WasapiWaitResult Wait(HANDLE stop,DWORD timeout) noexcept override {
         CheckThread(); ++s->waits;
+        if(s->manualControlClock && s->captureOffset==s->capture.size()/2)s->waitingAfterCapture=true;
         if(WaitForSingleObject(stop,0)==WAIT_OBJECT_0) return {WasapiWaitKind::Stop,S_OK};
         if(FAILED(s->waitError)) return {WasapiWaitKind::Failed,s->waitError};
         const bool available=s->info.kind==WasapiStreamKind::Render
             ? s->renderedFrames.load()<s->renderLimit : s->captureOffset.load()<std::min<std::size_t>(s->capture.size()/2,s->captureLimit.load());
-        if(available) return {WasapiWaitKind::Audio,S_OK};
-        return WaitForSingleObject(stop,timeout)==WAIT_OBJECT_0
-            ? WasapiWaitResult{WasapiWaitKind::Stop,S_OK} : WasapiWaitResult{WasapiWaitKind::Timeout,S_OK};
+        if(available) {
+            if(s->manualControlClock)s->controlNanos=1000000000;
+            return {WasapiWaitKind::Audio,S_OK};
+        }
+        if(WaitForSingleObject(stop,timeout)==WAIT_OBJECT_0)return {WasapiWaitKind::Stop,S_OK};
+        if(s->manualControlClock && s->captureOffset<s->captureLimit)s->controlNanos=1000000000;
+        return {WasapiWaitKind::Timeout,S_OK};
     }
     HRESULT NextCapturePacketFrames(std::uint32_t& frames) noexcept override {
         CheckThread(); frames=std::min<unsigned>(s->capturePacket,
@@ -104,7 +117,13 @@ public:
     HRESULT ReleaseCapture(std::uint32_t frames) noexcept override {
         CheckThread(); if(!s->held) return AUDCLNT_E_OUT_OF_ORDER;
         if(FAILED(s->releaseError)) return s->releaseError;
-        s->captureOffset+=frames; s->held=false; return S_OK;
+        s->captureOffset+=frames; s->held=false;
+        s->controlNanos.fetch_add(s->advanceClockOnCaptureRelease);
+        if(s->graphIo && s->captureOffset>=s->graphReadAt && !s->graphReads.load()) {
+            float* planes[]={s->graphLeft,s->graphRight};
+            s->graphReads=static_cast<unsigned>(s->graphIo->ReadCaptureBlock(planes,2048,2));
+        }
+        return S_OK;
     }
     HRESULT RenderWritableFrames(std::uint32_t& frames) noexcept override {
         CheckThread(); frames=std::min(s->renderPacket,s->renderLimit-s->renderedFrames.load()); return S_OK;
@@ -145,6 +164,56 @@ WasapiBridge::BackendFactory Factory(const std::shared_ptr<FakeState>& state) {
 void CheckCleanup(const std::shared_ptr<FakeState>& s) {
     Require(s->destroyed && s->closes==1 && !s->wrongThread && !s->held,"backend lifetime escaped owning worker");
     Require(s->allocations==0,"worker allocated after native Start");
+}
+
+void CaptureObservationIgnoresPassBudget() {
+    for(unsigned nativeRate : {44100U,48000U})for(unsigned budget : {31U,4096U,8192U})
+    for(unsigned packetBudget : {1U,8U}) {
+        auto s=std::make_shared<FakeState>();s->capture=Tone(8192,nativeRate);s->captureLimit=0;
+        s->info.format.sampleRate=nativeRate;s->info.bufferFrames=8192;s->capturePacket=4096;
+        s->manualControlClock=true;s->graphReadAt=8192;
+        WasapiBridgeIo io({WasapiBridgeDirection::Capture,2,48000,2048,102,32768});s->graphIo=&io;
+        std::vector<float> prefill(8192*2,0);io.WriteCaptureInterleaved(prefill.data(),8192,prefill.size());
+        auto config=Config(WasapiStreamKind::Capture);config.targetFillFrames=8192;
+        config.maxFramesPerPass=budget;config.kp=3e-6;config.ki=1e-6;
+        config.maxPacketsPerPass=packetBudget;
+        config.controlTimeContext=s.get();config.controlTimeNanoseconds=[](void* context)noexcept {
+            return static_cast<FakeState*>(context)->controlNanos.load();
+        };
+        WasapiBridge bridge(config,io,Factory(s));Require(bridge.Start()==S_OK,"observation startup");
+        Await([&]{return s->waits>0;},"initial empty wake did not finish");
+        s->captureLimit=8192;
+        Await([&]{return s->waitingAfterCapture.load();},"capture observation did not drain all SRC tails");
+        const auto expectedFrames=8192+static_cast<unsigned>(std::ceil(8192.0*48000/nativeRate))-2048;
+        Require(io.BufferedFrames()==expectedFrames && s->graphReads==2048,"observation lost pending SRC or graph callback");
+        auto expected=FillLevelController::ForPacketCadence(FillLevelController::Direction::Capture,8192,3e-6,1e-6,48000,2048);
+        const double ratio=48000.0/nativeRate*expected.Update((8192+expectedFrames)*0.5,1);
+        Require(std::abs(bridge.Health().ratio-ratio)<1e-12,"capture PI observation depends on partial-pass budget");
+        Require(bridge.Health().controlBacklogUpdates==0,"normal bounded drain used prolonged-backlog fallback");
+        bridge.Stop();CheckCleanup(s);
+    }
+}
+
+void ProlongedCaptureDrainStillUpdatesControl() {
+    auto s=std::make_shared<FakeState>();s->capture=Tone(8192,48000);s->captureLimit=0;
+    s->info.bufferFrames=4096;s->capturePacket=4096;s->manualControlClock=true;
+    s->advanceClockOnCaptureRelease=110000000; // Each native release takes 110 simulated ms.
+    WasapiBridgeIo io({WasapiBridgeDirection::Capture,2,48000,2048,103,32768});
+    std::vector<float> prefill(8192*2,0);io.WriteCaptureInterleaved(prefill.data(),8192,prefill.size());
+    auto config=Config(WasapiStreamKind::Capture);config.targetFillFrames=8192;config.maxFramesPerPass=31;
+    config.kp=3e-6;config.ki=1e-6;config.controlTimeContext=s.get();
+    config.controlTimeNanoseconds=[](void* context)noexcept{return static_cast<FakeState*>(context)->controlNanos.load();};
+    WasapiBridge bridge(config,io,Factory(s));Require(bridge.Start()==S_OK,"prolonged drain startup");
+    Await([&]{return s->waits>0;},"prolonged drain initial wait");s->captureLimit=8192;
+    Await([&]{return s->waitingAfterCapture.load();},"prolonged drain failed to finish");
+    const auto health=bridge.Health();
+    Require(health.controlBacklogUpdates==2 && health.capturedFrames==8192,
+        "continuing backlog suppressed bounded control observations");
+    Require(std::isfinite(health.ratio) && health.ratio>=0.998 && health.ratio<=1.002,
+        "prolonged drain escaped ratio safety bounds");
+    // Budget invariance is intentionally NOT asserted after a timed fallback:
+    // the diagnostic identifies a partial observation under prolonged work.
+    bridge.Stop();CheckCleanup(s);
 }
 
 void CapturePrimingWithLiveGraph() {
@@ -345,7 +414,7 @@ void SilenceAndReprime() {
 }
 
 int main() {
-    try {CapturePrimingWithLiveGraph(); CaptureSignal(); RenderSignal(); PrimingOverflowAndFailures(); CancelOpeningAndWait(); SilenceAndReprime();}
+    try {CaptureObservationIgnoresPassBudget(); ProlongedCaptureDrainStillUpdatesControl(); CapturePrimingWithLiveGraph(); CaptureSignal(); RenderSignal(); PrimingOverflowAndFailures(); CancelOpeningAndWait(); SilenceAndReprime();}
     catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
     std::cout<<"WASAPI bridge tests passed\n";
 }

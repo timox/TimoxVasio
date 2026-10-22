@@ -262,4 +262,6 @@ Les chemins `/api/v1` et le sous-protocole WebSocket `vasio.api.v1` restent inch
 
 L'état distingue `configuredWasapiBridges` de `wasapiBridges` : ce dernier expose le format effectif, la génération, la reprise et les compteurs `health` (pertes, silence, dérive et erreurs). Les ports du graphe utilisent `wasapi:<id>:input:<canal>` ou `wasapi:<id>:output:<canal>`, avec des canaux à partir de 1. La configuration d'un pont précède la découverte de ses ports.
 
+`health.controlBacklogUpdates` compte les observations de régulation forcées après 100 ms de traitement inachevé des données en attente. Cumulatif pour la génération courante, ce diagnostic signale une mesure sur une portion du traitement ; il ne compte pas les pertes audio. Son absence sur un ancien moteur API 1.1 signifie « non disponible », pas zéro. `correctionPpm` inclut la réaction au remplissage et ne mesure pas directement la dérive de l'horloge matérielle.
+
 Cette étape prend en charge le mode partagé et le loopback d'endpoint. Elle ne fournit pas de pilote Windows virtuel natif, de mode exclusif ou de loopback par processus. Voir le [guide ASIO/WASAPI](ASIO_WASAPI_GUIDE.md) et le schéma JSON pour les champs et limites exacts.
