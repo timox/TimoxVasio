@@ -42,6 +42,7 @@ struct FakeState {
     std::vector<float> capture, rendered;
     std::uint32_t capturePacket=97, renderPacket=37;
     std::atomic<std::uint32_t> renderLimit{0};
+    std::atomic<unsigned> captureLimit{UINT32_MAX};
     bool captureSilent=false, captureFlags=false;
     HRESULT openError=S_OK, startError=S_OK, waitError=S_OK, releaseError=S_OK;
     std::atomic<unsigned> captureOffset{0}, renderedFrames{0}, starts{0}, closes{0}, stops{0}, waits{0}, allocations{0};
@@ -81,13 +82,14 @@ public:
         if(WaitForSingleObject(stop,0)==WAIT_OBJECT_0) return {WasapiWaitKind::Stop,S_OK};
         if(FAILED(s->waitError)) return {WasapiWaitKind::Failed,s->waitError};
         const bool available=s->info.kind==WasapiStreamKind::Render
-            ? s->renderedFrames.load()<s->renderLimit : s->captureOffset.load()<s->capture.size()/2;
+            ? s->renderedFrames.load()<s->renderLimit : s->captureOffset.load()<std::min<std::size_t>(s->capture.size()/2,s->captureLimit.load());
         if(available) return {WasapiWaitKind::Audio,S_OK};
         return WaitForSingleObject(stop,timeout)==WAIT_OBJECT_0
             ? WasapiWaitResult{WasapiWaitKind::Stop,S_OK} : WasapiWaitResult{WasapiWaitKind::Timeout,S_OK};
     }
     HRESULT NextCapturePacketFrames(std::uint32_t& frames) noexcept override {
-        CheckThread(); frames=std::min<unsigned>(s->capturePacket,static_cast<unsigned>(s->capture.size()/2)-s->captureOffset.load()); return S_OK;
+        CheckThread(); frames=std::min<unsigned>(s->capturePacket,
+            std::min<unsigned>(static_cast<unsigned>(s->capture.size()/2),s->captureLimit.load())-s->captureOffset.load()); return S_OK;
     }
     HRESULT AcquireCapture(WasapiCapturePacket& packet) noexcept override {
         CheckThread(); packet={};
@@ -143,6 +145,38 @@ WasapiBridge::BackendFactory Factory(const std::shared_ptr<FakeState>& state) {
 void CheckCleanup(const std::shared_ptr<FakeState>& s) {
     Require(s->destroyed && s->closes==1 && !s->wrongThread && !s->held,"backend lifetime escaped owning worker");
     Require(s->allocations==0,"worker allocated after native Start");
+}
+
+void CapturePrimingWithLiveGraph() {
+    for(bool delayed : {false,true}) {
+    auto s=std::make_shared<FakeState>();s->capture=Tone(512,48000);s->captureLimit=0;
+    WasapiBridgeIo io({WasapiBridgeDirection::Capture,2,48000,256,101,1024});
+    auto config=Config(WasapiStreamKind::Capture);config.targetFillFrames=512;
+    config.kp=3e-6;config.ki=1e-6;
+    config.primingTimeoutMs=delayed?20:2000;
+    WasapiBridge bridge(config,io,Factory(s));Require(bridge.Start()==S_OK,"priming startup");
+    float left[256],right[256];float* planes[]={left,right};
+    if(delayed) {
+        s->captureLimit=128;
+        Await([&]{return io.BufferedFrames()==128;},"partial prefill packet missing");
+        Await([&]{return bridge.Health().primingTimedOut;},"capture timeout diagnostic missing");
+        Require(bridge.Health().state==WasapiBridgeState::Priming,"timeout released unfilled capture FIFO");
+    }
+    for(unsigned packet=1;packet<=3;++packet) {
+        s->captureLimit=packet*128;
+        Await([&]{return io.BufferedFrames()>=packet*128;},"priming packet missing");
+        std::fill_n(left,256,1.0f);std::fill_n(right,256,1.0f);
+        Require(io.ReadCaptureBlock(planes,256,2)==0,"live graph drained capture before prefill target");
+        Require(std::all_of(left,left+256,[](float v){return v==0;}) &&
+            std::all_of(right,right+256,[](float v){return v==0;}),"priming callback was not silent");
+        Require(bridge.Health().state==WasapiBridgeState::Priming,"capture released before target");
+    }
+    s->captureLimit=512;
+    Await([&]{return bridge.Health().state==WasapiBridgeState::Running;},"live graph prevented capture priming");
+    Require(bridge.Health().primingTimedOut==delayed && io.BufferedFrames()==512,"capture failed to prefill with active graph");
+    Require(io.ReadCaptureBlock(planes,256,2)==256 && io.BufferedFrames()==256,"prefill was lost at gate release");
+    bridge.Stop();CheckCleanup(s);
+    }
 }
 
 void CaptureSignal() {
@@ -311,7 +345,7 @@ void SilenceAndReprime() {
 }
 
 int main() {
-    try {CaptureSignal(); RenderSignal(); PrimingOverflowAndFailures(); CancelOpeningAndWait(); SilenceAndReprime();}
+    try {CapturePrimingWithLiveGraph(); CaptureSignal(); RenderSignal(); PrimingOverflowAndFailures(); CancelOpeningAndWait(); SilenceAndReprime();}
     catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
     std::cout<<"WASAPI bridge tests passed\n";
 }

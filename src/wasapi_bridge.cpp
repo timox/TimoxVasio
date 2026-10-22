@@ -148,8 +148,12 @@ struct WasapiBridge::Impl {
             if (owner.state.load(std::memory_order_relaxed)==WasapiBridgeState::Priming) {
                 const bool timedOut=now-primingSince>=std::chrono::milliseconds(owner.config.primingTimeoutMs);
                 if (timedOut) owner.primingTimedOut.store(true,std::memory_order_relaxed);
-                if (fill>=owner.Target() || (!render && timedOut))
+                // A timeout is diagnostic, not permission to drain an unfilled
+                // capture FIFO. Late-starting endpoints must still prefill.
+                if (fill>=owner.Target()) {
+                    if(!render)owner.io.CompleteCapturePriming();
                     owner.state.store(WasapiBridgeState::Running,std::memory_order_release);
+                }
                 lastUpdate=now;
                 return;
             }
@@ -329,6 +333,7 @@ HRESULT WasapiBridge::Start() noexcept {
     p.used=true;
     HRESULT hr=p.Validate();
     if (FAILED(hr)) {p.error=hr;p.state=WasapiBridgeState::Failed;return hr;}
+    p.io.BeginCapturePriming(); // Start completes before this generation is published.
     p.state.store(WasapiBridgeState::Starting,std::memory_order_release);
     try {p.worker=std::thread([&p]{p.Run();});}
     catch (...) {p.error=E_OUTOFMEMORY;p.state=WasapiBridgeState::Failed;return E_OUTOFMEMORY;}

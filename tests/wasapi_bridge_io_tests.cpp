@@ -24,6 +24,22 @@ void operator delete(void* pointer, std::size_t) noexcept { std::free(pointer); 
 void operator delete[](void* pointer, std::size_t) noexcept { std::free(pointer); }
 
 static WasapiBridgeFormat Format(WasapiBridgeDirection direction) { return {direction, 2, 48000, 16, 7, 16}; }
+static void CaptureReadiness() {
+    WasapiBridgeIo io(Format(WasapiBridgeDirection::Capture));
+    const float samples[]={1,11,2,12,3,13};float left[16],right[16];float* planes[]={left,right};
+    io.BeginCapturePriming();io.WriteCaptureInterleaved(samples,3,6);
+    trackAllocations=true;
+    const auto before=allocations;
+    const auto gated=io.ReadCaptureBlock(planes,16,2);
+    const bool silence=std::all_of(left,left+16,[](float x){return x==0;}) &&
+        std::all_of(right,right+16,[](float x){return x==0;});
+    const auto retained=io.BufferedFrames();
+    io.CompleteCapturePriming();const auto read=io.ReadCaptureBlock(planes,3,2);
+    const bool noAllocation=allocations==before;trackAllocations=false;
+    Require(gated==0 && silence && retained==3,"priming gate drained or failed to silence");
+    Require(read==3 && left[0]==1 && right[2]==13 && io.SilencedFrames()==16,"gate lost/reordered prefill or counted silence incorrectly");
+    Require(noAllocation,"readiness allocated in callback");
+}
 static void Capture() {
     auto format = Format(WasapiBridgeDirection::Capture);
     WasapiBridgeIo capture(format);
@@ -170,7 +186,7 @@ static_assert(noexcept(std::declval<WasapiBridgeIo>().WriteCaptureInterleaved(nu
 static_assert(noexcept(std::declval<WasapiBridgeIo>().ReadRenderInterleaved(nullptr, 0, 0)));
 static_assert(noexcept(std::declval<WasapiBridgeIo>().BufferedFrames()));
 int main() {
-    try { Capture(); RenderAndNoAllocation(); InvalidCalls(); InvalidFormats(); BackendBlocksAndGenerations(); BufferedSnapshot();
+    try { CaptureReadiness(); Capture(); RenderAndNoAllocation(); InvalidCalls(); InvalidFormats(); BackendBlocksAndGenerations(); BufferedSnapshot();
         std::puts("WASAPI bridge IO tests passed"); return 0;
     } catch (const std::exception& error) { std::fprintf(stderr, "%s\n", error.what()); return 1; }
 }

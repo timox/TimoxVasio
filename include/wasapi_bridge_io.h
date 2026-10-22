@@ -42,6 +42,18 @@ public:
     WasapiBridgeIo& operator=(WasapiBridgeIo&&) = delete;
     const WasapiBridgeFormat& Format() const noexcept { return format_; }
 
+    // Optional worker-managed startup policy. Standalone generations default to
+    // readable. Begin is owner-only BEFORE graph publication; Complete is the
+    // capture worker's one-way release after prefill. Never re-arm a live IO.
+    void BeginCapturePriming() noexcept {
+        if(format_.direction==WasapiBridgeDirection::Capture)
+            captureReady_.store(false,std::memory_order_release);
+    }
+    void CompleteCapturePriming() noexcept {
+        if(format_.direction==WasapiBridgeDirection::Capture)
+            captureReady_.store(true,std::memory_order_release);
+    }
+
     // Each plane must have at least frames writable/readable samples and the
     // pointer array must contain planeCount entries. Graph frames <= maxQuantum.
     // Return actual ring frames; valid reads silence the entire unread tail.
@@ -50,7 +62,8 @@ public:
     std::size_t ReadCaptureBlock(float* const* planes, std::size_t frames, std::size_t planeCount) noexcept {
         if (format_.direction != WasapiBridgeDirection::Capture || !frames ||
             !ValidPlanes(planes, frames, planeCount)) return 0;
-        const auto read = ring_.ReadPlanar(planes, frames);
+        // Silence startup callbacks without advancing the sole consumer cursor.
+        const auto read = captureReady_.load(std::memory_order_acquire) ? ring_.ReadPlanar(planes, frames) : 0;
         for (std::size_t channel = 0; channel < format_.channels; ++channel)
             std::fill_n(planes[channel] + read, frames - read, 0.0f);
         silencedFrames_.fetch_add(frames - read, std::memory_order_relaxed);
@@ -114,8 +127,10 @@ private:
         return samples && frames <= format_.capacityFrames && sampleCount >= frames * format_.channels;
     }
     static_assert(std::atomic<std::uint64_t>::is_always_lock_free, "Bridge frame counters must be lock-free");
+    static_assert(std::atomic<bool>::is_always_lock_free, "Capture readiness must be lock-free");
     const WasapiBridgeFormat format_;
     SpscAudioRing ring_;
     std::atomic<std::uint64_t> rejectedFrames_{0};
     std::atomic<std::uint64_t> silencedFrames_{0};
+    std::atomic<bool> captureReady_{true};
 };
