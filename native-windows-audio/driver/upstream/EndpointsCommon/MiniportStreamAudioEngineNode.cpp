@@ -1,3 +1,4 @@
+#include "../../../include/native_audio_timing.h"
 /*++
 
 Module Name:
@@ -814,7 +815,7 @@ NTSTATUS CMiniportWaveRTStream::SetCurrentWritePositionInternal(_In_  ULONG _ulC
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    if (_ulCurrentWritePosition > m_ulDmaBufferSize)
+    if (!timox_write_position_valid(_ulCurrentWritePosition, m_ulDmaBufferSize))
     {
         return STATUS_INVALID_DEVICE_REQUEST;
     }

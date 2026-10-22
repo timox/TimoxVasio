@@ -32,3 +32,17 @@ Changes for the Timox prototype:
 Internal class names and unexposed generic helper methods remain recognizable
 to make comparison with upstream possible. This is an adaptation, not a claim
 that Microsoft authored, certified or endorses TimoxWindowsAudio.
+
+N2 additionally routes stream PCM through the separate Timox private control
+device. `adapter.cpp` preserves original dispatch functions and installs the
+private dispatcher; `common.cpp/.h` own its lifecycle and expose internal PCM
+callbacks. The shared N0 validator now uses kernel-compatible integer aliases
+without changing the 64-byte wire layout. `control.cpp/.h` are Timox additions.
+
+Further N2 review replaces sample millisecond/32-bit position arithmetic with
+whole-frame 64-bit timing and separate completed/notified packet counters;
+aligns EOS/write positions; timestamps the first sample of the completed packet;
+accounts for catch-up loss and purges stale queued PCM. Content-right changes
+are serialized and private render stays blocked for the stream lifetime after
+protection or unknown rights. Timer callbacks are quiesced before releasing
+miniport/stream resources, then the reserved render slot is purged/unblocked.

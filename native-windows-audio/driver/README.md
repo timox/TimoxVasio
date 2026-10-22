@@ -1,4 +1,4 @@
-# Prototype natif Timox Windows Audio — N1
+# Prototype natif Timox Windows Audio — N1/N2
 
 Ce projet produit un véritable binaire noyau `TimoxWindowsAudio.sys`, dérivé
 du sous-ensemble PortCls/WaveRT de SysVAD. Il est distinct de `TimoxVasio.dll`.
@@ -12,6 +12,11 @@ Deux endpoints sont décrits, au format PCM signé 32 bits, stéréo, 48 kHz :
 |---|---|---|
 | Timox Windows Input | application → render WaveRT | audio consommé puis abandonné |
 | Timox Windows Output | capture WaveRT → application | silence initialisé explicitement |
+
+Ces comportements N1 sont désormais prolongés par le contrôle privé N2 :
+le rendu remplit une file bornée lisible par le moteur ; les paquets capture
+validés alimentent la sortie Windows, avec silence sur les frames manquantes.
+Ce raccordement est compilé mais **aucun échange noyau réel n'a été exécuté**.
 
 Chaque endpoint expose un stream physique ; le partage entre applications
 revient au moteur audio Windows. Aucun APO, offload, pin loopback, pilote
@@ -36,8 +41,9 @@ L'identité PnP est `Root\TimoxWindowsAudio`, le service `TimoxWindowsAudio`
 et les références KS sont `TimoxRenderWave`, `TimoxRenderTopology`,
 `TimoxCaptureWave`, `TimoxCaptureTopology`. Les GUID de catégories KS restent
 ceux de Windows ; ce ne sont pas des identités propriétaires à remplacer.
-Le GUID du projet est propre à Timox. Aucun GUID de contrôle privé n'est encore
-publié. La licence et le commit amont sont dans `THIRD_PARTY_NOTICES.md`.
+Le GUID du projet est propre à Timox. Le contrôle N2 utilise la classe privée
+`20ec34c0-1f92-41b0-a59e-fc898f742f64` pour ses paramètres de sécurité.
+La licence et le commit amont sont dans `THIRD_PARTY_NOTICES.md`.
 
 ## Reproduire le build
 
@@ -56,18 +62,64 @@ Sortie : `build_native_windows_audio/x64/Release/TimoxWindowsAudio.sys`.
 Ce build n'installe rien. La date INF est estampillée par WDK : reproductible
 désigne ici la procédure et les dépendances, pas une identité binaire garantie.
 
-Preuve locale du 22 octobre 2026 à 05:44:42 UTC : 58 368 octets, SHA-256
-`ACBC01063A4BEEA82F4DD69BFE80206178280466C98214D843C57877FF2255E1`.
-Le journal local est `build_native_audio_wdk/timox-driver-build.log`.
+Preuve locale N2 du 22 octobre 2026 à 15:54:16 UTC : 76 288 octets, SHA-256
+`A3F8B95FFF414FC00F6B04960E84EDF28B1C4D28C6027E6770062FF49D1776A3`.
+Le journal conservé est `build_native_audio_wdk/timox-driver-n2-eos-final.log`.
 Cette empreinte décrit le build observé ; un rebuild peut la changer.
 
-## Prochaine tranche N2
+## Contrôle privé N2
 
-Relier les points `ReadBytes` (render) et `WriteBytes` (capture) au transport
-privé N0, avec un contexte de génération attaché au moteur, des files bornées
-préallouées et des statistiques de pertes. Le protocole portable ne constitue
-pas encore une interface IOCTL. Définir et tester d'abord le contrôle sécurisé,
-la durée de vie des buffers, la déconnexion et les transitions stop/reprise.
+`control.cpp` crée un device distinct de l'audio public, classe GUID propre,
+ACL laboratoire SYSTEM/Administrateurs, accessible via
+`\\.\Global\TimoxWindowsAudioControl`. Un seul adaptateur est permis, comme
+dans le sous-ensemble SysVAD retenu. Tous les majors privés passent par le
+dispatch Timox ; les majors audio conservent leurs handlers d'origine.
+Un seul FILE_OBJECT possède la session ; CLEANUP purge ses files et la
+génération change au prochain open. Les IOCTL METHOD_BUFFERED sont non
+bloquants, avec un maximum de 32832 octets et droits lecture+écriture.
+
+Le contrat exact est dans `../include/native_audio_control_protocol.h`.
+La capture rejette les séquences répétées/décroissantes ; un paquet refusé
+pour saturation peut être retenté. Render vide retourne NO_MORE_ENTRIES sans
+paquet artificiel. Le premier paquet et ceux suivant une perte portent un
+flag de discontinuité. Les timestamps QPC des paquets render ne sont pas
+encore publiés (flag QPC_VALID absent).
+
+La progression WaveRT est calculée en frames entières à partir du temps
+monotone, avec reste fractionnaire et arithmétique 64 bits. Un retard supérieur
+au ring ne provoque pas une boucle proportionnelle au retard : seul le dernier
+tour est traité, les files anciennes sont purgées et les frames perdues sont
+comptées. Les notifications suivent les paquets complets, avec un compteur
+notifié distinct. Les positions et fins de flux doivent être alignées sur
+8 octets ; une fin exactement à la limite du ring est traitée une seule fois.
+
+Le transport privé n'est pas une sortie DRM authentifiée. CopyProtect,
+DigitalOutputDisable ou un échec de mise à jour des droits bloquent le rendu
+privé et purgent sa file. Le blocage persiste jusqu'à destruction du stream,
+même si ses droits changent ensuite ou si le moteur ferme/réouvre son handle :
+cela empêche de publier des données protégées restées dans le DMA.
+La destruction attend le timer, purge puis libère le blocage **avant** de
+libérer le slot de stream, afin qu'un nouveau stream non protégé puisse repartir.
+Cette politique conservatrice ne constitue pas une certification DRM.
+Sources : [droits de contenu Microsoft](https://learn.microsoft.com/en-us/windows-hardware/drivers/audio/content-ids-and-content-rights),
+[contrat SetWritePacket](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/portcls/nf-portcls-iminiportwavertoutputstream-setwritepacket),
+[timestamp du premier sample GetReadPacket](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/portcls/nf-portcls-iminiportwavertinputstream-getreadpacket).
+
+La protection rundown interdit les nouveaux transferts au retrait et attend
+les références existantes hors callback. Le verrou court sérialise session
+et files. Le contexte est dans l'extension du device, conservée par les
+références FILE_OBJECT/IRP après IoDeleteDevice. Le probe
+`build_native_audio_protocol/Release/NativeAudioDriverProbe.exe` est compilé,
+mais son option `--exercise-control` reste **non exécutée** : elle requiert
+un pilote installé sur une cible de test. Il ne charge ni n'installe rien.
+
+## Travail restant
+
+Qualifier les points `ReadBytes` (render) et `WriteBytes` (capture), le contrôle
+sécurisé, la durée de vie des buffers, la déconnexion et les transitions
+stop/reprise sur cible. Préparer le broker moteur, les timestamps et les
+compteurs complets de pertes hors session ; le wrapper actuel expose des
+compteurs limités à la session et aux files, pas une métrologie complète.
 L'ACL audio publique de ce prototype ne doit pas servir à ouvrir le contrôle
 privé : ce dernier devra autoriser exclusivement le service moteur prévu.
 

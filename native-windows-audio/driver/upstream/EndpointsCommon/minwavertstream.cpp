@@ -1,6 +1,7 @@
 #include <sysvad.h>
 #include <limits.h>
 #include "../../../include/native_audio_geometry.h"
+#include "../../../include/native_audio_timing.h"
 #include <ks.h>
 #include "simple.h"
 #include "minwavert.h"
@@ -36,6 +37,23 @@ Return Value:
 --*/
 {
     PAGED_CODE();
+    if (m_pNotificationTimer)
+    {
+        ExDeleteTimer
+        (
+            m_pNotificationTimer,
+            TRUE, // Cancel the timer if it is currently set.
+            TRUE, // Wait for the timer to finish expiring and for any callback to a ExTimerCallback routine to finish.
+            NULL
+         );
+    }
+
+    // Since we just cancelled the notification timer, wait for all queued
+    // DPCs to complete before we free the notification DPC.
+    //
+    m_pNotificationTimer = nullptr;
+    KeFlushQueuedDpcs();
+
     if (NULL != m_pMiniport)
     {
         if (m_pAudioModules)
@@ -47,6 +65,12 @@ Return Value:
     
         if (m_bUnregisterStream)
         {
+            // Quiescent producer; keep the sole slot reserved until after purge.
+            if (!m_bCapture)
+            {
+                m_pMiniport->GetAdapterCommObj()->NativeBlockRender(true);
+                m_pMiniport->GetAdapterCommObj()->NativeBlockRender(false);
+            }
             m_pMiniport->StreamClosed(m_ulPin, this);
             m_bUnregisterStream = FALSE;
         }
@@ -90,21 +114,7 @@ Return Value:
         ExFreePoolWithTag( m_pWfExt, MINWAVERTSTREAM_POOLTAG );
         m_pWfExt = NULL;
     }
-    if (m_pNotificationTimer)
-    {
-        ExDeleteTimer
-        (
-            m_pNotificationTimer, 
-            TRUE, // Cancel the timer if it is currently set.
-            TRUE, // Wait for the timer to finish expiring and for any callback to a ExTimerCallback routine to finish.
-            NULL
-         );
-    }
 
-    // Since we just cancelled the notification timer, wait for all queued 
-    // DPCs to complete before we free the notification DPC.
-    //
-    KeFlushQueuedDpcs();
 
 #ifdef SYSVAD_BTH_BYPASS
     ASSERT(m_SidebandOpen == FALSE);
@@ -225,10 +235,11 @@ Return Value:
     m_pTimer = NULL;
     m_pDpc = NULL;
     m_llPacketCounter = 0;
+    m_LastNotifiedPacket = 0;
     m_ullPlayPosition = 0;
     m_ullWritePosition = 0;
     m_ullDmaTimeStamp = 0;
-    m_hnsElapsedTimeCarryForward = 0;
+    m_FrameTimeRemainder = 0;
     m_ullLastDPCTimeStamp = 0;
     m_hnsDPCTimeCarryForward = 0;
     m_ulDmaMovementRate = 0;
@@ -272,6 +283,7 @@ Return Value:
 
     // Initialize the spinlock to synchronize position updates
     KeInitializeSpinLock(&m_PositionSpinLock);
+    ExInitializePushLock(&m_ContentRightsLock);
 
     m_pNotificationTimer = ExAllocateTimer(
          TimerNotifyRT,
@@ -851,7 +863,7 @@ NTSTATUS CMiniportWaveRTStream::GetReadPacket
 
     LONGLONG packetCounter = m_llPacketCounter;
     ULONGLONG ullLinearPosition = m_ullLinearPosition;
-    ULONGLONG hnsElapsedTimeCarryForward = m_hnsElapsedTimeCarryForward;
+    ULONGLONG fractionalFrameTimeHns = m_FrameTimeRemainder / 48000;
     ULONGLONG ullDmaTimeStamp = m_ullDmaTimeStamp;
 
     KeReleaseSpinLock(&m_PositionSpinLock, oldIrql);
@@ -861,7 +873,7 @@ NTSTATUS CMiniportWaveRTStream::GetReadPacket
     availablePacketNumber = LODWORD(packetCounter - 1);  // Note this might be ULONG_MAX if called during the first packet
 
     // If no new packets are available...
-    if (availablePacketNumber == m_ulLastOsReadPacket)
+    if (packetCounter <= 0 || availablePacketNumber == m_ulLastOsReadPacket)
     {
         return STATUS_DEVICE_NOT_READY;
     }
@@ -877,18 +889,20 @@ NTSTATUS CMiniportWaveRTStream::GetReadPacket
     // Return next packet number to be read
     *PacketNumber = availablePacketNumber;
 
-    // Compute and return timestamp corresponding to the end of the available packet. In a real hardware
+    // Compute and return timestamp corresponding to the first sample of the available packet. In a real hardware
     // driver, the timestamp would be computed in a driver and hardware specific manner. In this sample
     // driver, it is extrapolated from the sample driver's internal simulated position correlation
     // [m_ullLinearPosition @ m_ullDmaTimeStamp] and the sample's internal 64-bit packet counter, subtracting
     // 1 from the packet counter to compute the time at the start of that last completed packet.
-    ULONGLONG linearPositionOfAvailablePacket = packetCounter * (m_ulDmaBufferSize / m_ulNotificationsPerBuffer);
+    ULONGLONG linearPositionOfAvailablePacket = timox_last_packet_start(packetCounter, m_ulDmaBufferSize / m_ulNotificationsPerBuffer);
     // Need to divide by (1000 * 10000 because m_ulDmaMovementRate is average bytes per sec
-    ULONGLONG carryForwardBytes = (hnsElapsedTimeCarryForward * m_ulDmaMovementRate) / 10000000;
-    ULONGLONG deltaLinearPosition = ullLinearPosition + carryForwardBytes - linearPositionOfAvailablePacket;
-    ULONGLONG deltaTimeInHns = deltaLinearPosition * 10000000 / m_ulDmaMovementRate;
-    ULONGLONG timeOfAvailablePacketInHns = ullDmaTimeStamp - deltaTimeInHns;
-    ULONGLONG timeOfAvailablePacketInQpc = timeOfAvailablePacketInHns * m_ullPerformanceCounterFrequency.QuadPart / 10000000;
+    if (linearPositionOfAvailablePacket > ullLinearPosition) return STATUS_DEVICE_NOT_READY;
+    ULONGLONG deltaLinearPosition = ullLinearPosition - linearPositionOfAvailablePacket;
+    ULONGLONG deltaTimeInHns = timox_bytes_to_hns(deltaLinearPosition) + fractionalFrameTimeHns;
+    ULONGLONG timeOfAvailablePacketInHns = ullDmaTimeStamp > deltaTimeInHns ? ullDmaTimeStamp - deltaTimeInHns : 0;
+    ULONGLONG frequency = m_ullPerformanceCounterFrequency.QuadPart;
+    ULONGLONG timeOfAvailablePacketInQpc = (timeOfAvailablePacketInHns / 10000000) * frequency
+        + (timeOfAvailablePacketInHns % 10000000) * frequency / 10000000;
 
     *PerformanceCounterValue = timeOfAvailablePacketInQpc;
 
@@ -922,6 +936,7 @@ NTSTATUS CMiniportWaveRTStream::SetWritePacket
         return STATUS_NOT_SUPPORTED;
     }
 
+    if (Flags & ~KSSTREAM_HEADER_OPTIONSF_ENDOFSTREAM) return STATUS_INVALID_PARAMETER;
     ULONG oldLastOsWritePacket = m_ulLastOsWritePacket;
 
     // This function should not be called once EoS has been set.
@@ -963,7 +978,7 @@ NTSTATUS CMiniportWaveRTStream::SetWritePacket
     // Check if EOS flag was passed
     if (Flags & KSSTREAM_HEADER_OPTIONSF_ENDOFSTREAM)
     {
-        if (EosPacketLength > packetSize)
+        if (!timox_write_position_valid(EosPacketLength, packetSize))
         {
             return STATUS_INVALID_PARAMETER;
         }
@@ -1101,10 +1116,12 @@ NTSTATUS CMiniportWaveRTStream::SetState
             KeAcquireSpinLock(&m_PositionSpinLock, &oldIrql);
             // Reset DMA
             m_llPacketCounter = 0;
+            m_LastNotifiedPacket = 0;
             m_ullPlayPosition = 0;
             m_ullWritePosition = 0;
             m_ullLinearPosition = 0;
             m_ullPresentationPosition = 0;
+            m_FrameTimeRemainder = 0;
             
             // Reset OS read/write positions
             m_ulLastOsReadPacket = ULONG_MAX;
@@ -1305,28 +1322,12 @@ VOID CMiniportWaveRTStream::UpdatePosition
     if (m_ulDmaBufferSize == 0 || m_pDmaBuffer == NULL) return;
 
 
-    // Convert ticks to 100ns units.
-    LONGLONG  hnsCurrentTime = KSCONVERT_PERFORMANCE_TIME(m_ullPerformanceCounterFrequency.QuadPart, ilQPC);
-    
-    // Calculate the time elapsed since the last call to GetPosition() or since the
-    // DMA engine started.  Note that the division by 10000 to convert to milliseconds
-    // may cause us to lose some of the time, so we will carry the remainder forward 
-    // to the next GetPosition() call.
-    //
-    ULONG TimeElapsedInMS = (ULONG)(hnsCurrentTime - m_ullDmaTimeStamp + m_hnsElapsedTimeCarryForward)/10000;
-    
-    // Carry forward the remainder of this division so we don't fall behind with our position too much.
-    //
-    m_hnsElapsedTimeCarryForward = (hnsCurrentTime - m_ullDmaTimeStamp + m_hnsElapsedTimeCarryForward) % 10000;
-    
-    // Calculate how many bytes in the DMA buffer would have been processed in the elapsed
-    // time.  Note that the division by 1000 to convert to milliseconds may cause us to 
-    // lose some bytes, so we will carry the remainder forward to the next GetPosition() call.
-    //
-    // need to divide by 1000 because m_ulDmaMovementRate is average bytes per sec.
-
-    ULONG ByteDisplacement = ((m_ulDmaMovementRate * TimeElapsedInMS) + m_byteDisplacementCarryForward) / 1000 ;
-    m_byteDisplacementCarryForward = ((m_ulDmaMovementRate * TimeElapsedInMS) + m_byteDisplacementCarryForward) % 1000;
+    LONGLONG hnsCurrentTime = KSCONVERT_PERFORMANCE_TIME(m_ullPerformanceCounterFrequency.QuadPart, ilQPC);
+    if (hnsCurrentTime < 0 || static_cast<ULONGLONG>(hnsCurrentTime) < m_ullDmaTimeStamp) return;
+    timox_u64 remainder = m_FrameTimeRemainder;
+    ULONGLONG ByteDisplacement = timox_elapsed_pcm_bytes(
+        static_cast<ULONGLONG>(hnsCurrentTime) - m_ullDmaTimeStamp, remainder);
+    m_FrameTimeRemainder = remainder;
 
     // Increment presentation position even after last buffer is rendered.
     m_ullPresentationPosition += ByteDisplacement;
@@ -1340,26 +1341,13 @@ VOID CMiniportWaveRTStream::UpdatePosition
     {
         if (m_bEoSReceived)
         {
-            // since EoS flag is set, we'll need to make sure not to read data beyond EOS position.
-            // If driver's current position is less than EoS position, then make sure not to read data beyond EoS.
-            if (m_ullWritePosition <= m_ulCurrentWritePosition)
-            {
-                ByteDisplacement = min(ByteDisplacement, m_ulCurrentWritePosition - (ULONG)m_ullWritePosition);
-            }
-            // If our current position is ahead of EoS position and we'll wrap around after new position then adjust
-            // new position if it crosses EoS.
-            else if ((m_ullWritePosition + ByteDisplacement) % m_ulDmaBufferSize < m_ullWritePosition)
-            {
-                if ((m_ullWritePosition + ByteDisplacement) % m_ulDmaBufferSize > m_ulCurrentWritePosition)
-                {
-                    ByteDisplacement = ByteDisplacement - (((ULONG)m_ullWritePosition + ByteDisplacement) % m_ulDmaBufferSize - m_ulCurrentWritePosition);
-                }
-            }
+            ByteDisplacement = timox_eos_bytes(ByteDisplacement, static_cast<ULONG>(m_ullWritePosition),
+                m_ulCurrentWritePosition, m_ulDmaBufferSize, m_bLastBufferRendered != FALSE);
         }
 
         // If the last packet was rendered(read in the sample driver's case), send out an etw event.
         if ( m_bEoSReceived && !m_bLastBufferRendered
-            && (m_ullWritePosition + ByteDisplacement) % m_ulDmaBufferSize == m_ulCurrentWritePosition)
+            && (m_ullWritePosition + ByteDisplacement) % m_ulDmaBufferSize == m_ulCurrentWritePosition % m_ulDmaBufferSize)
         {
             m_bLastBufferRendered = TRUE;
             PADAPTERCOMMON pAdapterComm = m_pMiniport->GetAdapterCommObj();
@@ -1388,6 +1376,9 @@ VOID CMiniportWaveRTStream::UpdatePosition
     // so m_ullLinearPosition needs to be updated accordingly here
     //
     m_ullLinearPosition += ByteDisplacement;
+    if (m_ulNotificationsPerBuffer)
+        m_llPacketCounter = static_cast<LONGLONG>(timox_completed_packets(
+            m_ullLinearPosition, m_ulDmaBufferSize / m_ulNotificationsPerBuffer));
     
     // Update the DMA time stamp for the next call to GetPosition()
     //
@@ -1398,7 +1389,7 @@ VOID CMiniportWaveRTStream::UpdatePosition
 #pragma code_seg()
 VOID CMiniportWaveRTStream::WriteBytes
 (
-    _In_ ULONG ByteDisplacement
+    _In_ ULONGLONG ByteDisplacement
 )
 /*++
 
@@ -1412,17 +1403,18 @@ ByteDisplacement - # of bytes to process.
 --*/
 {
     if (m_ulDmaBufferSize == 0 || m_pDmaBuffer == NULL) return;
-    // Bound catch-up to one ring; older frames have already been overwritten.
-    ByteDisplacement = min(ByteDisplacement, m_ulDmaBufferSize);
-    ULONG bufferOffset = m_ullLinearPosition % m_ulDmaBufferSize;
+    const auto span = timox_ring_span(m_ullLinearPosition, ByteDisplacement, m_ulDmaBufferSize);
+    m_pMiniport->GetAdapterCommObj()->NativeGap(true, span.lostFrames);
+    ULONG remainingBytes = span.bytes;
+    ULONG bufferOffset = span.offset;
 
-    // At most two spans cover one ring, including a possible wrap.
-    while (ByteDisplacement > 0)
+    // Bounded by one ring, split into at most 4096-frame transport chunks.
+    while (remainingBytes > 0)
     {
-        ULONG runWrite = min(ByteDisplacement, m_ulDmaBufferSize - bufferOffset);
-        RtlZeroMemory(m_pDmaBuffer + bufferOffset, runWrite);
+        ULONG runWrite = min(min(remainingBytes, m_ulDmaBufferSize - bufferOffset), 4096u * 8u);
+        m_pMiniport->GetAdapterCommObj()->NativeCapture(m_pDmaBuffer + bufferOffset, runWrite / 8u);
         bufferOffset = (bufferOffset + runWrite) % m_ulDmaBufferSize;
-        ByteDisplacement -= runWrite;
+        remainingBytes -= runWrite;
     }
 }
 
@@ -1430,7 +1422,7 @@ ByteDisplacement - # of bytes to process.
 #pragma code_seg()
 VOID CMiniportWaveRTStream::ReadBytes
 (
-    _In_ ULONG ByteDisplacement
+    _In_ ULONGLONG ByteDisplacement
 )
 /*++
 
@@ -1444,8 +1436,18 @@ ByteDisplacement - # of bytes to process.
 
 --*/
 {
-    // UpdatePosition advances all counters; N1 intentionally discards render.
-    UNREFERENCED_PARAMETER(ByteDisplacement);
+    if (m_ulDmaBufferSize == 0 || m_pDmaBuffer == NULL) return;
+    const auto span = timox_ring_span(m_ullLinearPosition, ByteDisplacement, m_ulDmaBufferSize);
+    m_pMiniport->GetAdapterCommObj()->NativeGap(false, span.lostFrames);
+    ULONG remainingBytes = span.bytes;
+    ULONG offset = span.offset;
+    while (remainingBytes > 0)
+    {
+        ULONG bytes = min(min(remainingBytes, m_ulDmaBufferSize - offset), 4096u * 8u);
+        m_pMiniport->GetAdapterCommObj()->NativeRender(m_pDmaBuffer + offset, bytes / 8u);
+        offset = (offset + bytes) % m_ulDmaBufferSize;
+        remainingBytes -= bytes;
+    }
 }
 
 //=============================================================================
@@ -1479,7 +1481,17 @@ Return Value:
     DPF_ENTER(("[CMiniportWaveRT::SetContentId]"));
 
     NTSTATUS    ntStatus;
-    ULONG       ulOldContentId = contentId;
+    KeEnterCriticalRegion();
+    ExAcquirePushLockExclusive(&m_ContentRightsLock);
+    ULONG       ulOldContentId = m_ulContentId;
+    if (!m_bCapture) m_pMiniport->GetAdapterCommObj()->NativeBlockRender(true);
+    if (drmRights == nullptr)
+    {
+        m_NativeContentPolicy.Update(false,false,false);
+        ExReleasePushLockExclusive(&m_ContentRightsLock);
+        KeLeaveCriticalRegion();
+        return STATUS_INVALID_PARAMETER;
+    }
 
     m_ulContentId = contentId;
 
@@ -1501,7 +1513,10 @@ Return Value:
     // stream indicates that the stream is CopyProtected, stop writing to disk.
     //
     // Timox: render recording has been removed.
-    UNREFERENCED_PARAMETER(drmRights);
+    if (!m_bCapture)
+        m_pMiniport->GetAdapterCommObj()->NativeBlockRender(m_NativeContentPolicy.Update(
+            NT_SUCCESS(ntStatus), drmRights->CopyProtect || m_pMiniport->NativeMixedContentProtected(),
+            drmRights->DigitalOutputDisable != FALSE));
 
     //
     // From MSDN:
@@ -1536,6 +1551,8 @@ Return Value:
     // For more information, see MSDN's DRM Functions and Interfaces.
     //
 
+    ExReleasePushLockExclusive(&m_ContentRightsLock);
+    KeLeaveCriticalRegion();
     return ntStatus;
 } // SetContentId
 
@@ -1649,34 +1666,12 @@ TimerNotifyRT
 
     qpc = KeQueryPerformanceCounter(&qpcFrequency);
 
-    // Convert ticks to 100ns units.
-    LONGLONG  hnsCurrentTime = KSCONVERT_PERFORMANCE_TIME(_this->m_ullPerformanceCounterFrequency.QuadPart, qpc);
-
-    // Calculate the time elapsed since the last we ran DPC that matched Notification interval. Note that the division by 10000 
-    // to convert to milliseconds may cause us to lose some of the time, so we will carry the remainder forward.
-
-    ULONG TimeElapsedInMS = (ULONG)(hnsCurrentTime - _this->m_ullLastDPCTimeStamp + _this->m_hnsDPCTimeCarryForward)/10000;
-
-    if (TimeElapsedInMS >= _this->m_ulNotificationIntervalMs)
-    {
-        // Carry forward the time greater than notification interval to adjust time to signal next buffer completion event accordingly.
-        _this->m_hnsDPCTimeCarryForward = hnsCurrentTime - _this->m_ullLastDPCTimeStamp + _this->m_hnsDPCTimeCarryForward - (_this->m_ulNotificationIntervalMs * 10000);
-        // Save the last time DPC ran at notification interval
-        _this->m_ullLastDPCTimeStamp = hnsCurrentTime;
-        bufferCompleted = TRUE;
-    }
-
-    if (!bufferCompleted && !_this->m_bEoSReceived)
-    {
+    if (_this->m_KsState != KSSTATE_RUN || !_this->m_ulNotificationsPerBuffer || !_this->m_ulDmaBufferSize)
         goto End;
-    }
-
     _this->UpdatePosition(qpc);
-
-    if (!_this->m_bEoSReceived)
-    {
-        _this->m_llPacketCounter++;
-    }
+    bufferCompleted = static_cast<ULONGLONG>(_this->m_llPacketCounter) > _this->m_LastNotifiedPacket;
+    if (bufferCompleted) _this->m_LastNotifiedPacket = static_cast<ULONGLONG>(_this->m_llPacketCounter);
+    if (!bufferCompleted && !_this->m_bEoSReceived) goto End;
 
 #if defined(SYSVAD_BTH_BYPASS) || defined(SYSVAD_USB_SIDEBAND)
     if (_this->m_SidebandStarted)

@@ -1,3 +1,4 @@
+#include "../../../include/native_audio_content_policy.h"
 /*++
 
 Copyright (c) 1997-2010  Microsoft Corporation All Rights Reserved
@@ -108,7 +109,7 @@ protected:
     LONGLONG                    m_llPacketCounter;
     ULONGLONG                   m_ullDmaTimeStamp;
     LARGE_INTEGER               m_ullPerformanceCounterFrequency;
-    ULONGLONG                   m_hnsElapsedTimeCarryForward;
+    ULONGLONG                   m_FrameTimeRemainder;
     ULONGLONG                   m_ullLastDPCTimeStamp;
     ULONGLONG                   m_hnsDPCTimeCarryForward;
     ULONG                       m_byteDisplacementCarryForward;
@@ -119,6 +120,9 @@ protected:
     PLONG                       m_plPeakMeter;
     PWAVEFORMATEXTENSIBLE       m_pWfExt;
     ULONG                       m_ulContentId;
+    EX_PUSH_LOCK                m_ContentRightsLock;
+    ULONGLONG                   m_LastNotifiedPacket = 0;
+    timox_native::RenderContentPolicy m_NativeContentPolicy;
 
 
     GUID                        m_SignalProcessingMode;
@@ -283,12 +287,12 @@ private:
         
     VOID WriteBytes
     (
-        _In_ ULONG ByteDisplacement
+        _In_ ULONGLONG ByteDisplacement
     );
     
     VOID ReadBytes
     (
-        _In_ ULONG ByteDisplacement
+        _In_ ULONGLONG ByteDisplacement
     );
     
     VOID UpdatePosition

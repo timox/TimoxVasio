@@ -437,6 +437,7 @@ public:
     );
 
 
+    bool NativeMixedContentProtected() const { return m_MixDrmRights.CopyProtect || m_MixDrmRights.DigitalOutputDisable; }
     PADAPTERCOMMON GetAdapterCommObj() 
     {
         return m_pAdapterCommon; 

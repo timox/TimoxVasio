@@ -1,3 +1,4 @@
+#include "../control.h"
 /*++
 
 Copyright (c) Microsoft Corporation All Rights Reserved
@@ -77,6 +78,7 @@ class CAdapterCommon :
     private:
         PSERVICEGROUP           m_pServiceGroupWave;
         PDEVICE_OBJECT          m_pDeviceObject;
+        PDEVICE_OBJECT          m_pNativeControl = nullptr;
         PDEVICE_OBJECT          m_pPhysicalDeviceObject;
         WDFDEVICE               m_WdfDevice;            // Wdf device. 
         DEVICE_POWER_STATE      m_PowerState;  
@@ -101,6 +103,10 @@ class CAdapterCommon :
     public:
         //=====================================================================
         // Default CUnknown
+        STDMETHODIMP_(void) NativeBlockRender(bool blocked) { TimoxControlBlockRender(m_pNativeControl,blocked); }
+        STDMETHODIMP_(void) NativeGap(bool capture, ULONGLONG frames) { TimoxControlGap(m_pNativeControl,capture,frames); }
+        STDMETHODIMP_(void) NativeRender(const unsigned char* pcm, ULONG frames) { TimoxControlRender(m_pNativeControl,pcm,frames); }
+        STDMETHODIMP_(void) NativeCapture(unsigned char* pcm, ULONG frames) { TimoxControlCapture(m_pNativeControl,pcm,frames); }
         DECLARE_STD_UNKNOWN();
         DEFINE_STD_CONSTRUCTOR(CAdapterCommon);
         ~CAdapterCommon();
@@ -635,6 +641,8 @@ Return Value:
 {
     PAGED_CODE();
     DPF_ENTER(("[CAdapterCommon::~CAdapterCommon]"));
+    TimoxControlDestroy(m_pNativeControl);
+    m_pNativeControl = nullptr;
 
     if (m_pHW)
     {
@@ -837,7 +845,7 @@ Return Value:
     //
     // Initialize SaveData class.
     //
-    // Timox: no sample audio file writer.
+    ntStatus = TimoxControlCreate(DeviceObject->DriverObject, &m_pNativeControl);
 Done:
 
     return ntStatus;
@@ -2328,6 +2336,7 @@ CAdapterCommon::Cleanup()
 {
     PAGED_CODE();
     DPF_ENTER(("[CAdapterCommon::Cleanup]"));
+    TimoxControlStop(m_pNativeControl);
 
 #ifdef SYSVAD_BTH_BYPASS
     //

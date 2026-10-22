@@ -448,6 +448,11 @@ DECLARE_INTERFACE_(IMiniportChange, IUnknown)
 //
 DECLARE_INTERFACE_(IAdapterCommon, IUnknown)
 {
+    STDMETHOD_(void, NativeBlockRender)(bool blocked) PURE;
+    STDMETHOD_(void, NativeGap)(bool capture, ULONGLONG frames) PURE;
+    STDMETHOD_(void, NativeRender)(const unsigned char* pcm, ULONG frames) PURE;
+    STDMETHOD_(void, NativeCapture)(unsigned char* pcm, ULONG frames) PURE;
+
     STDMETHOD_(NTSTATUS,        Init) 
     ( 
         THIS_

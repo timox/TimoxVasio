@@ -1,3 +1,4 @@
+#include "../control.h"
 /*++
 
 Copyright (c) Microsoft Corporation All Rights Reserved
@@ -582,6 +583,7 @@ Return Value:
     // To intercept stop/remove/surprise-remove.
     //
     DriverObject->MajorFunction[IRP_MJ_PNP] = PnpHandler;
+    TimoxControlInstallDispatch(DriverObject);
 
     //
     // Hook the port class unload function
