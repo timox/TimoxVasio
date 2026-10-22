@@ -1,8 +1,8 @@
 #requires -Version 5.1
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
-    [Parameter(Mandatory = $true)][string]$UserName,
-    [Parameter(Mandatory = $true)][string]$PublicKeyPath,
+    [string]$UserName = 'timo',
+    [string]$PublicKeyPath = (Join-Path $PSScriptRoot 'timox-vm.pub'),
     [Parameter(Mandatory = $true)][string[]]$AllowedRemoteAddress,
     [ValidateRange(1, 65535)][int]$Port = 22
 )
