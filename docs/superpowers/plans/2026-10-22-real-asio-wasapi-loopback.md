@@ -71,9 +71,29 @@ La configuration temporaire a été restaurée (`restore=restored`). Le wrapper 
 
 Le moteur canonique après correctif, `build_codex_110/Release/TimoxVirtualAsioEngine.exe`, possède le SHA-256 `F6E46D6257EB842AACDCF279137D0780F3BA6C041E7E596754D5495B5C71CC8A`, une taille de 1177600 octets et une date d'écriture UTC du 21 octobre 2026 à 23:21:47. La lecture de provenance a été effectuée après le contre-essai, avant l'essai prolongé.
 
-## Prochaine preuve à acquérir
+## Essai prolongé : continuité observée, qualité encore ouverte
 
-Préparer une exécution `-Seconds 610 -RequireStableBridges -MinimumStableSeconds 600`, afin de réserver une marge de démarrage et d'obtenir au moins 600 secondes **réellement observées**. Avant lancement, revérifier les PID et chemins du moteur installé et de Control : ceux du wrapper d'un essai précédent ne sont pas réutilisables sans vérification. Le même protocole de sauvegarde, configuration isolée, arrêt coordonné et restauration s'applique. Aucun résultat d'endurance n'est revendiqué dans ce rapport à ce stade.
+L'exécution `-Seconds 610 -RequireStableBridges -MinimumStableSeconds 600` a terminé avec code 0, après vérification des PID et chemins de Control et du moteur installé. Même format et endpoint que le contre-essai court, mêmes hashes moteur/DLL/sonde. Session locale : `build_wasapi_e2e/session-8fe4987100f042aaabf308dcead850d5/asio-engine-458e179bcf904fe499d261ac5d1fbbfe`.
+
+| Mesure | Résultat |
+|---|---:|
+| Frames analysées par le récepteur | 29280000 |
+| Fenêtres contenant les deux tons / total | 24276 / 24400 (99,49 %) |
+| Fenêtres non conformes | 124 |
+| Intervalle observé | 2,2713069 → 612,2174906 s |
+| Durée observée / observations | 609,9461837 s / 551 |
+| Écart maximal entre observations | 1,2285983 s |
+| Nouveaux incidents des sept compteurs | 0 |
+| Reset ASIO / valeurs non finies / échantillons nuls | false / 0 / 0 |
+| Présence du signal / stabilité surveillée | true / true |
+
+Les deux générations sont restées `running`, sans erreur ni timeout de préremplissage, avec progression des frames natives à chaque observation. Les références de démarrage sont de 10176 frames silencieuses côté rendu, 10240 côté graphe capture et une discontinuité capture ; elles restent inchangées. La durée totale des processus est de 614,4067694 secondes, différente de la durée analysée et de celle observée.
+
+**Limites importantes :** le critère de présence est de 90 % des fenêtres ; le succès ne signifie donc pas que les 24400 fenêtres sont conformes. Les 124 échecs et le RMS global de 0,0017282491, supérieur à celui de l'essai court, restent inexpliqués. L'environnement Windows partagé peut contenir d'autres sons, mais ce n'est pas une cause démontrée. Aucun enregistrement PCM n'a été effectué. La correction de débit atteint encore ±2000 ppm à l'état final ; un test déterministe séparé reproduit une modulation due aux échanges par blocs, même sans dérive d'horloge. Un correctif est étudié séparément et n'était pas présent dans ce moteur testé. Cet essai prouve la continuité exposée par les compteurs et la présence majoritaire du signal, pas la fidélité, l'absence de tout artefact, la latence ou la parité CPU.
+
+Le wrapper confirme `restore=restored` et un hash de configuration utilisateur inchangé. Après restauration, une lecture HTTP indépendante confirme API 1.0, moteur installé `running`, 48000 Hz/2048 frames, 22 routes, santé `healthy` et aucune erreur moteur. Aucun remplacement du moteur installé ni de la DLL.
+
+Les prochaines preuves portent sur la modulation du ratio, les fenêtres non conformes, les autres fréquences/quanta et la mesure de latence/CPU.
 
 ## Provenance et restauration de la première exécution
 
