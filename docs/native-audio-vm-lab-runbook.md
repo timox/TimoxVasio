@@ -133,6 +133,16 @@ complet si une de ces étapes manque ou demande un redémarrage.
 
 ## Références
 
+Preuve d'assemblage du 22 octobre 2026 : le parent a exécuté le snapshot propre
+du commit `5909035e4fbe6212a0f24a5ced94fa8ddac2270b`, avec sortie zéro,
+validation des douze fichiers du paquet non signé et correspondance du PDB
+confirmée dans la sortie de `dumpbin /pdbpath:verbose`. Le premier script a
+produit des journaux mêlant un en-tête UTF-8 et une sortie UTF-16 sous
+Windows PowerShell 5.1. Ces journaux historiques et leurs empreintes sont
+conservés sans réécriture ; il faut tenir compte de cet encodage lors de leur
+lecture. Les assemblages futurs écrivent toutes les lignes explicitement en
+UTF-8. Cette preuve de construction ne qualifie ni installation ni audio en VM.
+
 [Signature de test et HVCI](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/the-testsigning-boot-configuration-option),
 [catalogue de test](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/test-signing-driver-packages),
 [vérification SignTool](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/verifying-the-test-signature),
