@@ -33,6 +33,16 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
     endif()
     add_test(NAME NativeAudioBrokerTests COMMAND NativeAudioBrokerTests)
     set_tests_properties(NativeAudioBrokerTests PROPERTIES TIMEOUT 30)
+    add_executable(NativeAudioBrokerTransportTests tests/native_audio_broker_transport_tests.cpp
+        src/native_audio_broker_transport.cpp native-windows-audio/broker/broker_session.cpp
+        src/native_audio_access_policy.cpp)
+    target_include_directories(NativeAudioBrokerTransportTests PRIVATE include native-windows-audio/include
+        native-windows-audio/broker)
+    if(MSVC)
+        target_compile_options(NativeAudioBrokerTransportTests PRIVATE /W4 /WX /EHsc)
+    endif()
+    add_test(NAME NativeAudioBrokerTransportTests COMMAND NativeAudioBrokerTransportTests)
+    set_tests_properties(NativeAudioBrokerTransportTests PROPERTIES TIMEOUT 30)
     return()
 endif()
 
