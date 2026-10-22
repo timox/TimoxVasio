@@ -36,6 +36,9 @@ public:
         const auto* actual=backend_->Info();
         if(!actual || actual->endpointId!=expected_.endpointId || actual->kind!=expected_.kind ||
             !SameFormat(actual->format,expected_.format))return AUDCLNT_E_UNSUPPORTED_FORMAT;
+        // Discovery sized the graph reserve before this second Open. A larger
+        // native buffer invalidates that reserve; retry a fresh generation.
+        if(actual->bufferFrames>expected_.bufferFrames)return AUDCLNT_E_BUFFER_SIZE_ERROR;
         try {*actual_=*actual;}catch(...){return E_OUTOFMEMORY;}
         return S_OK;
     }
@@ -112,7 +115,13 @@ std::shared_ptr<WasapiBridgeManager::Session> WasapiBridgeManager::Create(
     }
     session->effective=effective;
     session->generation=nextGeneration_->fetch_add(1);
-    const auto capacity=(std::min)(std::size_t{65536},(std::max)(std::size_t{1024},static_cast<std::size_t>(quantum_)*8));
+    const auto capacity=WasapiBridgeCapacityFrames(rate_,quantum_,effective.format.sampleRate,effective.bufferFrames);
+    if(!capacity) {
+        error="WASAPI FIFO reserve exceeds 65536 graph frames or has invalid dimensions "
+            "(native buffer + 20 ms scheduler budget + graph quantum + SRC phase); "
+            "choose a smaller native buffer or a closer sample-rate ratio";
+        return {};
+    }
     session->io=std::make_shared<WasapiBridgeIo>(WasapiBridgeFormat{
         config.open.kind==WasapiStreamKind::Render?WasapiBridgeDirection::Render:WasapiBridgeDirection::Capture,
         effective.format.channels,rate_,quantum_,session->generation,capacity});

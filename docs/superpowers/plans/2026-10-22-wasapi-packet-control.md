@@ -23,6 +23,23 @@ Ces résultats ne qualifient pas les petits quanta : le dimensionnement FIFO his
 peut être inférieur à un paquet natif converti et fait l'objet d'un lot séparé.
 La DLL ASIO reste inchangée.
 
+## Dimensionnement aux petits quanta
+
+Le lot suivant remplace la capacité historique par une réserve calculée après
+découverte du buffer natif : burst converti avec marge ±2000 ppm, 20 ms de réserve
+de service, un quantum graphe et la phase SRC restante. Le préremplissage reste
+à mi-capacité ; la réserve historique de quatre quanta de chaque côté est
+conservée si elle est supérieure. Une capacité nécessaire supérieure à 65536
+frames est rejetée explicitement. Si la seconde ouverture annonce un buffer
+plus grand que celui de la découverte, elle échoue avant le démarrage audio.
+
+Build Release puis WasapiBridgeIoTests et AudioControllerWasapiTests réussis.
+La régression q16 avec paquet natif 960 frames à 44,1 kHz vers graphe 48 kHz
+conserve le premier burst converti de 1045 frames et termine le préremplissage
+au suivant sans rejet. Revue numérique indépendante sans P1/P2 identifié.
+Ce lot n'a pas encore été testé sur matériel ; les 20 ms constituent une réserve
+de stockage, pas une garantie de scheduling Windows ou de stabilité du PI.
+
 ## Essai matériel de 60 secondes
 
 Session locale `build_wasapi_e2e/session-eb743c480f9e4fb0ae4d5a2b743f6730/asio-engine-75e74c795bad400f9104c47fb60e2578`, le 22 octobre 2026 vers 06:01 UTC.

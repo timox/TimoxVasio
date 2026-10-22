@@ -16,6 +16,34 @@ struct WasapiBridgeFormat {
     std::size_t capacityFrames = 0;
 };
 
+// Control-thread sizing from discovery's entire native buffer (not one guessed
+// packet). Half the result is the worker's existing prefill/PI target. Reserve
+// one converted native burst, 20 ms of missing service, one graph callback and
+// one input frame's pending SRC outputs. 20 ms is a storage budget, NOT a Windows
+// scheduling guarantee or a bound on accumulated clock drift/PI transients.
+// Keep the historical 4-quanta reserve on each side of target when larger.
+// A causal SRC history does not release a taps-long burst: Process emits only
+// along its input timeline; its residual phase can still emit one input frame's
+// worth of outputs. Flush is never used by a live bridge.
+// Returns zero on unsupported dimensions or reserve > 65536 frames; callers
+// must reject preparation rather than silently truncate the required reserve.
+inline std::size_t WasapiBridgeCapacityFrames(std::uint32_t graphRate,std::uint32_t quantum,
+    std::uint32_t nativeRate,std::uint32_t nativeBufferFrames) noexcept {
+    if(graphRate<8000 || graphRate>384000 || nativeRate<8000 || nativeRate>384000 ||
+        quantum<16 || quantum>8192 || !nativeBufferFrames || nativeBufferFrames>nativeRate)return 0;
+    // 1/.998 dominates both capture's 1.002 and render's reciprocal correction.
+    // Validated bounds keep all products below 2^48; integer ceiling avoids a
+    // rounded-down reserve at exact frame boundaries, including extreme ratios.
+    const std::uint64_t denominator=static_cast<std::uint64_t>(nativeRate)*998;
+    const auto convert=[&](std::uint64_t frames) noexcept {
+        return (frames*graphRate*1000+denominator-1)/denominator;
+    };
+    const auto scheduler=(static_cast<std::uint64_t>(graphRate)*20+999)/1000;
+    const auto reserve=(std::max)({std::uint64_t{512},static_cast<std::uint64_t>(quantum)*4,
+        convert(nativeBufferFrames)+scheduler+quantum+convert(1)+1});
+    return reserve>32768 ? 0 : static_cast<std::size_t>(reserve*2);
+}
+
 // One immutable generation at GRAPH sample rate. Capture/loopback backends
 // convert device samples to this rate before WriteCaptureInterleaved; render
 // backends perform conversion after ReadRenderInterleaved. No SRC runs here.

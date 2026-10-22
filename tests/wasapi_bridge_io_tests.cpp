@@ -24,6 +24,44 @@ void operator delete(void* pointer, std::size_t) noexcept { std::free(pointer); 
 void operator delete[](void* pointer, std::size_t) noexcept { std::free(pointer); }
 
 static WasapiBridgeFormat Format(WasapiBridgeDirection direction) { return {direction, 2, 48000, 16, 7, 16}; }
+static void NativeBurstCapacity() {
+    // Integer reference: bound both capture output and render input at +/-0.2%.
+    for (unsigned graphRate : {8000U,44100U,48000U,384000U})
+    for (unsigned nativeRate : {8000U,44100U,48000U,384000U})
+    for (unsigned quantum : {16U,32U,64U,128U,256U,512U,2048U,8192U}) {
+        const unsigned nativeFrames=nativeRate/50; // One 20 ms native buffer.
+        const std::uint64_t denominator=static_cast<std::uint64_t>(nativeRate)*998;
+        const auto burst=(static_cast<std::uint64_t>(nativeFrames)*graphRate*1000+denominator-1)/denominator;
+        const auto jitter=(static_cast<std::uint64_t>(graphRate)*20+999)/1000;
+        const auto phase=(static_cast<std::uint64_t>(graphRate)*1000+denominator-1)/denominator;
+        const auto required=burst+jitter+quantum+phase+1;
+        const auto capacity=WasapiBridgeCapacityFrames(graphRate,quantum,nativeRate,nativeFrames);
+        Require(capacity<=65536 && capacity/2>=required && capacity>=8*quantum,
+            "native burst and scheduler reserve do not fit around prefill target");
+        for(auto direction : {WasapiBridgeDirection::Capture,WasapiBridgeDirection::Render}) {
+            WasapiBridgeIo io({direction,1,graphRate,quantum,1,capacity});
+            std::vector<float> samples(capacity,0.25f);float* output[]={samples.data()};const float* input[]={samples.data()};
+            const auto write=[&](std::size_t frames) {
+                if(direction==WasapiBridgeDirection::Capture)return io.WriteCaptureInterleaved(samples.data(),frames,samples.size());
+                std::size_t total=0;while(total<frames){const auto n=(std::min)(frames-total,static_cast<std::size_t>(quantum));const auto written=io.WriteRenderBlock(input,n,1);if(written!=n)return total+written;total+=written;}return total;
+            };
+            const auto read=[&](std::size_t frames) {
+                if(direction==WasapiBridgeDirection::Render)return io.ReadRenderInterleaved(samples.data(),frames,samples.size());
+                std::size_t total=0;while(total<frames){const auto n=(std::min)(frames-total,static_cast<std::size_t>(quantum));const auto got=io.ReadCaptureBlock(output,n,1);if(got!=n)return total+got;total+=got;}return total;
+            };
+            Require(write(capacity/2)==capacity/2,"prefill failed");
+            Require(read(required)==required,"bounded missing service starved prefill");
+            Require(write(required*2)==required*2,"bounded burst overflowed headroom");
+            Require(!io.RejectedFrames() && !io.SilencedFrames(),"reserve exercise lost frames");
+        }
+    }
+    Require(WasapiBridgeCapacityFrames(48000,16,44100,960)>2090,"small quantum regression");
+    Require(WasapiBridgeCapacityFrames(384000,16,8000,8000)==0,"oversized conversion silently clamped");
+    Require(WasapiBridgeCapacityFrames(0,16,48000,960)==0 &&
+        WasapiBridgeCapacityFrames(48000,16,0,960)==0 &&
+        WasapiBridgeCapacityFrames(48000,15,48000,960)==0 &&
+        WasapiBridgeCapacityFrames(48000,16,48000,UINT32_MAX)==0,"invalid capacity dimensions accepted");
+}
 static void CaptureReadiness() {
     WasapiBridgeIo io(Format(WasapiBridgeDirection::Capture));
     const float samples[]={1,11,2,12,3,13};float left[16],right[16];float* planes[]={left,right};
@@ -186,7 +224,7 @@ static_assert(noexcept(std::declval<WasapiBridgeIo>().WriteCaptureInterleaved(nu
 static_assert(noexcept(std::declval<WasapiBridgeIo>().ReadRenderInterleaved(nullptr, 0, 0)));
 static_assert(noexcept(std::declval<WasapiBridgeIo>().BufferedFrames()));
 int main() {
-    try { CaptureReadiness(); Capture(); RenderAndNoAllocation(); InvalidCalls(); InvalidFormats(); BackendBlocksAndGenerations(); BufferedSnapshot();
+    try { NativeBurstCapacity(); CaptureReadiness(); Capture(); RenderAndNoAllocation(); InvalidCalls(); InvalidFormats(); BackendBlocksAndGenerations(); BufferedSnapshot();
         std::puts("WASAPI bridge IO tests passed"); return 0;
     } catch (const std::exception& error) { std::fprintf(stderr, "%s\n", error.what()); return 1; }
 }

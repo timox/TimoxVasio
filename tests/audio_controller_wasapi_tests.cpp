@@ -19,6 +19,9 @@ template<class F> void Await(F predicate,const char* message){
 struct NativeState {
     std::atomic<unsigned> opens{0},starts{0},closes{0},serial{0},invalidateThrough{0};
     std::atomic<bool> wrongThread{false},mismatch{false},offline{false},defaultCollision{false};
+    unsigned rate=48000,bufferFrames=128;
+    bool growSecondBuffer=false;
+    std::atomic<unsigned> captureAvailable{0};
 };
 class Backend final:public IWasapiBackend {
 public:
@@ -28,9 +31,9 @@ public:
         Check();++s->opens;
         if(s->offline || config.endpointId==L"missing")return AUDCLNT_E_DEVICE_INVALIDATED;
         info.kind=config.kind;info.endpointId=config.endpointId.empty()?(s->defaultCollision?L"render":L"default"):config.endpointId;
-        info.format={48000,2,32,32,8,3,WasapiSampleEncoding::IeeeFloat};
+        info.format={s->rate,2,32,32,8,3,WasapiSampleEncoding::IeeeFloat};
         if(s->mismatch && serial%2==0){info.format.channels=1;info.format.blockAlign=4;info.format.channelMask=1;}
-        info.bufferFrames=128;return S_OK;
+        info.bufferFrames=s->bufferFrames+(s->growSecondBuffer && serial%2==0?1:0);return S_OK;
     }
     const WasapiStreamInfo* Info()const noexcept override{return &info;}
     HRESULT Start()noexcept override{Check();++s->starts;return S_OK;}
@@ -42,9 +45,12 @@ public:
         return WaitForSingleObject(stop,(std::min)(timeout,DWORD{10}))==WAIT_OBJECT_0
             ?WasapiWaitResult{WasapiWaitKind::Stop,S_OK}:WasapiWaitResult{WasapiWaitKind::Timeout,S_OK};
     }
-    HRESULT NextCapturePacketFrames(std::uint32_t& n)noexcept override{Check();n=0;return S_OK;}
-    HRESULT AcquireCapture(WasapiCapturePacket& p)noexcept override{p={};return AUDCLNT_S_BUFFER_EMPTY;}
-    HRESULT ReleaseCapture(std::uint32_t)noexcept override{return S_OK;}
+    HRESULT NextCapturePacketFrames(std::uint32_t& n)noexcept override{Check();n=(std::min)(s->captureAvailable.load(),info.bufferFrames);return S_OK;}
+    HRESULT AcquireCapture(WasapiCapturePacket& p)noexcept override{
+        p={};p.frames=(std::min)(s->captureAvailable.load(),info.bufferFrames);p.silent=true;
+        return p.frames?S_OK:AUDCLNT_S_BUFFER_EMPTY;
+    }
+    HRESULT ReleaseCapture(std::uint32_t frames)noexcept override{s->captureAvailable-=frames;return S_OK;}
     HRESULT RenderWritableFrames(std::uint32_t& n)noexcept override{n=0;return S_OK;}
     HRESULT AcquireRender(std::uint32_t,std::uint8_t*& p)noexcept override{p=nullptr;return E_FAIL;}
     HRESULT ReleaseRender(std::uint32_t,bool)noexcept override{return S_OK;}
@@ -54,6 +60,39 @@ private:
 };
 WasapiBridgeConfiguration Bridge(const char* id,WasapiStreamKind kind,const wchar_t* endpoint){
     WasapiBridgeConfiguration b;b.id=id;b.open.kind=kind;b.open.endpointId=endpoint;return b;
+}
+void NativeCapacityPreparation() {
+    std::string error;
+    const auto config=Bridge("source",WasapiStreamKind::Capture,L"capture");
+    auto native=std::make_shared<NativeState>();native->rate=44100;native->bufferFrames=960;
+    auto factory=[native]{return std::make_unique<Backend>(native);};
+    auto manager=WasapiBridgeManager::Prepare({config},48000,16,{},factory,error);
+    Require(manager!=nullptr,"small-quantum native reserve preparation failed");
+    auto io=manager->Bindings().at(0).io;
+    Require(io->Format().capacityFrames==WasapiBridgeCapacityFrames(48000,16,44100,960),
+        "manager did not size FIFO from native buffer");
+    native->captureAvailable=960;
+    Await([&]{return io->BufferedFrames()==1045;},"initial native burst was dropped");
+    float left[16],right[16];float* planes[]={left,right};
+    Require(io->ReadCaptureBlock(planes,16,2)==0 && io->BufferedFrames()==1045,
+        "graph drained capture before native-aware prefill");
+    native->captureAvailable=960;
+    Await([&]{return manager->Snapshots().at(0).state=="running";},"second burst never reached native-aware prefill");
+    Require(io->ReadCaptureBlock(planes,16,2)==16 && !io->RejectedFrames(),"prefill lost native burst");
+    manager.reset();io.reset();
+    auto changed=std::make_shared<NativeState>();changed->growSecondBuffer=true;
+    Require(!WasapiBridgeManager::Prepare({config},48000,16,{},[changed]{return std::make_unique<Backend>(changed);},error)
+        && changed->starts==0,"larger second Open bypassed reserve validation");
+    auto oversized=std::make_shared<NativeState>();oversized->rate=8000;oversized->bufferFrames=8000;
+    Require(!WasapiBridgeManager::Prepare({config},384000,16,{},[oversized]{return std::make_unique<Backend>(oversized);},error)
+        && oversized->starts==0 && error.find("65536")!=std::string::npos,
+        "unrepresentable reserve was clamped or lacked diagnostic");
+    for(auto rates : {std::pair<unsigned,unsigned>{8000,384000},{384000,8000}}) {
+        auto extreme=std::make_shared<NativeState>();extreme->rate=rates.first;extreme->bufferFrames=rates.first/50;
+        auto prepared=WasapiBridgeManager::Prepare({config},rates.second,16,{},[extreme]{return std::make_unique<Backend>(extreme);},error);
+        Require(prepared && prepared->Bindings().at(0).io->Format().capacityFrames>=1024,
+            "valid extreme ratio preparation failed");
+    }
 }
 void Transactions(const std::wstring& path){
     auto native=std::make_shared<NativeState>();VasioClientManager clients;
@@ -220,7 +259,7 @@ int main(){
     wchar_t temp[MAX_PATH]{};GetTempPathW(MAX_PATH,temp);
     const auto path=std::wstring(temp)+L"TimoxVasio-controller-wasapi-"+std::to_wstring(GetCurrentProcessId())+L".json";
     DeleteFileW(path.c_str());
-    try{Transactions(path);OfflineRestoreAndStop(path);PublicationBackoff(path);ActiveDefaultFollowsRole(path);}catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
+    try{NativeCapacityPreparation();Transactions(path);OfflineRestoreAndStop(path);PublicationBackoff(path);ActiveDefaultFollowsRole(path);}catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
     DeleteFileW(path.c_str());DeleteFileW((path+L".profiles").c_str());
     std::cout<<"Audio controller WASAPI tests passed\n";
 }
