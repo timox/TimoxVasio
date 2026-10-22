@@ -39,3 +39,17 @@ tests. Le moteur distribué n'active pas encore ce transport.
 Ces résultats ne prouvent ni l'isolation audio entre logons, ni le fonctionnement
 du miniport en noyau, ni les performances de bout en bout. La qualification VM
 reste décrite dans [le protocole de qualification](native-audio-session-qualification.md).
+
+## Flux Windows local
+
+`PipeStream` fournit maintenant un flux byte-mode sur de vrais pipes Windows,
+avec IO overlapped, annulation persistante et attente de completion avant
+restitution des buffers. Le délai déclenche l'annulation ; le drainage de la
+completion Windows peut dépasser ce délai. Ce flux seul n'authentifie personne.
+
+La suite `NativeAudioPipeStreamTests` passe avec les trois suites précédentes
+(4/4). Elle couvre les transferts fragmentés, EOF, timeout, connexion occupée,
+annulation de lecture/écriture/acceptation/connexion et courses entre completion
+et annulation. Une revue indépendante n'a relevé aucun défaut bloquant.
+Les ACL de production, Schannel sur ce flux et la liaison au logon restent à
+intégrer et qualifier ; les tests courants n'activent aucun pilote ni service.
