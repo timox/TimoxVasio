@@ -1,0 +1,41 @@
+# Transport client du broker natif
+
+Le client `CreateBrokerNativeAudioTransport` adapte le protocole du broker à
+`INativeAudioTransport`. Il est destiné au worker du moteur, jamais au callback
+audio. Il ne modifie pas le pilote ASIO autonome.
+
+L'ouverture exige successivement un canal authentifié, une réponse SESSION
+validée et une confirmation du bail sur le canal de données. La génération
+n'est publiée au moteur qu'après ces trois étapes. Sans canal fourni, le client
+retourne `Unavailable` ; il ne sélectionne pas le transport direct de laboratoire.
+
+Deux buffers fixes bornent les messages. Chaque réponse est contrôlée pour
+l'opération, l'identifiant de requête, le bail, la génération et la taille avant
+copie du PCM. Une réponse `Full` permet de réessayer avec un nouvel identifiant ;
+les erreurs terminales ferment le canal. L'annulation est persistante et peut
+venir d'un autre thread, tandis que fermeture et échanges restent sur le worker.
+
+## Vérification du 22 octobre 2026
+
+Build Release sous MSVC avec `/W4 /WX` réussi. Les trois suites de
+`build_native_production` passent : politique d'accès, session broker, transport
+client. Le banc client échange avec le véritable `BrokerSession`, au travers
+d'un canal en mémoire et d'un périphérique simulé. La revue indépendante n'a
+relevé aucun défaut bloquant.
+
+Les essais couvrent notamment le duplex PCM, le second propriétaire refusé,
+la fermeture/réouverture, la confirmation de bail refusée, les réponses altérées,
+les bornes de taille, les reprises après saturation et l'annulation aux trois
+phases d'ouverture/échange.
+
+## Ce qui reste à raccorder
+
+`INativeAudioAuthenticatedChannel` est un contrat, pas encore un canal Windows
+implémenté. Authentification réelle, liaison à l'identité Windows, respect des
+délais et achèvement des IO annulées restent à vérifier sur ce futur canal.
+Le timeout réel et l'épuisement du compteur client ne sont pas exercés par ces
+tests. Le moteur distribué n'active pas encore ce transport.
+
+Ces résultats ne prouvent ni l'isolation audio entre logons, ni le fonctionnement
+du miniport en noyau, ni les performances de bout en bout. La qualification VM
+reste décrite dans [le protocole de qualification](native-audio-session-qualification.md).
