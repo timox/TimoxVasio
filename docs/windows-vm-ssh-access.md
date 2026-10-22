@@ -11,16 +11,20 @@ sans domaine, espace ou caractère spécial SSH.
 
 ## Préparation
 
-Copier dans la VM `docs/scripts/Configure-TimoxTestVmSsh.ps1` et **uniquement**
-la clé publique Ed25519 `.pub` fournie séparément. Ne jamais transférer la clé
-privée dans la VM ni la communiquer. La clé publique n'est pas encore fournie
-avec ce document.
+Copier dans la VM [Configure-TimoxTestVmSsh.ps1](scripts/Configure-TimoxTestVmSsh.ps1)
+et [timox-vm.pub](scripts/timox-vm.pub), la clé publique Ed25519 dédiée à ce banc.
+Ne jamais transférer la clé privée dans la VM ni la communiquer. Elle reste sur
+le poste de développement dans un dossier protégé et ignoré par Git.
+
+Empreinte de cette clé publique client :
+`SHA256:XbE/Z60lEJtvikBYm+yoH/OcLGKckeMMI0q5/fukdJI`.
+Elle est distincte de la clé d'hôte de la VM, qui sera relevée après configuration.
 
 Adapter ces trois valeurs à la VM et au poste qui établira la connexion :
 
 ```powershell
-$account = 'vmtest'
-$publicKey = 'C:\Users\vmtest\Downloads\timox-vm.pub'
+$account = 'timo'
+$publicKey = 'C:\Users\timo\Downloads\timox-vm.pub'
 $sourceAddress = '192.168.1.50' # IP du client vue par la VM, pas IP de la VM
 ```
 
@@ -80,8 +84,8 @@ Ne transmettre aucun mot de passe, clé privée ou jeton. Le poste client pourra
 ensuite tester, en remplaçant l'adresse et le chemin de sa clé privée locale :
 
 ```powershell
-ssh -o IdentitiesOnly=yes -i C:\chemin\cle-privee -p 22 vmtest@192.168.1.60
-sftp -o IdentitiesOnly=yes -i C:\chemin\cle-privee -P 22 vmtest@192.168.1.60
+ssh -o IdentitiesOnly=yes -i C:\chemin\cle-privee -p 22 timo@192.168.1.60
+sftp -o IdentitiesOnly=yes -i C:\chemin\cle-privee -P 22 timo@192.168.1.60
 ```
 
 Comparer l'empreinte affichée à la première connexion avec celle relevée dans
