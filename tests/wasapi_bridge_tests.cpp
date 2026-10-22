@@ -47,6 +47,10 @@ struct FakeState {
     std::atomic<std::int64_t> controlNanos{0};
     std::int64_t advanceClockOnCaptureRelease=0;
     std::atomic<bool> waitingAfterCapture{false};
+    std::atomic<unsigned> renderDrainCompleted{0};
+    std::atomic<std::int64_t> renderWakeNanos{1000000000};
+    unsigned graphWriteAt=0;
+    std::atomic<unsigned> graphWrites{0};
     WasapiBridgeIo* graphIo=nullptr;
     unsigned graphReadAt=0;
     std::atomic<unsigned> graphReads{0};
@@ -87,17 +91,23 @@ public:
     void Close() noexcept override { CheckThread(); s->held=false; ++s->closes; }
     WasapiWaitResult Wait(HANDLE stop,DWORD timeout) noexcept override {
         CheckThread(); ++s->waits;
+        if(s->manualControlClock && s->info.kind==WasapiStreamKind::Render)
+            s->renderDrainCompleted=s->renderedFrames.load();
         if(s->manualControlClock && s->captureOffset==s->capture.size()/2)s->waitingAfterCapture=true;
         if(WaitForSingleObject(stop,0)==WAIT_OBJECT_0) return {WasapiWaitKind::Stop,S_OK};
         if(FAILED(s->waitError)) return {WasapiWaitKind::Failed,s->waitError};
         const bool available=s->info.kind==WasapiStreamKind::Render
             ? s->renderedFrames.load()<s->renderLimit : s->captureOffset.load()<std::min<std::size_t>(s->capture.size()/2,s->captureLimit.load());
         if(available) {
-            if(s->manualControlClock)s->controlNanos=1000000000;
+            if(s->manualControlClock)s->controlNanos=s->info.kind==WasapiStreamKind::Render?s->renderWakeNanos.load():1000000000;
             return {WasapiWaitKind::Audio,S_OK};
         }
         if(WaitForSingleObject(stop,timeout)==WAIT_OBJECT_0)return {WasapiWaitKind::Stop,S_OK};
-        if(s->manualControlClock && s->captureOffset<s->captureLimit)s->controlNanos=1000000000;
+        if(s->manualControlClock) {
+            if(s->info.kind==WasapiStreamKind::Render) {
+                if(s->renderedFrames<s->renderLimit)s->controlNanos=s->renderWakeNanos.load();
+            } else if(s->captureOffset<s->captureLimit)s->controlNanos=1000000000;
+        }
         return {WasapiWaitKind::Timeout,S_OK};
     }
     HRESULT NextCapturePacketFrames(std::uint32_t& frames) noexcept override {
@@ -138,7 +148,12 @@ public:
         CheckThread(); if(!s->held) return AUDCLNT_E_OUT_OF_ORDER;
         if(FAILED(s->releaseError)) return s->releaseError;
         if(silent) std::fill_n(s->rendered.data()+s->renderedFrames.load()*2,frames*2,0.0f);
-        s->renderedFrames+=frames; s->held=false; return S_OK;
+        s->renderedFrames+=frames; s->held=false;
+        if(s->graphIo && s->graphWriteAt && s->renderedFrames>=s->graphWriteAt && !s->graphWrites.load()) {
+            const float* planes[]={s->graphLeft,s->graphRight};
+            s->graphWrites=static_cast<unsigned>(s->graphIo->WriteRenderBlock(planes,2048,2));
+        }
+        return S_OK;
     }
 private:
     void CheckThread() noexcept { if(s->workerThread && GetCurrentThreadId()!=s->workerThread) s->wrongThread=true; }
@@ -190,6 +205,55 @@ void CaptureObservationIgnoresPassBudget() {
         const double ratio=48000.0/nativeRate*expected.Update((8192+expectedFrames)*0.5,1);
         Require(std::abs(bridge.Health().ratio-ratio)<1e-12,"capture PI observation depends on partial-pass budget");
         Require(bridge.Health().controlBacklogUpdates==0,"normal bounded drain used prolonged-backlog fallback");
+        bridge.Stop();CheckCleanup(s);
+    }
+}
+
+void RenderObservationIgnoresPassBudget() {
+    for(unsigned nativeRate : {44100U,48000U,96000U})for(unsigned budget : {31U,257U,4096U,8192U}) {
+        auto s=std::make_shared<FakeState>();s->info.kind=WasapiStreamKind::Render;
+        s->info.format.sampleRate=nativeRate;s->info.bufferFrames=8192;s->renderPacket=8192;
+        s->manualControlClock=true;s->graphWriteAt=4096;
+        WasapiBridgeIo io({WasapiBridgeDirection::Render,2,48000,2048,104,32768});s->graphIo=&io;
+        const auto signal=Tone(14336,48000);
+        for(unsigned start=0;start<14336;start+=2048) {
+            for(unsigned n=0;n<2048;++n){s->graphLeft[n]=signal[(start+n)*2];s->graphRight[n]=signal[(start+n)*2+1];}
+            if(start<12288){const float* planes[]={s->graphLeft,s->graphRight};Require(io.WriteRenderBlock(planes,2048,2)==2048,"render observation prefill");}
+        }
+        auto config=Config(WasapiStreamKind::Render);config.targetFillFrames=12288;
+        config.maxFramesPerPass=budget;config.kp=WasapiBridgeConfig{}.kp;config.ki=WasapiBridgeConfig{}.ki;
+        config.controlTimeContext=s.get();config.controlTimeNanoseconds=[](void* context)noexcept {
+            return static_cast<FakeState*>(context)->controlNanos.load();
+        };
+        WasapiBridge bridge(config,io,Factory(s));Require(bridge.Start()==S_OK,"render observation startup");
+        Await([&]{return s->waits>0;},"render initial empty wake did not finish");
+        DriftResampler reference(2,nativeRate/48000.0);
+        auto controller=FillLevelController::ForPacketCadence(FillLevelController::Direction::Render,
+            12288,config.kp,config.ki,48000,2048);
+        std::vector<float> expected(8256*2);unsigned consumed=0,produced=0;
+        double previousFill=12288;
+        // Odd first output count retains an interpolation tail at ratio 2.
+        // Second wake advances time and proves that both SRC phase and PI state survive.
+        for(unsigned end : {8191U,8256U}) {
+            const auto progress=reference.Process(signal.data()+consumed*2,14336-consumed,
+                expected.data()+produced*2,end-produced);
+            Require(progress.produced==end-produced,"reference render could not produce native span");
+            consumed+=progress.consumed;produced=end;
+            const double fill=14336-consumed;
+            const double expectedRatio=nativeRate/48000.0*controller.Update((previousFill+fill)*0.5,1);
+            s->renderWakeNanos=end==8191?1000000000:2000000000;s->renderLimit=end;
+            Await([&]{return s->renderDrainCompleted>=end;},"render partial passes never reached completed observation");
+            const auto health=bridge.Health();
+            Require(std::abs(expectedRatio-nativeRate/48000.0)>1e-5,
+                "render observation did not exercise active PI correction");
+            Require(health.state==WasapiBridgeState::Running && s->graphWrites==2048 &&
+                !health.renderSilencedInputFrames && !health.renderSilencedDeviceFrames && !health.controlBacklogUpdates,
+                "render observation unexpectedly primed, starved, or used deadline fallback");
+            Require(std::abs(health.ratio-expectedRatio)<1e-12,"render PI observation depends on partial-pass budget");
+            for(unsigned n=0;n<end*2;++n)Require(std::abs(s->rendered[n]-expected[n])<1e-6f,
+                "render partial passes lost SRC phase or changed audio samples");
+            reference.SetRatio(expectedRatio);previousFill=fill;
+        }
         bridge.Stop();CheckCleanup(s);
     }
 }
@@ -414,7 +478,7 @@ void SilenceAndReprime() {
 }
 
 int main() {
-    try {CaptureObservationIgnoresPassBudget(); ProlongedCaptureDrainStillUpdatesControl(); CapturePrimingWithLiveGraph(); CaptureSignal(); RenderSignal(); PrimingOverflowAndFailures(); CancelOpeningAndWait(); SilenceAndReprime();}
+    try {RenderObservationIgnoresPassBudget(); CaptureObservationIgnoresPassBudget(); ProlongedCaptureDrainStillUpdatesControl(); CapturePrimingWithLiveGraph(); CaptureSignal(); RenderSignal(); PrimingOverflowAndFailures(); CancelOpeningAndWait(); SilenceAndReprime();}
     catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
     std::cout<<"WASAPI bridge tests passed\n";
 }
