@@ -505,6 +505,9 @@ if(WIN32)
     add_executable(AudioControllerWasapiTests tests/audio_controller_wasapi_tests.cpp ${controller_test_sources})
     target_include_directories(AudioControllerWasapiTests PRIVATE ${INCLUDE_DIR} ${SRC_DIR} ${CMAKE_SOURCE_DIR}/vendor)
     target_link_libraries(AudioControllerWasapiTests PRIVATE ole32 oleaut32 winmm user32)
+    add_executable(AudioControllerNativeTests tests/audio_controller_native_tests.cpp ${controller_test_sources})
+    target_include_directories(AudioControllerNativeTests PRIVATE ${INCLUDE_DIR} ${SRC_DIR} ${CMAKE_SOURCE_DIR}/vendor)
+    target_link_libraries(AudioControllerNativeTests PRIVATE ole32 oleaut32 winmm user32)
 
     get_target_property(api_test_sources ApplicationProfilesApiTests SOURCES)
     list(REMOVE_ITEM api_test_sources "${CMAKE_SOURCE_DIR}/tests/application_profiles_api_tests.cpp")
@@ -545,16 +548,18 @@ if(WIN32)
     target_compile_definitions(JsonRuntimeProbe PRIVATE _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
     target_link_libraries(JsonRuntimeProbe PRIVATE windowsapp)
     foreach(clock_consumer TimoxVirtualAsioEngine AudioControllerClockTests
-            AudioControllerPersistenceTests ApplicationProfilesApiTests AudioControllerWasapiTests WasapiBridgeApiTests)
+            AudioControllerPersistenceTests ApplicationProfilesApiTests AudioControllerWasapiTests WasapiBridgeApiTests AudioControllerNativeTests)
         target_sources(${clock_consumer} PRIVATE src/software_clock_host.cpp
             src/wasapi_bridge_manager.cpp src/wasapi_bridge.cpp src/wasapi_backend.cpp
-            src/wasapi_device_enumerator.cpp src/wasapi_sample_conversion.cpp src/drift_resampler.cpp)
+            src/wasapi_device_enumerator.cpp src/wasapi_sample_conversion.cpp src/drift_resampler.cpp
+            src/native_audio_manager.cpp src/native_audio_backend.cpp)
+        target_include_directories(${clock_consumer} PRIVATE ${CMAKE_SOURCE_DIR}/native-windows-audio/include)
         target_compile_definitions(${clock_consumer} PRIVATE NOMINMAX)
         target_link_libraries(${clock_consumer} PRIVATE avrt propsys uuid)
     endforeach()
     foreach(store_consumer TimoxVirtualAsioEngine AudioConfigurationStoreTests
             AudioControllerClockTests AudioControllerPersistenceTests ApplicationProfilesApiTests
-            AudioControllerWasapiTests WasapiBridgeApiTests)
+            AudioControllerWasapiTests WasapiBridgeApiTests AudioControllerNativeTests)
         target_sources(${store_consumer} PRIVATE src/wasapi_bridge_configuration.cpp)
         target_include_directories(${store_consumer} PRIVATE ${SRC_DIR})
     endforeach()
