@@ -66,13 +66,15 @@ Chemin de latence : tampon Windows + période virtuelle WaveRT + file privée + 
 
 ## État de l'outillage constaté
 
+Mise à jour du 22 octobre : l'ensemble SDK/WDK NuGet `10.0.28000.2526`, Visual Studio 2026 et son composant WDK a depuis été acquis et vérifié. La compilation du SysVAD Microsoft épinglé a terminé avec code 0, InfVerif et ApiValidator réussis. Le `.sys` de référence est non signé ; il ne s'agit pas encore de TimoxWindowsAudio. Les versions, scripts reproductibles, erreurs intermédiaires et SHA-256 sont consignés dans [BUILDING.md](../../../native-windows-audio/BUILDING.md). Aucun pilote n'a été déployé. L'inspection initiale ci-dessous décrit l'état avant cette préparation.
+
 Inspection locale en lecture seule le 22 octobre 2026 : `C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0` contient cppwinrt/shared/ucrt/um/winrt. Les chemins standard `km/ntddk.h`, `km/portcls.h`, `Lib/10.0.26100.0/km/x64/portcls.lib`, `Windows Kits/10/build`, `bin/10.0.26100.0/x64/Inf2Cat.exe` et `InfVerif.exe` sont absents ; `signtool.exe` est présent. Aucun environnement WDK/EWDK n'a été trouvé dans les variables du processus. Cela ne prouve pas l'absence de toute installation non standard, mais **aucune chaîne WDK utilisable n'est démontrée**.
 
 Avant compilation, choisir et épingler un ensemble Visual Studio/SDK/WDK compatible, confirmer les versions et effectuer une compilation minimale. La documentation actuelle exige des numéros de build SDK/WDK correspondants et fournit des WDK via installation ou NuGet ; ne pas considérer le SDK existant comme un WDK. Aucune installation ou acquisition n'a été effectuée pour cette étude. [Installation WDK Microsoft](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk).
 
 ## Séquencement concret et preuves attendues
 
-N0 est maintenant implémenté et vérifié comme sous-projet autonome ; les chemins N1–N6 restent des **fichiers à créer**, pas des artefacts déjà présents.
+N0 est maintenant implémenté et vérifié comme sous-projet autonome. La chaîne WDK de N1 compile le pilote de référence ; l'adaptation Timox est en cours sous `native-windows-audio/driver/`. Les livrables suivants restent à réaliser et à vérifier ; les chemins du tableau sont des propositions.
 
 | Lot | Fichiers proposés | Preuve avant passage au suivant |
 |---|---|---|
@@ -99,7 +101,7 @@ Le package doit créer ou retrouver **son propre devnode** root/software énumé
 ## Inconnues qui empêchent encore une promesse de livraison
 
 - Matrice Windows exacte du produit et choix définitif PortCls/ACX après compilation/prototype.
-- WDK exploitable, cible noyau récupérable et disponibilité des moyens de signature/soumission.
+- Cible noyau récupérable et disponibilité des moyens de signature/soumission ; la chaîne WDK est désormais prouvée par compilation de référence.
 - Broker, contrôle d'accès multi-session et comportement lorsque plusieurs utilisateurs ouvrent Control.
 - Charge, jitter et latence du transport copié ; nécessité éventuelle d'un transport partagé plus complexe.
 - Compatibilité HVCI, tests HLK applicables et acceptation du paquet par Microsoft.
