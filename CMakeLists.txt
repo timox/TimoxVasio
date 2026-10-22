@@ -43,6 +43,23 @@ if(VASIO_BUILD_NATIVE_TRANSPORT_TESTS_ONLY)
     endif()
     add_test(NAME NativeAudioRoutingTests COMMAND NativeAudioRoutingTests)
     set_tests_properties(NativeAudioRoutingTests PROPERTIES TIMEOUT 30)
+    set(NATIVE_LAB_SOURCES src/native_audio_backend.cpp src/software_clock_host.cpp
+        src/drift_resampler.cpp src/audio_routing_runtime.cpp src/routing_graph.cpp
+        src/audio_transport.cpp src/vasio_client_manager.cpp)
+    add_executable(NativeAudioLabSessionTests tests/native_audio_lab_session_tests.cpp ${NATIVE_LAB_SOURCES})
+    add_executable(NativeAudioLabProbe tests/native_audio_lab_probe.cpp
+        src/native_audio_transport_win32.cpp ${NATIVE_LAB_SOURCES})
+    foreach(target NativeAudioLabSessionTests NativeAudioLabProbe)
+        target_include_directories(${target} PRIVATE include src native-windows-audio/include)
+        target_link_libraries(${target} PRIVATE ole32 user32 avrt winmm)
+        if(MSVC)
+            target_compile_options(${target} PRIVATE /EHsc)
+        endif()
+    endforeach()
+    add_test(NAME NativeAudioLabSessionTests COMMAND NativeAudioLabSessionTests)
+    add_test(NAME NativeAudioLabProbeHelp COMMAND NativeAudioLabProbe --help)
+    add_test(NAME NativeAudioLabProbeFake COMMAND NativeAudioLabProbe --fake --seconds 2)
+    set_tests_properties(NativeAudioLabSessionTests NativeAudioLabProbeHelp NativeAudioLabProbeFake PROPERTIES TIMEOUT 30)
     return()
 endif()
 

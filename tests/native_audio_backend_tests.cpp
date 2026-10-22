@@ -221,7 +221,64 @@ void PreparationBounds() {
         backend.Stop();
     }
 }
+void RenderSequenceExhaustion() {
+    auto transport=std::make_unique<Transport>();auto* t=transport.get();t->accept=true;
+    t->sequence=~std::uint64_t{0};t->renderPackets=1;
+    auto clock=std::make_unique<Clock>();auto* c=clock.get();
+    NativeAudioBackend backend(std::move(transport),std::move(clock));
+    Require(backend.Start(48000,256,81)==NativeTransferCode::Ok,"sequence exhaustion session starts");
+    c->AwaitWait();c->Tick();
+    const auto generation=backend.Generation();
+    Require(backend.Health().state==NativeAudioState::Running && backend.Health().renderNativeFrames==240 &&
+        generation->windowsRenderSource->BufferedFrames()==240,"UINT64_MAX render sequence must be accepted before exhaustion");
+    Require(t->sequence==0,"test fixture must wrap its unsigned wire sequence");
+    const auto writes=t->writes.load();t->renderPackets=1;
+    // A rejected packet terminates Pump instead of reaching its next WaitUntil.
+    // Signal time directly, then await the published terminal state, not a wait.
+    {std::lock_guard<std::mutex> lock(c->mutex);c->now+=5000000;c->changed.notify_all();}
+    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+    while(backend.Health().state!=NativeAudioState::Failed && std::chrono::steady_clock::now()<deadline)
+        std::this_thread::yield();
+    const auto failed=backend.Health();
+    Require(failed.state==NativeAudioState::Failed && failed.error==NativeTransferCode::InvalidPacket,
+        "render sequence zero after UINT64_MAX must retire the duplex session");
+    Require(failed.renderNativeFrames==240 && generation->windowsRenderSource->BufferedFrames()==240 && t->writes==writes,
+        "wrapped packet reached graph IO or allowed another capture transfer");
+    backend.Stop();Require(t->closes==1,"exhausted sequence session did not close exactly once");
+}
+void RepeatedWireGenerationKeepsDistinctEpochs() {
+    std::shared_ptr<NativeAudioGeneration> first;
+    {
+        auto transport=std::make_unique<Transport>();auto* t=transport.get();t->accept=true;
+        t->sequence=~std::uint64_t{0};t->renderPackets=1;
+        auto clock=std::make_unique<Clock>();auto* c=clock.get();
+        NativeAudioBackend backend(std::move(transport),std::move(clock));
+        Require(backend.Start(48000,256,91)==NativeTransferCode::Ok,"first lifetime epoch starts");
+        c->AwaitWait();c->Tick();first=backend.Generation();backend.Stop();
+        Require(t->opens==1&&t->closes==1,"first epoch owner lifecycle");
+    }
+    std::weak_ptr<NativeAudioGeneration> retired=first;
+    auto transport=std::make_unique<Transport>();auto* t=transport.get();t->accept=true;t->renderPackets=1;
+    auto clock=std::make_unique<Clock>();auto* c=clock.get();
+    NativeAudioBackend backend(std::move(transport),std::move(clock));
+    Require(backend.Start(48000,256,92)==NativeTransferCode::Ok,"replacement epoch starts with repeated wire generation");
+    c->AwaitWait();const auto second=backend.Generation();
+    Require(first->wireGeneration==second->wireGeneration && first->epoch==91 && second->epoch==92 &&
+        first->windowsRenderSource!=second->windowsRenderSource && first->windowsCaptureDestination!=second->windowsCaptureDestination,
+        "repeated device generation aliased retired engine IO");
+    Require(first->windowsRenderSource->Format().generationId==91 && first->windowsCaptureDestination->Format().generationId==91 &&
+        second->windowsRenderSource->Format().generationId==92 && second->windowsCaptureDestination->Format().generationId==92,
+        "duplex IO identities must carry lifetime epoch, not wire generation");
+    Require(first->windowsRenderSource->BufferedFrames()==240 && second->windowsRenderSource->BufferedFrames()==0 &&
+        second->windowsCaptureDestination->BufferedFrames()==0,"new epoch inherited old buffered PCM");
+    c->Tick();
+    Require(backend.Health().state==NativeAudioState::Running && backend.Health().renderNativeFrames==240 &&
+        first->windowsRenderSource->BufferedFrames()==240 && second->windowsRenderSource->BufferedFrames()==240,
+        "new epoch sequence zero inherited old UINT64_MAX sequence state or mutated retired IO");
+    first.reset();Require(retired.expired(),"replacement backend retained retired generation");
+    backend.Stop();Require(t->opens==1&&t->closes==1,"replacement epoch owner lifecycle");
+}
 }
 int main(){OneDuplexSessionAndBoundedBackpressure();DuplexPcmAtIndependentGraphRates();FailuresCancelAndPacing();
-    IndependentClockDrift();PreparationBounds();
+    IndependentClockDrift();PreparationBounds();RenderSequenceExhaustion();RepeatedWireGenerationKeepsDistinctEpochs();
     Require(pumpAllocations==0,"worker pumping performs no heap allocation");std::cout << "Native backend tests passed\n";}
