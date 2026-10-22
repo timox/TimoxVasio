@@ -1,6 +1,6 @@
 # Endpoints Windows natifs pour TimoxVasio
 
-Date : 22 octobre 2026. **Conception proposée, pas pilote implémenté ni certifié.** Ce lot prolonge le [moteur commun](2026-10-21-unified-audio-engine-design.md) et le [plan WASAPI](../plans/2026-10-21-wasapi-bridge.md). Il conserve le périmètre final : applications Windows et ASIO dans un graphe commun, GUI/API unifiées et performances mesurées.
+Date : 22 octobre 2026. **Prototype minimal compilé, pas encore chargé ni certifié.** Ce lot prolonge le [moteur commun](2026-10-21-unified-audio-engine-design.md) et le [plan WASAPI](../plans/2026-10-21-wasapi-bridge.md). Il conserve le périmètre final : applications Windows et ASIO dans un graphe commun, GUI/API unifiées et performances mesurées.
 
 ## Ce que l'utilisateur sélectionnera
 
@@ -74,7 +74,7 @@ Avant compilation, choisir et épingler un ensemble Visual Studio/SDK/WDK compat
 
 ## Séquencement concret et preuves attendues
 
-N0 est maintenant implémenté et vérifié comme sous-projet autonome. La chaîne WDK de N1 compile le pilote de référence ; l'adaptation Timox est en cours sous `native-windows-audio/driver/`. Les livrables suivants restent à réaliser et à vérifier ; les chemins du tableau sont des propositions.
+N0 est maintenant implémenté et vérifié comme sous-projet autonome. N1 possède son propre projet et binaire `TimoxWindowsAudio.sys` sous [native-windows-audio/driver](../../../native-windows-audio/driver/README.md), avec deux descriptions d'endpoints PCM32 stéréo 48 kHz, capture silencieuse et rendu abandonné. Le build WDK, InfVerif et ApiValidator passent ; les tests hôte du protocole et de la géométrie passent 2/2. Le pilote n'a pas été chargé : N1 reste incomplet tant que l'énumération et les flux ne sont pas vérifiés sur cible. Le transport privé N2 reste à implémenter. Les chemins des lots suivants sont des propositions.
 
 | Lot | Fichiers proposés | Preuve avant passage au suivant |
 |---|---|---|
