@@ -401,12 +401,35 @@ function App() {
                 endpoints: [...ports.values()]
             }));
         };
+        // Saved routes use application names, while live inventory uses PIDs.
+        // Resolve only an unambiguous open channel, retaining the durable ID for edits.
+        const applicationGroups = direction => {
+            const live = virtualGroups(direction);
+            const fallback = [...profileGroups(direction), ...savedGroups(direction)];
+            const clients = virtual.flatMap(driver => driver.clients || []);
+            const referenced = new Set((configuration?.routes || []).flatMap(route =>
+                [route.sourceEndpointId, route.destinationEndpointId]));
+            for (const group of fallback) {
+                group.endpoints = group.endpoints.filter(endpoint => {
+                    const match = /^virtual:TimoxVasio:app:(.+):(input|output):(\d+)$/.exec(endpoint.id);
+                    if (!match) return true;
+                    const matches = clients.filter(client => client.processName.trim().toLowerCase() === match[1].toLowerCase());
+                    if (matches.length !== 1) return true;
+                    const runtimeId = `virtual:TimoxVasio:${matches[0].pid}:${direction}:${match[3]}`;
+                    const owner = live.find(item => item.endpoints.some(port => port.id === runtimeId));
+                    if (!owner) return true;
+                    const runtime = owner.endpoints.find(port => port.id === runtimeId);
+                    if (!referenced.has(runtimeId)) owner.endpoints = owner.endpoints.filter(port => port.id !== runtimeId);
+                    owner.endpoints.push({ ...runtime, id: endpoint.id });
+                    return false;
+                });
+            }
+            return [...live, ...fallback.filter(group => group.endpoints.length)];
+        };
         return {
             sources: [
                 ...bridgeGroups.filter(group => group.kind === 'wasapi-capture'),
-                ...virtualGroups('output'),
-                ...profileGroups('output'),
-                ...savedGroups('output'),
+                ...applicationGroups('output'),
                 ...physical.filter(driver => driver.inputEndpoints.length).map(driver => ({
                     id: `${driver.id}:input`, label: `${driver.name} · Inputs`, kind: 'physical-input',
                     endpoints: driver.inputEndpoints
@@ -418,9 +441,7 @@ function App() {
                     id: `${driver.id}:output`, label: `${driver.name} · Outputs`, kind: 'physical-output',
                     endpoints: driver.outputEndpoints
                 })),
-                ...virtualGroups('input'),
-                ...profileGroups('input'),
-                ...savedGroups('input')
+                ...applicationGroups('input')
             ]
         };
     }, [apiState, endpoints.profiled, configuration?.routes, softwareClock, bridgeGroups]);

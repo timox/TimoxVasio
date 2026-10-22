@@ -172,6 +172,50 @@ test('WASAPI capture and render routes apply stable ports while loopback self-re
     });
 });
 
+test.each(['open', 'ambiguous', 'missing-channel'])('saved ASIO ports identify an open client only when unambiguous (%s)', async scenario => {
+    const ambiguous = scenario === 'ambiguous';
+    const route = { id: 'saved-live', sourceEndpointId: 'virtual:TimoxVasio:app:audioapp.exe:output:1',
+        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false };
+    const driver = state.virtualDrivers[0];
+    await withClockApp({ ...state, configuredRoutes: [route], routes: [{ ...route,
+        sourceEndpointId: 'virtual:TimoxVasio:42:output:1' }], virtualDrivers: [{ ...driver,
+        clients: ambiguous ? [...driver.clients, { ...driver.clients[0], pid: 43 }] : driver.clients,
+        outputEndpoints: scenario === 'missing-channel' ? [] : ambiguous ? [...driver.outputEndpoints, { ...driver.outputEndpoints[0], id: 'virtual:TimoxVasio:43:output:1' }] : driver.outputEndpoints }] }, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        const savedPort = [...container.querySelectorAll('.patchbay-port')].find(port =>
+            port.getAttribute('aria-label')?.includes('select as source'));
+        expect(savedPort).toBeDefined();
+        expect(savedPort.getAttribute('aria-label').includes('Process not open')).toBe(scenario !== 'open');
+        if (scenario === 'open') expect(savedPort.getAttribute('aria-label')).toContain('PID 42');
+    });
+});
+
+test('editing a durable route preserves its app ID alongside an existing PID route', async () => {
+    const routes = [
+        { id: 'durable', sourceEndpointId: 'virtual:TimoxVasio:app:audioapp.exe:output:1', destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false },
+        { id: 'pid-route', sourceEndpointId: 'virtual:TimoxVasio:42:output:1', destinationEndpointId: 'physical:interface-1:output:2', gainDb: 0, mute: false }
+    ];
+    await withClockApp({ ...state, configuredRoutes: routes,
+        routes: routes.map(route => ({ ...route, sourceEndpointId: 'virtual:TimoxVasio:42:output:1' })),
+        physicalDrivers: [{ ...state.physicalDrivers[0], outputEndpoints: [...state.physicalDrivers[0].outputEndpoints,
+            { id: 'physical:interface-1:output:2', name: 'Output 2', direction: 'output', channel: 2 }] }] }, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        const process = container.querySelector('[data-node-key="process:TimoxVasio:42"]');
+        expect(process.querySelectorAll('.patchbay-port')).toHaveLength(2);
+        expect(process.textContent).not.toContain('Process not open');
+        await chooseContextAction(process, 'Modify a connection…');
+        const choices = [...document.querySelectorAll('.process-dialog-routes button')].filter(button => button.textContent === 'Edit…');
+        expect(choices).toHaveLength(2);
+        await act(async () => Simulate.click(choices[0]));
+        await act(async () => Simulate.change(document.querySelector('.route-gain-input'), { target: { value: '-3' } }));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+            routes: expect.arrayContaining([{ ...routes[0], gainDb: -3 }, routes[1]])
+        }));
+        expect(window.vasio.applyConfiguration.mock.calls[0][0].routes).toHaveLength(2);
+    });
+});
+
 test('software clock stages explicit format and applies without a physical driver', async () => {
     await withClockApp(state, async container => {
         const source = container.querySelector('[aria-label="Clock source"]');
