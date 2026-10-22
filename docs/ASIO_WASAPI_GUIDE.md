@@ -2,7 +2,7 @@
 
 **Français** | [English](ASIO_WASAPI_GUIDE.en.md)
 
-État au 21 octobre 2026. Ce document explique la cible et les contraintes ; les schémas ne signifient pas que tous les composants sont déjà livrés.
+État au 22 octobre 2026. Ce document explique la cible et les contraintes ; les schémas ne signifient pas que tous les composants sont déjà livrés.
 
 ## L'idée générale
 
@@ -33,21 +33,27 @@ flowchart LR
     G <--> B[Ponts WASAPI : buffers et conversion]
     B <--> HW[Périphériques Windows existants]
     PLAY[Application Windows qui joue du son] --> VR[Sortie virtuelle Windows]
-    VR -->|transfert interne du pilote| CR[Extrémité capture du câble A]
-    CR -->|lecture WASAPI| B
-    B -->|écriture WASAPI| CW[Extrémité rendu du câble B]
-    CW -->|transfert interne du pilote| VC[Microphone virtuel Windows]
+    VR --> N[Transport privé du pilote et backend natif]
+    N --> G
+    G --> N
+    N --> VC[Microphone virtuel Windows]
     VC --> REC[Application Windows qui reçoit du son]
     UI[Control : GUI unifiée] -.-> API[API commune]
     API -.-> G
     API -.-> B
 ```
 
-La branche virtuelle montre ici deux câbles pour séparer les deux sens. Chaque câble transfère le son de son extrémité rendu vers son extrémité capture. Le pont **lit une capture WASAPI et écrit un rendu WASAPI** ; il n'écrit pas directement dans un microphone. Lire directement une sortie Windows correspond au loopback.
+La branche virtuelle cible utilise notre pilote `TimoxWindowsAudio.sys` et un transport privé vers le moteur. Le backend reçoit les données du rendu Windows et fournit au pilote celles de la capture Windows. Il ne tente pas d'écrire dans un microphone via WASAPI. Ce transport est distinct des ponts WASAPI vers les périphériques existants.
 
-La sortie virtuelle et le microphone virtuel appartiennent au pilote audio virtuel Windows. **Des câbles virtuels tiers peuvent fournir ces extrémités au début.** Notre propre pilote Windows est un lot distinct : installation, signature, compatibilité et maintenance spécifiques. Son transport interne vers le moteur reste à concevoir ; il n'impose pas de conserver les quatre extrémités de cet exemple à deux câbles.
+**Des câbles virtuels tiers permettent déjà de tester le graphe.** Dans ce cas, le pont lit la capture d'un câble pour recevoir le son d'une application, et écrit le rendu d'un autre câble pour alimenter un microphone virtuel. Notre pilote natif supprime ce détour. Son prototype et son transport privé se compilent, mais leur chargement et leurs échanges réels restent à qualifier sur une cible de test ; le backend moteur est en développement. Installation, signature et distribution restent des lots distincts. Voir la [conception du pilote natif](superpowers/specs/2026-10-22-native-windows-audio-driver.md).
 
 Le moteur n'a pas besoin de ce nouveau pilote pour utiliser un microphone USB, des haut-parleurs ou un câble virtuel déjà présents. Il en a besoin pour proposer **ses propres** périphériques Windows aux autres applications.
+
+### Où se placent FlexASIO et ASIO2WASAPI ?
+
+Ces projets rendent des périphériques Windows existants accessibles à une application ASIO. FlexASIO suit le trajet `application ASIO ↔ FlexASIO ↔ PortAudio ↔ WASAPI ↔ périphérique existant`. Ils peuvent servir de références ou de backends à évaluer ; ils ne fournissent pas les endpoints Windows natifs ni notre graphe commun. [FlexASIO](https://github.com/dechamps/FlexASIO), [ASIO2WASAPI](https://github.com/levmin/ASIO2WASAPI/tree/master/Source/Driver).
+
+FlexASIO documente deux limites utiles à notre conception : ses buffers ASIO ne représentent pas toute la latence, et il ne compense pas la dérive entre horloges indépendantes par SRC adaptatif. Notre synchronisation et nos mesures restent donc nécessaires. [Buffers](https://github.com/dechamps/FlexASIO/blob/master/CONFIGURATION.md#option-buffersizesamples), [horloges](https://github.com/dechamps/FlexASIO/blob/master/FAQ.md#why-am-i-getting-glitches-cracks-pops-in-the-audio).
 
 ## Pourquoi les noms entrée/sortie semblent inversés
 
