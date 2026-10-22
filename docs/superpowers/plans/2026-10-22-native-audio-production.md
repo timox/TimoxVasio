@@ -98,6 +98,8 @@ Le contrôleur réessaie seulement `Unavailable`/`Removed` avec temporisation 1,
 
 ### Lot 1 — Politique d'admission testable et preuve d'isolation audio
 
+**Politique pure vérifiée :** `NativeAudioAccessPolicyTests` est disponible via `VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY`. Après RED observé, revue indépendante, compilation parent MSVC `/W4 /WX` et CTest 1/1, les décisions d'admission et de retrait couvrent les identités incomplètes, comptes/logons distincts, LUID 64 bits, réutilisation de SessionId, verrouillage et absence de qualification. L'identité console complète est obligatoire ; le collecteur Windows reste à implémenter. Le [protocole de qualification](../../native-audio-session-qualification.md) distingue ces preuves synthétiques des essais PCM et des handles préouverts, encore non exécutés.
+
 **Files:** créer `include/native_audio_access_policy.h`, `src/native_audio_access_policy.cpp`, `tests/native_audio_access_policy_tests.cpp`, `tests/native_audio_session_qualification.ps1`, `docs/native-audio-session-qualification.md` ; modifier `CMakeLists.txt` pour une option isolée `VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY` sans SDK ASIO ni WDK, enrichie par les tests purs/IPC des lots suivants. Les changements éventuels du pilote feront l'objet d'un plan fils fondé sur le rapport cible.
 
 **Interfaces:** `NativePeerIdentity { userSid, logonSid, authenticationId, sessionId }`, `NativeSessionPolicySnapshot { allowedUserSid, consoleSessionId, interactiveLogonCount, unlocked, audioIsolationQualified, optionalActiveLeaseIdentity }`, `NativeAdmission EvaluateNativeAdmission(const NativePeerIdentity&, const NativeSessionPolicySnapshot&) noexcept`. Résultats : Allowed, WrongUser, WrongLogon, UnsupportedSession, Locked, IsolationUnqualified. Un SID est une valeur issue d'un jeton, jamais d'un champ client.
@@ -110,6 +112,8 @@ Le contrôleur réessaie seulement `Unavailable`/`Removed` avec temporisation 1,
 - [ ] Commit distinct `test(native-audio): define session admission and isolation qualification`.
 
 ### Lot 2 — Broker borné et transport client injecté
+
+**Faisabilité Schannel vérifiée :** le [prototype autonome](../../../native-windows-audio/schannel-probe/README.md) réalise en mémoire un handshake TLS 1.2 mutuel avec certificats épinglés et AES-GCM. Le parent a reproduit le succès du mode explicite à clés utilisateur temporaires, y compris trois suppressions et trois vérifications d'absence. Le mode éphémère est SKIP hors sandbox, pas une réussite TLS. Revue indépendante favorable et build parent vérifié. Aucun pipe, service LocalService, collecteur d'identité ou mécanisme d'isolation audio n'est qualifié par ce prototype.
 
 **Files:** créer `include/native_audio_broker_protocol.h`, `include/native_audio_broker_transport.h`, `src/native_audio_broker_transport.cpp`, `native-windows-audio/broker/broker_session.h`, `native-windows-audio/broker/broker_session.cpp`, `native-windows-audio/broker/pipe_server.cpp`, `native-windows-audio/broker/service_main.cpp`, `native-windows-audio/broker/schannel_channel.h`, `native-windows-audio/broker/schannel_channel.cpp`, `tests/native_audio_broker_tests.cpp`, `tests/native_audio_broker_transport_tests.cpp`. Le canal Schannel est partagé par client et serveur. Réutiliser `include/native_audio_transport.h`, adaptateur direct N3 uniquement dans le service et les outils labo.
 
