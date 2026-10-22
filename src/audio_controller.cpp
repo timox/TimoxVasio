@@ -947,11 +947,12 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     // endpoint discovery. An attached client needs the clock-only callback to
     // exchange compact frames and receive its signal even without routes.
     // An enabled slave needs a live selected master even while its routes are
-    // dormant, so endpoint recovery can resume WASAPI-to-WASAPI flow. Explicit
+    // dormant, so WASAPI or native recovery can resume routed flow. Explicit
     // StopAudio destroys this manager and prevents retries until StartAudio.
     const bool enabledBridge=std::any_of(configuration.wasapiBridges.begin(),configuration.wasapiBridges.end(),
         [](const WasapiBridgeConfiguration& bridge){return bridge.enabled;});
-    if (!software && activeRoutes.empty() && !hasAttachedClient(generationClients) && !enabledBridge) {
+    if (!software && activeRoutes.empty() && !hasAttachedClient(generationClients) &&
+        !enabledBridge && !configuration.nativeAudio.enabled) {
         next.state = "stopped";
         next.physicalDriverId = configuration.physicalDriverId;
         next.sampleRate = sampleRate;

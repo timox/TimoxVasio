@@ -208,6 +208,25 @@ void OfflineRestoreAndStop(const std::wstring& path) {
     controller.Stop();
 }
 
+void NativeDesireKeepsMaster(const std::wstring& path) {
+    DeleteFileW(path.c_str());
+    AudioControllerConfiguration config;
+    config.physicalDriverId="fake";config.sampleRate=48000;config.bufferFrames=64;
+    config.nativeAudio.enabled=true;
+    std::string error;Require(AudioConfigurationStore(path).Save(config,error),"save native master fixture");
+    VasioClientManager clients;
+    AudioController controller(clients,path,path+L".profiles",[]{return std::make_unique<Clock>();});
+    Require(controller.Start(),"native desired master startup");
+    Require(controller.Snapshot().state=="running" && controller.Snapshot().routes.empty() &&
+        controller.Snapshot().configuredNativeAudio.enabled,
+        "native desire must keep ASIO master ready while native routes are unavailable");
+    Require(controller.StopAudio().success && controller.Snapshot().state=="stopped",
+        "explicit StopAudio overrides native desire");
+    Require(controller.StartAudio().success && controller.Snapshot().state=="running",
+        "explicit StartAudio restores master for native desire");
+    controller.Stop();
+}
+
 void PublicationBackoff(const std::wstring& path) {
     DeleteFileW(path.c_str());auto native=std::make_shared<NativeState>();VasioClientManager clients;
     AudioController controller(clients,path,path+L".profiles",{},[native]{return std::make_unique<Backend>(native);});
@@ -259,7 +278,7 @@ int main(){
     wchar_t temp[MAX_PATH]{};GetTempPathW(MAX_PATH,temp);
     const auto path=std::wstring(temp)+L"TimoxVasio-controller-wasapi-"+std::to_wstring(GetCurrentProcessId())+L".json";
     DeleteFileW(path.c_str());
-    try{NativeCapacityPreparation();Transactions(path);OfflineRestoreAndStop(path);PublicationBackoff(path);ActiveDefaultFollowsRole(path);}catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
+    try{NativeCapacityPreparation();Transactions(path);OfflineRestoreAndStop(path);PublicationBackoff(path);ActiveDefaultFollowsRole(path);NativeDesireKeepsMaster(path);}catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
     DeleteFileW(path.c_str());DeleteFileW((path+L".profiles").c_str());
     std::cout<<"Audio controller WASAPI tests passed\n";
 }
