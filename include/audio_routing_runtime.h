@@ -24,6 +24,16 @@ struct WasapiRoutingBinding {
     bool endpointLoopback = false;
 };
 
+struct NativeAudioGeneration;
+// Initial native device identity is exactly "windows". Route IDs never contain
+// the process lifetime epoch or the driver's independently scoped generation.
+// The control owner retains the backend until callbacks using this generation
+// are quiescent. Runtime destruction and backend Stop/Join occur off RT.
+struct NativeRoutingBinding {
+    std::string id;
+    std::shared_ptr<NativeAudioGeneration> generation;
+};
+
 struct AudioRoutingLayout {
     std::string physicalDriverId;
     std::uint32_t sampleRate = 0;
@@ -33,6 +43,7 @@ struct AudioRoutingLayout {
     std::vector<VasioClientSnapshot> clients;
     std::vector<AudioRoute> routes;
     std::vector<WasapiRoutingBinding> wasapiBindings;
+    std::vector<NativeRoutingBinding> nativeBindings;
 };
 
 // All vectors and the immutable graph are built off the audio thread. Process()
@@ -111,6 +122,7 @@ private:
     std::vector<float*> destinationBlocks_;
     std::vector<ClientBuffers> clients_;
     std::vector<BridgeBuffers> bridges_;
+    std::vector<std::shared_ptr<NativeAudioGeneration>> nativeGenerations_;
     std::atomic<bool> stageMeasurementsEnabled_{false};
     std::uint32_t stageSampleIndex_ = 0; // Physical callback thread only.
     StageTimingAccumulator clientReadTiming_;

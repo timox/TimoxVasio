@@ -12,6 +12,12 @@
 #endif
 
 bool RoutingGraph::SupportsLink(RoutingEndpointType source, RoutingEndpointType destination) noexcept {
+    if (source == RoutingEndpointType::NativeSource)
+        return destination == RoutingEndpointType::VirtualInput || destination == RoutingEndpointType::PhysicalOutput ||
+            destination == RoutingEndpointType::WasapiRender || destination == RoutingEndpointType::NativeDestination;
+    if (destination == RoutingEndpointType::NativeDestination)
+        return source == RoutingEndpointType::VirtualOutput || source == RoutingEndpointType::PhysicalInput ||
+            source == RoutingEndpointType::WasapiCapture;
     if (source == RoutingEndpointType::WasapiCapture)
         return destination == RoutingEndpointType::VirtualInput ||
             destination == RoutingEndpointType::PhysicalOutput || destination == RoutingEndpointType::WasapiRender;
