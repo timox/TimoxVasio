@@ -245,3 +245,23 @@ Le moteur ne se lie pas aux interfaces réseau externes. Il accepte les connexio
 `PUT /api/v1/diagnostics` accepte exactement `{ "level": "info" }` ou `{ "level": "debug" }` et persiste ce choix. Les journaux sont écrits sous `%LOCALAPPDATA%\TimoxVasio\logs\engine.log`; quatre archives sont conservées. Les callbacks audio n’écrivent jamais dans le journal.
 
 `engine.start` et `engine.stop` arrêtent ou redémarrent le flux audio sans fermer le processus hôte ni son API. `engine.stop` est refusée avec `ENGINE_CLIENTS_CONNECTED` tant qu’un client TimoxVasio est attaché. À la fermeture de la fenêtre Electron, le processus moteur reste disponible pour les clients API qui en dépendent.
+
+## Source de cadence du moteur
+
+`engine.clockSource` vaut `{ "kind": "asio" }` ou `{ "kind": "software" }`. `engine.clockCapabilities` décrit les fréquences et tailles de bloc disponibles, ou vaut `null` sans horloge configurée. L'inventaire `physicalDrivers` reste réservé aux pilotes ASIO physiques.
+
+`configuration.apply.payload.clockSource` est optionnel : son absence conserve la source courante dans la transaction contrôlée par `expectedConfigurationRevision`. Une ancienne configuration disque sans ce champ conserve le mode ASIO. Les champs existants restent requis. En mode logiciel, `physicalDriverId` doit valoir `null`, `sampleRate` doit être un entier entre 8000 et 384000 et `bufferFrames` entre 16 et 8192. Le moteur peut alors cadencer le graphe sans périphérique physique. Les connexions vers du matériel non sélectionné restent enregistrées mais inactives.
+
+`engine.start`, `engine.stop` et `engine.reset` s'appliquent également à la cadence logicielle. Une panne du worker d'horloge arrête l'audio et publie un état d'erreur ; la reprise est explicite. Les événements `engine.status` exposent la même source et les mêmes capacités que l'état HTTP.
+
+## Ponts WASAPI — contrat 1.1
+
+Les chemins `/api/v1` et le sous-protocole WebSocket `vasio.api.v1` restent inchangés. L'état annonce `apiVersion: "1.1"`. `GET /api/v1/wasapi-devices` rafraîchit l'inventaire des endpoints ; l'état courant utilise un inventaire en cache.
+
+`configuration.apply.payload.wasapiBridges` contient la configuration souhaitée : `id`, `kind` (`capture`, `render`, `endpointLoopback`), exactement un sélecteur `endpointId` ou `defaultRole` (`console`, `multimedia`, `communications`), et les options `enabled` et `bufferDuration100ns`. Omettre le tableau conserve les ponts existants ; `[]` les supprime. Les routes associées doivent être retirées explicitement lors d'une suppression.
+
+L'état distingue `configuredWasapiBridges` de `wasapiBridges` : ce dernier expose le format effectif, la génération, la reprise et les compteurs `health` (pertes, silence, dérive et erreurs). Les ports du graphe utilisent `wasapi:<id>:input:<canal>` ou `wasapi:<id>:output:<canal>`, avec des canaux à partir de 1. La configuration d'un pont précède la découverte de ses ports.
+
+`health.controlBacklogUpdates` compte les observations de régulation forcées après 100 ms de traitement inachevé des données en attente. Cumulatif pour la génération courante, ce diagnostic signale une mesure sur une portion du traitement ; il ne compte pas les pertes audio. Son absence sur un ancien moteur API 1.1 signifie « non disponible », pas zéro. `correctionPpm` inclut la réaction au remplissage et ne mesure pas directement la dérive de l'horloge matérielle.
+
+Cette étape prend en charge le mode partagé et le loopback d'endpoint. Elle ne fournit pas de pilote Windows virtuel natif, de mode exclusif ou de loopback par processus. Voir le [guide ASIO/WASAPI](ASIO_WASAPI_GUIDE.md) et le schéma JSON pour les champs et limites exacts.

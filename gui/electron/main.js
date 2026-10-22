@@ -88,7 +88,7 @@ async function attachToExistingEngine() {
         });
         if (!response.ok) return false;
         const state = await response.json();
-        const isTimoxVasioEngine = state.apiVersion === '1.0' &&
+        const isTimoxVasioEngine = ['1.0', '1.1'].includes(state.apiVersion) &&
             Array.isArray(state.virtualDrivers) &&
             state.virtualDrivers.some(driver => driver.id === 'TimoxVasio');
         if (!isTimoxVasioEngine) return false;
@@ -136,6 +136,7 @@ function createWindow() {
 
 ipcMain.handle('api:get-state', async () => (await getApiClient()).getState());
 ipcMain.handle('api:get-drivers', async () => (await getApiClient()).getDrivers());
+ipcMain.handle('api:get-wasapi-devices', async () => (await getApiClient()).getWasapiDevices());
 ipcMain.handle('api:get-application-profiles', async () => (await getApiClient()).getApplicationProfiles());
 ipcMain.handle('api:replace-application-profiles', async (_event, profiles) =>
     (await getApiClient()).replaceApplicationProfiles(profiles));

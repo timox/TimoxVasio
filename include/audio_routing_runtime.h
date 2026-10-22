@@ -4,6 +4,7 @@
 #include "physical_asio_host.h"
 #include "routing_graph.h"
 #include "vasio_client_manager.h"
+#include "wasapi_bridge_io.h"
 
 #include <array>
 #include <atomic>
@@ -13,6 +14,26 @@
 #include <string>
 #include <vector>
 
+// Stable persisted identity: one or more ASCII letters, digits, '_' or '-'.
+// Owners must retire runtimes off RT and keep backend workers quiescent before
+// releasing their last generation reference. Process only borrows raw pointers.
+struct WasapiRoutingBinding {
+    std::string bridgeId;
+    std::shared_ptr<WasapiBridgeIo> io;
+    std::wstring resolvedEndpointId;
+    bool endpointLoopback = false;
+};
+
+struct NativeAudioGeneration;
+// Initial native device identity is exactly "windows". Route IDs never contain
+// the process lifetime epoch or the driver's independently scoped generation.
+// The control owner retains the backend until callbacks using this generation
+// are quiescent. Runtime destruction and backend Stop/Join occur off RT.
+struct NativeRoutingBinding {
+    std::string id;
+    std::shared_ptr<NativeAudioGeneration> generation;
+};
+
 struct AudioRoutingLayout {
     std::string physicalDriverId;
     std::uint32_t sampleRate = 0;
@@ -21,6 +42,8 @@ struct AudioRoutingLayout {
     long physicalOutputChannels = 0;
     std::vector<VasioClientSnapshot> clients;
     std::vector<AudioRoute> routes;
+    std::vector<WasapiRoutingBinding> wasapiBindings;
+    std::vector<NativeRoutingBinding> nativeBindings;
 };
 
 // All vectors and the immutable graph are built off the audio thread. Process()
@@ -56,6 +79,14 @@ public:
         std::uint32_t frames, void* context) noexcept;
 
 private:
+    struct BridgeBuffers {
+        std::shared_ptr<WasapiBridgeIo> owner;
+        WasapiBridgeIo* io = nullptr;
+        std::size_t endpointBase = 0;
+        bool capture = false;
+        std::vector<float*> capturePlanes;
+        std::vector<const float*> renderPlanes;
+    };
     struct ClientBuffers {
         VasioClientSnapshot client;
         std::uint32_t inputStride = 0;
@@ -90,6 +121,8 @@ private:
     std::vector<const float*> sourceBlocks_;
     std::vector<float*> destinationBlocks_;
     std::vector<ClientBuffers> clients_;
+    std::vector<BridgeBuffers> bridges_;
+    std::vector<std::shared_ptr<NativeAudioGeneration>> nativeGenerations_;
     std::atomic<bool> stageMeasurementsEnabled_{false};
     std::uint32_t stageSampleIndex_ = 0; // Physical callback thread only.
     StageTimingAccumulator clientReadTiming_;

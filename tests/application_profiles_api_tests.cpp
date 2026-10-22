@@ -10,9 +10,47 @@
 
 #include <atomic>
 #include <cstdio>
+#include <memory>
 #include <string>
 
 namespace {
+// Discovery-only ASIO replacement: no physical device or callback is needed to
+// exercise the real controller, API validation and saved-route restoration.
+class OneChannelClock final : public AudioClockHost {
+public:
+    std::vector<AudioClockDeviceInfo> enumerate() const override {
+        return {{L"replacement", "One-channel replacement"}};
+    }
+    bool open(const std::wstring& id, void*, AudioClockCapabilities& caps, std::string& error) override {
+        if (id != L"replacement") { error = "Unknown fake device"; return false; }
+        caps_ = {};
+        caps_.inputChannels = caps_.outputChannels = 1;
+        caps_.minBufferFrames = 16;
+        caps_.maxBufferFrames = 512;
+        caps_.preferredBufferFrames = 64;
+        caps_.bufferGranularity = -1;
+        caps_.currentSampleRate = 48000;
+        caps_.supportedSampleRates = {48000, 96000};
+        caps = caps_;
+        return true;
+    }
+    bool setSampleRate(double rate, std::string&) override { caps_.currentSampleRate = rate; return true; }
+    bool refreshCapabilities(AudioClockCapabilities& caps, std::string&) override { caps = caps_; return true; }
+    bool consumeSampleRateChange() noexcept override { return false; }
+    AudioClockTimingCounters consumeTimingCounters() noexcept override { return {}; }
+    void setStageMeasurementsEnabled(bool) noexcept override {}
+    StageTimingCounters consumeOutputCopyStageCounters() noexcept override { return {}; }
+    bool start(std::uint32_t, const std::vector<std::uint32_t>&,
+        const std::vector<std::uint32_t>&, AudioClockProcessCallback, void*, std::string& error) override {
+        error = "Dormant routes must not start the discovery-only ASIO host";
+        return false;
+    }
+    void stop() noexcept override {}
+    void close() noexcept override {}
+private:
+    AudioClockCapabilities caps_;
+};
+
 bool require(bool condition, const char* message) {
     if (!condition) std::fprintf(stderr, "FAIL: %s\n", message);
     return condition;
@@ -34,7 +72,8 @@ int wmain() {
     DeleteFileW(profilesPath.c_str());
 
     VasioClientManager clients;
-    AudioController controller(clients, configPath, profilesPath);
+    AudioController controller(clients, configPath, profilesPath,
+        [] { return std::make_unique<OneChannelClock>(); });
     if (!controller.Start()) return 3;
 
     EngineDiagnostics diagnostics;
@@ -189,6 +228,93 @@ int wmain() {
         passed = require(startAcknowledged,
             "engine.start is acknowledged after audio stop") && passed;
         passed = require(!stopRequested.load(), "engine.stop does not shut down the API process") && passed;
+        const auto clockCommand = [&](const nlohmann::json& request) {
+            if (!websocket.send(request.dump())) return nlohmann::json{};
+            for (int attempt = 0; attempt < 30; ++attempt) {
+                if (websocket.read(websocketMessage) != httplib::ws::Text) break;
+                const auto reply = nlohmann::json::parse(websocketMessage);
+                if (reply.value("id", std::string{}) == request["id"].get<std::string>()) return reply;
+            }
+            return nlohmann::json{};
+        };
+        nlohmann::json softwarePayload{{"physicalDriverId", nullptr}, {"sampleRate", 48000},
+            {"bufferFrames", 256}, {"routes", nlohmann::json::array()},
+            {"clockSource", {{"kind", "software"}}}};
+        const auto softwareReply = clockCommand({{"id", "software-on"},
+            {"command", "configuration.apply"}, {"payload", softwarePayload}});
+        passed = require(softwareReply.value("success", false), "API accepts software clock without hardware") && passed;
+        const auto softwareState = client.Get("/api/v1/state");
+        const auto clockState = nlohmann::json::parse(softwareState->body);
+        passed = require(clockState["engine"].value("clockSource", nlohmann::json{}) ==
+            nlohmann::json{{"kind", "software"}} && clockState["engine"]["state"] == "running" &&
+            clockState["engine"]["physicalDriverId"].is_null(), "state identifies a running software clock") && passed;
+        softwarePayload.erase("clockSource");
+        softwarePayload["expectedConfigurationRevision"] = clockState["configurationRevision"];
+        passed = require(clockCommand({{"id", "software-preserve"}, {"command", "configuration.apply"},
+            {"payload", softwarePayload}}).value("success", false), "old client preserves selected clock") && passed;
+        passed = require(!clockCommand({{"id", "software-stale"}, {"command", "configuration.apply"},
+            {"payload", softwarePayload}}).value("success", true), "stale clock configuration is rejected") && passed;
+        softwarePayload.erase("expectedConfigurationRevision");
+        softwarePayload["clockSource"] = {{"kind", "unknown"}};
+        passed = require(!clockCommand({{"id", "bad-clock"}, {"command", "configuration.apply"},
+            {"payload", softwarePayload}}).value("success", true), "unknown clock source is rejected") && passed;
+        AudioControllerConfiguration dormant;
+        dormant.clockSource = AudioClockSource::Software;
+        dormant.sampleRate = 96000;
+        dormant.bufferFrames = 128;
+        dormant.routes.push_back({"saved-hardware", "physical:unplugged:input:2",
+            "virtual:TimoxVasio:app:absent.exe:input:1", 0.0, false});
+        passed = require(controller.ApplyConfiguration(dormant).success, "fixture retains absent hardware route") && passed;
+        softwarePayload["clockSource"] = {{"kind", "software"}};
+        softwarePayload["sampleRate"] = 96000;
+        softwarePayload["bufferFrames"] = 128;
+        softwarePayload["routes"] = nlohmann::json::array({{{"id", "saved-hardware"},
+            {"sourceEndpointId", "physical:unplugged:input:2"},
+            {"destinationEndpointId", "virtual:TimoxVasio:app:absent.exe:input:1"},
+            {"gainDb", 0.0}, {"mute", false}}});
+        passed = require(clockCommand({{"id", "preserve-hardware"}, {"command", "configuration.apply"},
+            {"payload", softwarePayload}}).value("success", false), "API preserves saved dormant hardware routes") && passed;
+        // Mirror Control's transfer preparation: retain A's dormant routes while
+        // discovering B. B lacks channel 2, so recovery must restore software
+        // through the API even though A is absent from the physical inventory.
+        auto replacementPayload = softwarePayload;
+        replacementPayload["clockSource"] = {{"kind", "asio"}};
+        replacementPayload["physicalDriverId"] = "replacement";
+        replacementPayload["sampleRate"] = 48000;
+        replacementPayload["bufferFrames"] = 64;
+        passed = require(clockCommand({{"id", "discover-replacement"}, {"command", "configuration.apply"},
+            {"payload", replacementPayload}}).value("success", false),
+            "API opens replacement while retaining absent original hardware routes") && passed;
+        const auto replacementState = client.Get("/api/v1/state");
+        passed = require(replacementState && replacementState->status == 200,
+            "replacement state is available") && passed;
+        if (replacementState && replacementState->status == 200) {
+            const auto body = nlohmann::json::parse(replacementState->body);
+            passed = require(body["engine"]["clockSource"] == nlohmann::json{{"kind", "asio"}} &&
+                body["engine"]["physicalDriverId"] == "replacement" &&
+                body["configuredRoutes"] == softwarePayload["routes"] && body["routes"].empty(),
+                "ASIO preparation preserves original routes as dormant") && passed;
+            passed = require(body["physicalDrivers"].size() == 1 &&
+                body["physicalDrivers"][0]["id"] == "replacement" &&
+                body["physicalDrivers"][0]["inputEndpoints"].size() == 1,
+                "original card is absent and replacement cannot map its second channel") && passed;
+        }
+        passed = require(clockCommand({{"id", "restore-software"}, {"command", "configuration.apply"},
+            {"payload", softwarePayload}}).value("success", false),
+            "API restores software without UNKNOWN_ENDPOINT for the absent original card") && passed;
+        const auto restoredSoftware = client.Get("/api/v1/state");
+        passed = require(restoredSoftware && restoredSoftware->status == 200,
+            "restored software state is available") && passed;
+        if (restoredSoftware && restoredSoftware->status == 200) {
+            const auto body = nlohmann::json::parse(restoredSoftware->body);
+            passed = require(body["engine"]["clockSource"] == softwarePayload["clockSource"] &&
+                body["engine"]["physicalDriverId"].is_null() && body["engine"]["state"] == "running" &&
+                body["engine"]["sampleRate"] == 96000 && body["engine"]["bufferFrames"] == 128 &&
+                body["configuredRoutes"] == softwarePayload["routes"] && body["routes"].empty(),
+                "software recovery confirms the original source, format and every dormant route") && passed;
+        }
+        passed = require(clockCommand({{"id", "software-stop"}, {"command", "engine.stop"}}).value("success", false),
+            "software engine stops through API") && passed;
         websocket.close();
     }
 

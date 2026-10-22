@@ -15,6 +15,7 @@ async function createApiFixture() {
         response.setHeader('content-type', 'application/json');
         if (request.url === '/api/v1/state') response.end(JSON.stringify(state));
         else if (request.url === '/api/v1/drivers') response.end(JSON.stringify(drivers));
+        else if (request.url === '/api/v1/wasapi-devices') response.end(JSON.stringify({ wasapiDevices: [], wasapiInventoryError: 'Endpoint service unavailable' }));
         else if (request.url === '/api/v1/application-profiles' && request.method === 'GET')
             response.end(JSON.stringify(applicationProfiles));
         else if (request.url === '/api/v1/application-profiles' && request.method === 'PUT') {
@@ -80,6 +81,15 @@ test('HTTP reads return the API state and driver inventory unchanged', async () 
     try {
         assert.deepEqual(await fixture.client.getState(), fixture.state);
         assert.deepEqual(await fixture.client.getDrivers(), fixture.drivers);
+    } finally { await fixture.close(); }
+});
+
+test('WASAPI inventory refresh uses its documented route and retains discovery errors', async () => {
+    const fixture = await createApiFixture();
+    try {
+        const expected = { wasapiDevices: [], wasapiInventoryError: 'Endpoint service unavailable' };
+        assert.deepEqual(await fixture.client.getWasapiDevices(), expected);
+        assert.deepEqual(await fixture.client.httpRequest('GET', '/api/v1/wasapi-devices'), { status: 200, body: expected });
     } finally { await fixture.close(); }
 });
 

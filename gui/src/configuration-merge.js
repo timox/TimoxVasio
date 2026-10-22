@@ -5,6 +5,32 @@ const sameRoute = (left, right) => !!left && !!right &&
 function mergeConfigurationDraft(base, draft, latest) {
     if (!base || !draft || !latest) throw new Error('Cannot reconcile an incomplete configuration.');
     const merged = { ...latest, routes: [...latest.routes] };
+    if (Array.isArray(latest.wasapiBridges) && Array.isArray(draft.wasapiBridges)) {
+        const normalize = item => item && ({ ...item, enabled: item.enabled ?? true,
+            bufferDuration100ns: item.bufferDuration100ns ?? 0 });
+        const same = (a, b) => !!a && !!b && ['id', 'enabled', 'kind', 'endpointId', 'defaultRole', 'bufferDuration100ns']
+            .every(key => normalize(a)[key] === normalize(b)[key]);
+        const original = new Map((base.wasapiBridges || []).map(item => [item.id, item]));
+        const edited = new Map(draft.wasapiBridges.map(item => [item.id, item]));
+        const current = new Map(latest.wasapiBridges.map(item => [item.id, item]));
+        merged.wasapiBridges = [...latest.wasapiBridges];
+        for (const id of new Set([...original.keys(), ...edited.keys()])) {
+            const before = original.get(id), after = edited.get(id), now = current.get(id);
+            if (same(before, after)) continue;
+            if (now && !same(now, before) && !same(now, after))
+                throw new Error(`Windows audio bridge ${id} changed in another application. Refresh before applying.`);
+            if (before && after && !now)
+                throw new Error(`Windows audio bridge ${id} was removed in another application. Refresh before applying.`);
+            merged.wasapiBridges = merged.wasapiBridges.filter(item => item.id !== id);
+            if (after) merged.wasapiBridges.push({ ...after });
+        }
+    }
+    const clockKind = config => config.clockSource?.kind || 'asio';
+    if (clockKind(draft) !== clockKind(base)) {
+        if (clockKind(latest) !== clockKind(base) && clockKind(latest) !== clockKind(draft))
+            throw new Error('The clock source changed in another application. Refresh before applying.');
+        merged.clockSource = { kind: clockKind(draft) };
+    }
     for (const field of ['physicalDriverId', 'sampleRate', 'bufferFrames']) {
         if (draft[field] === base[field]) continue;
         if (latest[field] !== base[field] && latest[field] !== draft[field])

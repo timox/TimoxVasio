@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <TimoxKitVersion>10.0.28000.2526</TimoxKitVersion>
+    <TimoxPackages>$(MSBuildThisFileDirectory)..\..\build_native_audio_wdk\Windows-driver-samples\packages</TimoxPackages>
+  </PropertyGroup>
+  <Import Project="$(TimoxPackages)\Microsoft.Windows.WDK.x64.$(TimoxKitVersion)\build\native\Microsoft.Windows.WDK.x64.props" />
+  <Import Project="$(TimoxPackages)\Microsoft.Windows.SDK.CPP.x64.$(TimoxKitVersion)\build\native\Microsoft.Windows.SDK.cpp.x64.props" />
+  <Import Project="$(TimoxPackages)\Microsoft.Windows.SDK.CPP.$(TimoxKitVersion)\build\native\Microsoft.Windows.SDK.cpp.props" />
+</Project>

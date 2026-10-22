@@ -2,7 +2,7 @@
 
 [Français](ASIO_WASAPI_GUIDE.md) | **English**
 
-Status as of October 21, 2026. This document explains the intended architecture and its constraints; the diagrams do not mean that every component has already shipped.
+Status as of October 22, 2026. This document explains the intended architecture and its constraints; the diagrams do not mean that every component has already shipped.
 
 ## The overall idea
 
@@ -33,21 +33,27 @@ flowchart LR
     G <--> B[WASAPI bridges: buffers and conversion]
     B <--> HW[Existing Windows devices]
     PLAY[Windows application playing audio] --> VR[Virtual Windows output]
-    VR -->|internal driver transfer| CR[Cable A capture endpoint]
-    CR -->|WASAPI read| B
-    B -->|WASAPI write| CW[Cable B render endpoint]
-    CW -->|internal driver transfer| VC[Virtual Windows microphone]
+    VR --> N[Private driver transport and native backend]
+    N --> G
+    G --> N
+    N --> VC[Virtual Windows microphone]
     VC --> REC[Windows application receiving audio]
     UI[Control: unified GUI] -.-> API[Common API]
     API -.-> G
     API -.-> B
 ```
 
-The virtual branch shown here uses two cables to separate the two directions. Each cable transfers audio from its render endpoint to its capture endpoint. The bridge **reads a WASAPI capture stream and writes a WASAPI render stream**; it does not write directly to a microphone. Reading a Windows output directly is loopback.
+The intended virtual branch uses our `TimoxWindowsAudio.sys` driver and a private transport to the engine. The backend receives Windows render data and supplies Windows capture data to the driver. It does not attempt to write to a microphone through WASAPI. This transport is separate from WASAPI bridges to existing devices.
 
-The virtual output and virtual microphone belong to the virtual Windows audio driver. **Third-party virtual cables can initially provide these endpoints.** Our own Windows driver is a separate work package, with its own installation, signing, compatibility and maintenance requirements. Its internal transport to the engine remains to be designed; it does not require retaining the four endpoints in this two-cable example.
+**Third-party virtual cables already allow graph testing.** In that arrangement, the bridge reads a cable capture endpoint to receive application audio, and writes another cable render endpoint to feed a virtual microphone. Our native driver removes that detour. Its prototype and private transport compile, but loading and real transfers still require qualification on a test target; the engine backend is in development. Installation, signing and distribution remain separate work packages. See the [native driver design](superpowers/specs/2026-10-22-native-windows-audio-driver.md).
 
 The engine does not need this new driver to use a USB microphone, speakers or a virtual cable that is already present. It needs it to offer **its own** Windows devices to other applications.
+
+### Where do FlexASIO and ASIO2WASAPI fit?
+
+These projects make existing Windows devices accessible to an ASIO application. FlexASIO follows `ASIO application ↔ FlexASIO ↔ PortAudio ↔ WASAPI ↔ existing device`. They are useful references or candidate backends to evaluate; they do not supply our native Windows endpoints or common graph. [FlexASIO](https://github.com/dechamps/FlexASIO), [ASIO2WASAPI](https://github.com/levmin/ASIO2WASAPI/tree/master/Source/Driver).
+
+FlexASIO documents two relevant limits: its ASIO buffers do not represent total latency, and it does not compensate independent clock drift with adaptive SRC. Our synchronization and measurements remain necessary. [Buffers](https://github.com/dechamps/FlexASIO/blob/master/CONFIGURATION.md#option-buffersizesamples), [clocks](https://github.com/dechamps/FlexASIO/blob/master/FAQ.md#why-am-i-getting-glitches-cracks-pops-in-the-audio).
 
 ## Why input and output names can seem reversed
 
@@ -135,17 +141,19 @@ A smaller buffer provides less margin for Windows scheduling delays. End-to-end 
 
 Formats are negotiated according to the mode and device, and exclusivity changes sharing capabilities. [Microsoft device formats](https://learn.microsoft.com/en-us/windows/win32/coreaudio/device-formats), [Microsoft exclusive mode](https://learn.microsoft.com/en-us/windows/desktop/coreaudio/exclusive-mode-streams).
 
+If capture is denied, check Windows microphone access for the device and desktop apps. Allowing an application is insufficient when overall access is disabled. Output loopback and microphone capture are separate uses; success with the former does not validate the latter. [Microsoft microphone privacy](https://support.microsoft.com/en-us/windows/privacy/windows-camera-microphone-and-privacy).
+
 ## Where does the project stand?
 
 | Element | Status in this working branch |
 |---|---|
 | TimoxVasio virtual ASIO | Existing; this work leaves the DLL unchanged. |
-| Software clock + GUI/API selection | Implemented and tested; real interapplication qualification remains incomplete. |
-| Rings, SRC, PCM conversion, inventory and shared backend | Implemented; unit tests and stream-opening probes are available. |
+| Software clock + GUI/API selection | Implemented; first real transfer between two ASIO hosts passed without a physical card at 48 kHz/2048 frames. Other formats and extended stability remain to qualify. |
+| Rings, SRC, PCM conversion, inventory and shared backend | Implemented; unit tests and real render/loopback streaming are available. |
 | WASAPI ports in the runtime | Transfer tests, including virtual transport, have passed. |
-| Adaptive worker and bridge persistence | Implementation and validation in progress. |
-| Complete activation through Control/API, reconnection and extended measurements | Still to complete; the complete bridge has not shipped yet. |
-| Our virtual Windows driver | Not implemented yet; a separate work package, with a third-party cable for initial uses. |
+| Adaptive worker and bridge persistence | Implemented; hardware qualification is ongoing, particularly priming and drift control. |
+| Control/API activation and reconnection | Implemented; GUI visually checked with simulation. A first real ASIO→WASAPI→loopback→ASIO path detects the expected signal. Extended measurements and the complete Electron workflow remain to qualify. |
+| Our virtual Windows driver | Design and initial packet validation are available; no endpoint or kernel driver has shipped yet. A third-party cable supports initial uses. |
 | Exclusive mode, WASAPI hardware master, per-process loopback | Later work, not delivered in this increment. |
 
 The requirement remains a GUI, an API and performance at least on par with TimoxVasio. **That parity has not yet been demonstrated.** The ASIO path without bridges must be compared separately: it must not incur SRC processing for unused bridges.

@@ -16,6 +16,20 @@ using Json = nlohmann::json;
 constexpr std::uint32_t kStoreVersion = 1;
 constexpr DWORD kMaximumConfigurationBytes = 1024 * 1024;
 
+bool validStoredClock(const AudioControllerConfiguration& configuration) {
+    if (configuration.clockSource != AudioClockSource::Asio &&
+        configuration.clockSource != AudioClockSource::Software) return false;
+    if ((configuration.physicalDriverId && configuration.physicalDriverId->empty()) ||
+        (configuration.sampleRate && !*configuration.sampleRate) ||
+        (configuration.bufferFrames && !*configuration.bufferFrames)) return false;
+    if (configuration.clockSource == AudioClockSource::Software)
+        return !configuration.physicalDriverId && configuration.sampleRate &&
+            *configuration.sampleRate >= 8000 && *configuration.sampleRate <= 384000 &&
+            configuration.bufferFrames && *configuration.bufferFrames >= 16 &&
+            *configuration.bufferFrames <= 8192;
+    return true; // ASIO format may be unspecified until driver negotiation.
+}
+
 bool readOptionalUint32(const Json& value, std::optional<std::uint32_t>& result) {
     if (value.is_null()) {
         result.reset();
@@ -45,6 +59,72 @@ bool ensureParentDirectory(const std::wstring& path, std::string& error) {
     return false;
 }
 
+Json encodeBridges(const std::vector<WasapiBridgeConfiguration>& bridges) {
+    Json result = Json::array();
+    for (const auto& bridge : bridges) {
+        const auto& config = bridge.open;
+        Json item{{"id", bridge.id}, {"enabled", bridge.enabled},
+            {"kind", config.kind == WasapiStreamKind::Capture ? "capture" :
+                config.kind == WasapiStreamKind::Render ? "render" : "endpointLoopback"},
+            {"bufferDuration100ns", config.bufferDuration100ns}};
+        if (config.defaultRole) {
+            item["defaultRole"] = *config.defaultRole == WasapiDefaultRole::Console ? "console" :
+                *config.defaultRole == WasapiDefaultRole::Multimedia ? "multimedia" : "communications";
+        } else {
+            std::string endpoint;
+            WasapiEndpointToUtf8(config.endpointId, endpoint); // Validated before serialization.
+            item["endpointId"] = std::move(endpoint);
+        }
+        result.push_back(std::move(item));
+    }
+    return result;
+}
+
+bool decodeBridges(const Json& value, std::vector<WasapiBridgeConfiguration>& bridges) {
+    if (!value.is_array() || value.size() > 32) return false;
+    std::vector<WasapiBridgeConfiguration> decoded;
+    for (const auto& item : value) {
+        if (!item.is_object() || !item.contains("id") || !item["id"].is_string() ||
+            !item.contains("kind") || !item["kind"].is_string() ||
+            item.contains("endpointId") == item.contains("defaultRole")) return false;
+        for (auto field = item.begin(); field != item.end(); ++field)
+            if (field.key() != "id" && field.key() != "enabled" && field.key() != "kind" &&
+                field.key() != "endpointId" && field.key() != "defaultRole" &&
+                field.key() != "bufferDuration100ns") return false;
+        WasapiBridgeConfiguration bridge;
+        bridge.id = item["id"].get<std::string>();
+        if (item["kind"] == "capture") bridge.open.kind = WasapiStreamKind::Capture;
+        else if (item["kind"] == "render") bridge.open.kind = WasapiStreamKind::Render;
+        else if (item["kind"] == "endpointLoopback") bridge.open.kind = WasapiStreamKind::EndpointLoopback;
+        else return false;
+        if (item.contains("enabled")) {
+            if (!item["enabled"].is_boolean()) return false;
+            bridge.enabled = item["enabled"].get<bool>();
+        }
+        if (item.contains("endpointId")) {
+            if (!item["endpointId"].is_string() ||
+                !WasapiEndpointFromUtf8(item["endpointId"].get<std::string>(), bridge.open.endpointId)) return false;
+        } else {
+            if (!item["defaultRole"].is_string()) return false;
+            if (item["defaultRole"] == "console") bridge.open.defaultRole = WasapiDefaultRole::Console;
+            else if (item["defaultRole"] == "multimedia") bridge.open.defaultRole = WasapiDefaultRole::Multimedia;
+            else if (item["defaultRole"] == "communications") bridge.open.defaultRole = WasapiDefaultRole::Communications;
+            else return false;
+        }
+        if (item.contains("bufferDuration100ns")) {
+            const auto& duration = item["bufferDuration100ns"];
+            if (!duration.is_number_integer() ||
+                (duration.is_number_unsigned() && duration.get<std::uint64_t>() > 10000000)) return false;
+            bridge.open.bufferDuration100ns = duration.get<std::int64_t>();
+        }
+        decoded.push_back(std::move(bridge));
+    }
+    std::string error;
+    if (!ValidateWasapiBridgeConfigurations(decoded, error)) return false;
+    bridges = std::move(decoded);
+    return true;
+}
+
 Json encodeConfiguration(const AudioControllerConfiguration& configuration) {
     Json routes = Json::array();
     for (const auto& route : configuration.routes) {
@@ -58,16 +138,19 @@ Json encodeConfiguration(const AudioControllerConfiguration& configuration) {
     }
     return Json{
         {"version", kStoreVersion},
+        {"clockSource", {{"kind", configuration.clockSource == AudioClockSource::Software ? "software" : "asio"}}},
         {"physicalDriverId", configuration.physicalDriverId
             ? Json(*configuration.physicalDriverId) : Json(nullptr)},
         {"sampleRate", configuration.sampleRate ? Json(*configuration.sampleRate) : Json(nullptr)},
         {"bufferFrames", configuration.bufferFrames ? Json(*configuration.bufferFrames) : Json(nullptr)},
-        {"routes", std::move(routes)}
+        {"routes", std::move(routes)},
+        {"wasapiBridges", encodeBridges(configuration.wasapiBridges)}
     };
 }
 
 bool decodeConfiguration(const Json& value, AudioControllerConfiguration& configuration) {
-    if (!value.is_object() || value.size() != 5 ||
+    if (!value.is_object() || value.size() != 5 + (value.contains("clockSource") ? 1 : 0) +
+            (value.contains("wasapiBridges") ? 1 : 0) ||
         !value.contains("version") || !value["version"].is_number_unsigned() ||
         value["version"].get<std::uint32_t>() != kStoreVersion ||
         !value.contains("physicalDriverId") ||
@@ -76,12 +159,21 @@ bool decodeConfiguration(const Json& value, AudioControllerConfiguration& config
         !value.contains("routes") || !value["routes"].is_array()) return false;
 
     AudioControllerConfiguration decoded;
+    if (value.contains("wasapiBridges") && !decodeBridges(value["wasapiBridges"], decoded.wasapiBridges)) return false;
+    if (value.contains("clockSource")) {
+        const auto& source = value["clockSource"];
+        if (!source.is_object() || source.size() != 1 || !source.contains("kind") ||
+            !source["kind"].is_string()) return false;
+        if (source["kind"] == "software") decoded.clockSource = AudioClockSource::Software;
+        else if (source["kind"] != "asio") return false;
+    }
     if (value["physicalDriverId"].is_string()) {
         decoded.physicalDriverId = value["physicalDriverId"].get<std::string>();
         if (decoded.physicalDriverId->empty()) return false;
     }
     if (!readOptionalUint32(value["sampleRate"], decoded.sampleRate) ||
         !readOptionalUint32(value["bufferFrames"], decoded.bufferFrames)) return false;
+    if (!validStoredClock(decoded)) return false;
 
     decoded.routes.reserve(value["routes"].size());
     for (const auto& item : value["routes"]) {
@@ -164,6 +256,11 @@ ConfigurationLoadStatus AudioConfigurationStore::Load(
 bool AudioConfigurationStore::Save(
     const AudioControllerConfiguration& configuration, std::string& error) const {
     error.clear();
+    if (!validStoredClock(configuration)) {
+        error = "The audio clock selection or format cannot be persisted";
+        return false;
+    }
+    if (!ValidateWasapiBridgeConfigurations(configuration.wasapiBridges, error)) return false;
     if (path_.empty()) {
         error = "LOCALAPPDATA is unavailable; cannot save the TimoxVasio configuration";
         return false;

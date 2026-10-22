@@ -1,4 +1,5 @@
 #include "audio_routing_runtime.h"
+#include "native_audio_backend.h"
 
 #include <algorithm>
 #include <charconv>
@@ -6,6 +7,8 @@
 #include <limits>
 #include <set>
 #include <utility>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace {
 std::string virtualPrefix(std::uint32_t driverId, std::uint32_t processId) {
@@ -109,7 +112,89 @@ std::unique_ptr<AudioRoutingRuntime> AudioRoutingRuntime::Create(AudioRoutingLay
         activeClients.push_back(std::move(client));
     }
 
+    std::unordered_set<std::string> bridgeIds;
+    std::unordered_set<const WasapiBridgeIo*> bridgePointers;
+    std::unordered_map<std::string, const WasapiRoutingBinding*> bridgeEndpoints;
+    std::vector<std::size_t> bridgeBases;
+    for (const auto& binding : layout.wasapiBindings) {
+        const bool validId = !binding.bridgeId.empty() &&
+            std::all_of(binding.bridgeId.begin(), binding.bridgeId.end(), [](unsigned char c) {
+                return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') || c == '_' || c == '-';
+            });
+        if (!validId || !binding.io || binding.resolvedEndpointId.empty() ||
+            !bridgeIds.insert(binding.bridgeId).second || !bridgePointers.insert(binding.io.get()).second) {
+            error = "WASAPI bindings require unique stable IDs, unique IO generations and resolved endpoints";
+            return {};
+        }
+        const auto& format = binding.io->Format();
+        const bool capture = format.direction == WasapiBridgeDirection::Capture;
+        if (format.graphSampleRate != layout.sampleRate || format.maxQuantum < layout.bufferFrames ||
+            !format.channels || (binding.endpointLoopback && !capture)) {
+            error = "WASAPI generation format or loopback direction does not match the graph";
+            return {};
+        }
+        bridgeBases.push_back(endpoints.size());
+        for (std::size_t channel = 0; channel < format.channels; ++channel) {
+            const auto id = "wasapi:" + binding.bridgeId + (capture ? ":input:" : ":output:") +
+                std::to_string(channel + 1);
+            endpoints.push_back({id, capture ? RoutingEndpointType::WasapiCapture : RoutingEndpointType::WasapiRender,
+                layout.sampleRate});
+            bridgeEndpoints.emplace(id, &binding);
+        }
+    }
+    for (const auto& route : layout.routes) {
+        const auto source = bridgeEndpoints.find(route.sourceEndpointId);
+        const auto destination = bridgeEndpoints.find(route.destinationEndpointId);
+        if (source != bridgeEndpoints.end() && destination != bridgeEndpoints.end() &&
+            source->second->endpointLoopback &&
+            destination->second->io->Format().direction == WasapiBridgeDirection::Render &&
+            source->second->resolvedEndpointId == destination->second->resolvedEndpointId) {
+            error = "Direct endpoint loopback to its own render device is not supported";
+            return {};
+        }
+    }
+    std::vector<std::size_t> nativeBases;
+    std::unordered_set<std::string> nativeIds;
+    for (const auto& binding : layout.nativeBindings) {
+        const auto& generation = binding.generation;
+        if (binding.id != "windows" || !nativeIds.insert(binding.id).second || !generation ||
+            !generation->epoch || !generation->wireGeneration) {
+            error = "Native bindings require the unique windows identity and a live generation";
+            return {};
+        }
+        nativeBases.push_back(endpoints.size());
+        for (const bool source : {true, false}) {
+            const auto& io = source ? generation->windowsRenderSource : generation->windowsCaptureDestination;
+            if (!io || !bridgePointers.insert(io.get()).second) {
+                error = "Native IO must be present and unique across all native and WASAPI bindings";
+                return {};
+            }
+            const auto& format = io->Format();
+            if (format.generationId != generation->epoch || format.channels != 2 ||
+                format.graphSampleRate != layout.sampleRate || format.maxQuantum < layout.bufferFrames ||
+                format.direction != (source ? WasapiBridgeDirection::Capture : WasapiBridgeDirection::Render)) {
+                error = "Native IO epoch, stereo format, rate, quantum or direction does not match the graph";
+                return {};
+            }
+            for (unsigned channel = 1; channel <= 2; ++channel)
+                endpoints.push_back({"native:" + binding.id + (source ? ":input:" : ":output:") +
+                    std::to_string(channel), source ? RoutingEndpointType::NativeSource : RoutingEndpointType::NativeDestination,
+                    layout.sampleRate});
+        }
+        if (generation->windowsRenderSource->Format().maxQuantum !=
+            generation->windowsCaptureDestination->Format().maxQuantum) {
+            error = "Native duplex IO must share the same maximum quantum";
+            return {};
+        }
+    }
+    // Native metadata cannot identify feedback through Windows/WASAPI. Preserve
+    // the explicit WASAPI loopback guard above; do not claim cross-backend loop detection.
     const auto actualEndpointCount = endpoints.size();
+    if (actualEndpointCount > (std::numeric_limits<std::size_t>::max)() / layout.bufferFrames / sizeof(float)) {
+        error = "Audio runtime sample storage dimensions overflow";
+        return {};
+    }
     auto runtime = std::unique_ptr<AudioRoutingRuntime>(new AudioRoutingRuntime(layout.bufferFrames,
         layout.sampleRate,
         actualEndpointCount, layout.physicalInputChannels, layout.physicalOutputChannels));
@@ -118,6 +203,38 @@ std::unique_ptr<AudioRoutingRuntime> AudioRoutingRuntime::Create(AudioRoutingLay
     if (!runtime->graph_) {
         error = std::move(graphError);
         return {};
+    }
+    runtime->bridges_.reserve(layout.wasapiBindings.size() + layout.nativeBindings.size() * 2);
+    for (std::size_t index = 0; index < layout.wasapiBindings.size(); ++index) {
+        BridgeBuffers buffers;
+        buffers.owner = std::move(layout.wasapiBindings[index].io);
+        buffers.io = buffers.owner.get();
+        buffers.endpointBase = bridgeBases[index];
+        buffers.capture = buffers.io->Format().direction == WasapiBridgeDirection::Capture;
+        for (std::size_t channel = 0; channel < buffers.io->Format().channels; ++channel) {
+            const auto offset = (buffers.endpointBase + channel) * layout.bufferFrames;
+            if (buffers.capture) buffers.capturePlanes.push_back(runtime->sourceSamples_.data() + offset);
+            else buffers.renderPlanes.push_back(runtime->destinationSamples_.data() + offset);
+        }
+        runtime->bridges_.push_back(std::move(buffers));
+    }
+    runtime->nativeGenerations_.reserve(layout.nativeBindings.size());
+    for (std::size_t index = 0; index < layout.nativeBindings.size(); ++index) {
+        auto generation = std::move(layout.nativeBindings[index].generation);
+        for (const bool source : {true, false}) {
+            BridgeBuffers buffers;
+            buffers.owner = source ? generation->windowsRenderSource : generation->windowsCaptureDestination;
+            buffers.io = buffers.owner.get();
+            buffers.endpointBase = nativeBases[index] + (source ? 0 : 2);
+            buffers.capture = source;
+            for (unsigned channel = 0; channel < 2; ++channel) {
+                const auto offset = (buffers.endpointBase + channel) * layout.bufferFrames;
+                if (source) buffers.capturePlanes.push_back(runtime->sourceSamples_.data() + offset);
+                else buffers.renderPlanes.push_back(runtime->destinationSamples_.data() + offset);
+            }
+            runtime->bridges_.push_back(std::move(buffers));
+        }
+        runtime->nativeGenerations_.push_back(std::move(generation));
     }
     std::set<std::uint32_t> routedInputs;
     std::set<std::uint32_t> routedOutputs;
@@ -307,14 +424,33 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
     if (sampleStages && observedClient && readEnd.QuadPart >= readStart.QuadPart)
         clientReadTiming_.Add(static_cast<std::uint64_t>(readEnd.QuadPart - readStart.QuadPart));
 
+    for (auto& bridge : bridges_) {
+        if (bridge.capture) {
+            bridge.io->ReadCaptureBlock(bridge.capturePlanes.data(), frames, bridge.capturePlanes.size());
+            for (std::size_t channel = 0; channel < bridge.capturePlanes.size(); ++channel)
+                sourceBlocks_[bridge.endpointBase + channel] = bridge.capturePlanes[channel];
+        } else {
+            for (std::size_t channel = 0; channel < bridge.renderPlanes.size(); ++channel)
+                destinationBlocks_[bridge.endpointBase + channel] =
+                    destinationSamples_.data() + (bridge.endpointBase + channel) * bufferFrames_;
+        }
+    }
+    // Preserve the existing client-read and graph-only measurements. Bridge IO
+    // does not get attributed to either stage; separate bridge timing is future work.
+    LARGE_INTEGER routingStart = readEnd;
+    if (sampleStages && !bridges_.empty()) QueryPerformanceCounter(&routingStart);
+
     graph_->Process(sourceBlocks_.data(), destinationBlocks_.data(), frames,
         physicalOutputsPrecleared);
     if (sampleStages) {
         LARGE_INTEGER routingEnd{};
         QueryPerformanceCounter(&routingEnd);
-        if (observedClient && routingEnd.QuadPart >= readEnd.QuadPart)
-            routingTiming_.Add(static_cast<std::uint64_t>(routingEnd.QuadPart - readEnd.QuadPart));
+        if ((observedClient || !bridges_.empty()) && routingEnd.QuadPart >= routingStart.QuadPart)
+            routingTiming_.Add(static_cast<std::uint64_t>(routingEnd.QuadPart - routingStart.QuadPart));
     }
+    for (auto& bridge : bridges_)
+        if (!bridge.capture)
+            bridge.io->WriteRenderBlock(bridge.renderPlanes.data(), frames, bridge.renderPlanes.size());
 
     const auto correlationGeneration = correlationGeneration_.load(std::memory_order_acquire);
     if ((correlationGeneration & 1u) != 0) {

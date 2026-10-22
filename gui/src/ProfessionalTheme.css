@@ -410,6 +410,8 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .routing-dialog { box-sizing: border-box; width: min(850px, 100%); max-height: min(85vh, 900px); overflow: auto; padding: 20px; border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; box-shadow: 0 16px 48px #14263255; }
 .routing-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .routing-dialog-heading h2 { margin: 0; }
+.bridge-enabled-field { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+.bridge-enabled-field input[type='checkbox'] { width: 18px; height: 18px; flex: 0 0 auto; margin: 0; }
 .patchbay-context-menu { position: fixed; z-index: 120; display: grid; min-width: 220px; max-width: min(360px, calc(100vw - 16px)); padding: 5px; border: 1px solid var(--border-strong); border-radius: 6px; background: #fff; box-shadow: 0 10px 30px #14263255; }
 .patchbay-context-menu strong { padding: 7px 9px; overflow: hidden; color: var(--text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .patchbay-context-menu button { width: 100%; padding: 9px; border: 0; border-radius: 4px; background: transparent; color: var(--text-primary); text-align: left; }

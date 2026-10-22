@@ -46,6 +46,247 @@ const state = {
     routes: []
 };
 
+const withClockApp = async (initialState, check) => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    window.localStorage.clear();
+    window.vasio = { getState: jest.fn().mockResolvedValue(initialState),
+        getApplicationProfiles: jest.fn().mockResolvedValue({ profiles: [] }),
+        getDiagnostics: jest.fn().mockResolvedValue({ level: 'info', entries: [] }),
+        subscribeEvents: jest.fn(() => () => {}), onDisconnect: jest.fn(() => () => {}),
+        applyConfiguration: jest.fn().mockResolvedValue({ accepted: true }),
+        executeCommand: jest.fn().mockResolvedValue({}), stopAudio: jest.fn().mockResolvedValue({}) };
+    window.electronAPI = { onEngineConnection: jest.fn(() => () => {}), onEngineDiagnostic: jest.fn(() => () => {}) };
+    const container = document.createElement('div'); document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => { root.render(<App />); await Promise.resolve(); });
+        await check(container);
+    } finally {
+        await act(async () => root.unmount()); container.remove();
+        delete window.vasio; delete window.electronAPI;
+    }
+};
+
+test('API 1.1 bridges create, edit, disable and remove through context actions and preserve routes', async () => {
+    const initial = { ...state, apiVersion: '1.1', configurationRevision: 7, configuredWasapiBridges: [],
+        wasapiBridges: [], wasapiDevices: [{ id: 'mic-device', name: 'Desk microphone', flow: 'capture', state: 1,
+            mixFormat: null, error: 'Unsupported device format' }], wasapiInventoryError: null };
+    await withClockApp(initial, async container => {
+        const button = text => [...document.querySelectorAll('button')].find(item => item.textContent === text);
+        expect(container.textContent).toContain('Windows audio bridges');
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await chooseContextAction(container.querySelector('.patchbay-flow'), 'Add Windows audio bridge…');
+        const field = name => document.querySelector(`[aria-label="${name}"]`);
+        await act(async () => Simulate.change(field('Bridge ID'), { target: { value: 'desk' } }));
+        await act(async () => Simulate.change(field('Windows endpoint'), { target: { value: 'mic-device' } }));
+        expect(document.querySelector('[role="dialog"]').textContent).toContain('Unsupported device format');
+        await act(async () => Simulate.click(button('Save bridge to draft')));
+        expect(container.querySelector('[data-node-key="wasapi:desk"]')).not.toBeNull();
+        await chooseContextAction(container.querySelector('[data-node-key="wasapi:desk"]'), 'Configure Windows audio bridge…');
+        await act(async () => Simulate.change(field('Bridge selection'), { target: { value: 'default' } }));
+        await act(async () => Simulate.change(field('Default endpoint role'), { target: { value: 'communications' } }));
+        await act(async () => Simulate.change(field('Bridge enabled'), { target: { checked: false } }));
+        await act(async () => Simulate.click(button('Save bridge to draft')));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({ expectedConfigurationRevision: 7,
+            wasapiBridges: [{ id: 'desk', kind: 'capture', enabled: false, defaultRole: 'communications', bufferDuration100ns: 0 }] }));
+    });
+    const bridge = { id: 'desk', kind: 'capture', endpointId: 'mic-device', enabled: false, bufferDuration100ns: 0 };
+    const route = { id: 'saved', sourceEndpointId: 'wasapi:desk:input:1', destinationEndpointId: 'virtual:TimoxVasio:app:audioapp.exe:input:1', gainDb: 0, mute: false };
+    await withClockApp({ ...initial, configuredWasapiBridges: [bridge], configuredRoutes: [route] }, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await chooseContextAction(container.querySelector('[data-node-key="wasapi:desk"]'), 'Remove Windows audio bridge…');
+        expect(document.querySelector('[role="dialog"]').textContent).toContain('1 saved connection');
+        await act(async () => Simulate.click([...document.querySelectorAll('button')].find(item => item.textContent === 'Remove bridge and its connections')));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({ wasapiBridges: [], routes: [] }));
+    });
+});
+
+test.each(['render', 'endpointLoopback'])('Windows bridge %s selects render endpoints and supports default roles', async kind => {
+    await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: [], wasapiBridges: [],
+        wasapiDevices: [{ id: 'speaker', name: 'Speakers', flow: 'render', state: 1 }, { id: 'mic', name: 'Microphone', flow: 'capture', state: 1 }] }, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await chooseContextAction(container.querySelector('.patchbay-flow'), 'Add Windows audio bridge…');
+        const field = name => document.querySelector(`[aria-label="${name}"]`);
+        await act(async () => Simulate.change(field('Bridge ID'), { target: { value: kind } }));
+        await act(async () => Simulate.change(field('Bridge kind'), { target: { value: kind } }));
+        expect([...field('Windows endpoint').options].map(option => option.value)).toEqual(['', 'speaker']);
+        await act(async () => Simulate.change(field('Bridge selection'), { target: { value: 'default' } }));
+        await act(async () => Simulate.change(field('Default endpoint role'), { target: { value: 'multimedia' } }));
+        await act(async () => Simulate.click([...document.querySelectorAll('button')].find(button => button.textContent === 'Save bridge to draft')));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration.mock.calls[0][0].wasapiBridges).toEqual([
+            { id: kind, kind, enabled: true, defaultRole: 'multimedia', bufferDuration100ns: 0 }]);
+    });
+});
+
+test.each([0, 1, 123456, 10000000])('Windows bridge duration shows milliseconds and preserves API precision (%i)', async duration => {
+    const bridge = { id: 'speakers', kind: 'render', enabled: true, defaultRole: 'multimedia', bufferDuration100ns: duration };
+    await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: [bridge], wasapiBridges: [], wasapiDevices: [] }, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        const open = () => chooseContextAction(container.querySelector('[data-node-key="wasapi:speakers"]'), 'Configure Windows audio bridge…');
+        const save = () => Simulate.click([...document.querySelectorAll('button')].find(button => button.textContent === 'Save bridge to draft'));
+        await open();
+        expect(document.querySelector('[aria-label="Bridge buffer duration (ms)"]').value).toBe(String(duration / 10000));
+        await act(async () => save());
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration.mock.calls[0][0].wasapiBridges[0].bufferDuration100ns).toBe(duration);
+        await open();
+        const field = document.querySelector('[aria-label="Bridge buffer duration (ms)"]');
+        await act(async () => Simulate.change(field, { target: { value: '1000.1' } }));
+        expect([...document.querySelectorAll('button')].find(button => button.textContent === 'Save bridge to draft').disabled).toBe(true);
+        await act(async () => Simulate.change(field, { target: { value: '10' } }));
+        await act(async () => save());
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration.mock.calls[1][0].wasapiBridges[0].bufferDuration100ns).toBe(100000);
+    });
+});
+
+test('WASAPI capture and render routes apply stable ports while loopback self-render and disabled capture are unavailable', async () => {
+    const desired = [
+        { id: 'mic', kind: 'capture', endpointId: 'microphone', enabled: true, bufferDuration100ns: 0 },
+        { id: 'speakers', kind: 'render', endpointId: 'speaker', enabled: true, bufferDuration100ns: 0 },
+        { id: 'loop', kind: 'endpointLoopback', endpointId: 'speaker', enabled: true, bufferDuration100ns: 0 },
+        { id: 'off', kind: 'capture', endpointId: 'microphone', enabled: false, bufferDuration100ns: 0 }];
+    const runtime = desired.map(bridge => {
+        const capture = bridge.kind !== 'render', direction = capture ? 'input' : 'output';
+        return { id: bridge.id, state: bridge.enabled ? 'running' : 'disabled', effectiveInfo: { endpointId: bridge.endpointId },
+            [capture ? 'inputEndpoints' : 'outputEndpoints']: [{ id: `wasapi:${bridge.id}:${direction}:1`, name: bridge.id, direction, channel: 1 }] };
+    });
+    await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: desired, wasapiBridges: runtime, wasapiDevices: [] }, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await addFromMenu(container, 'wasapi:mic:input:1', 'virtual:TimoxVasio:42:input:1');
+        await addFromMenu(container, 'virtual:TimoxVasio:42:output:1', 'wasapi:speakers:output:1');
+        await chooseContextAction(container.querySelector('.patchbay-flow'), 'Create a new connection');
+        const field = name => document.querySelector(`[aria-label="${name}"]`);
+        await act(async () => Simulate.change(field('Quick route source'), { target: { value: 'wasapi:loop' } }));
+        expect([...field('Quick route destination').options].map(option => option.value)).not.toContain('wasapi:speakers');
+        await act(async () => Simulate.change(field('Quick route source'), { target: { value: 'wasapi:off' } }));
+        expect(document.querySelector('.quick-routing-add').disabled).toBe(true);
+        await act(async () => Simulate.click([...document.querySelector('[role="dialog"]').querySelectorAll('button')].find(button => button.textContent === 'Close')));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration.mock.calls[0][0]).toEqual(expect.objectContaining({ wasapiBridges: desired,
+            routes: [expect.objectContaining({ sourceEndpointId: 'wasapi:mic:input:1', destinationEndpointId: 'virtual:TimoxVasio:app:audioapp.exe:input:1' }),
+                expect.objectContaining({ sourceEndpointId: 'virtual:TimoxVasio:app:audioapp.exe:output:1', destinationEndpointId: 'wasapi:speakers:output:1' })] }));
+    });
+});
+
+test.each(['open', 'ambiguous', 'missing-channel'])('saved ASIO ports identify an open client only when unambiguous (%s)', async scenario => {
+    const ambiguous = scenario === 'ambiguous';
+    const route = { id: 'saved-live', sourceEndpointId: 'virtual:TimoxVasio:app:audioapp.exe:output:1',
+        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false };
+    const driver = state.virtualDrivers[0];
+    await withClockApp({ ...state, configuredRoutes: [route], routes: [{ ...route,
+        sourceEndpointId: 'virtual:TimoxVasio:42:output:1' }], virtualDrivers: [{ ...driver,
+        clients: ambiguous ? [...driver.clients, { ...driver.clients[0], pid: 43 }] : driver.clients,
+        outputEndpoints: scenario === 'missing-channel' ? [] : ambiguous ? [...driver.outputEndpoints, { ...driver.outputEndpoints[0], id: 'virtual:TimoxVasio:43:output:1' }] : driver.outputEndpoints }] }, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        const savedPort = [...container.querySelectorAll('.patchbay-port')].find(port =>
+            port.getAttribute('aria-label')?.includes('select as source'));
+        expect(savedPort).toBeDefined();
+        expect(savedPort.getAttribute('aria-label').includes('Process not open')).toBe(scenario !== 'open');
+        if (scenario === 'open') expect(savedPort.getAttribute('aria-label')).toContain('PID 42');
+    });
+});
+
+test('editing a durable route preserves its app ID alongside an existing PID route', async () => {
+    const routes = [
+        { id: 'durable', sourceEndpointId: 'virtual:TimoxVasio:app:audioapp.exe:output:1', destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false },
+        { id: 'pid-route', sourceEndpointId: 'virtual:TimoxVasio:42:output:1', destinationEndpointId: 'physical:interface-1:output:2', gainDb: 0, mute: false }
+    ];
+    await withClockApp({ ...state, configuredRoutes: routes,
+        routes: routes.map(route => ({ ...route, sourceEndpointId: 'virtual:TimoxVasio:42:output:1' })),
+        physicalDrivers: [{ ...state.physicalDrivers[0], outputEndpoints: [...state.physicalDrivers[0].outputEndpoints,
+            { id: 'physical:interface-1:output:2', name: 'Output 2', direction: 'output', channel: 2 }] }] }, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        const process = container.querySelector('[data-node-key="process:TimoxVasio:42"]');
+        expect(process.querySelectorAll('.patchbay-port')).toHaveLength(2);
+        expect(process.textContent).not.toContain('Process not open');
+        await chooseContextAction(process, 'Modify a connection…');
+        const choices = [...document.querySelectorAll('.process-dialog-routes button')].filter(button => button.textContent === 'Edit…');
+        expect(choices).toHaveLength(2);
+        await act(async () => Simulate.click(choices[0]));
+        await act(async () => Simulate.change(document.querySelector('.route-gain-input'), { target: { value: '-3' } }));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+            routes: expect.arrayContaining([{ ...routes[0], gainDb: -3 }, routes[1]])
+        }));
+        expect(window.vasio.applyConfiguration.mock.calls[0][0].routes).toHaveLength(2);
+    });
+});
+
+test('software clock stages explicit format and applies without a physical driver', async () => {
+    await withClockApp(state, async container => {
+        const source = container.querySelector('[aria-label="Clock source"]');
+        expect(source).not.toBeNull();
+        await act(async () => Simulate.change(source, { target: { value: 'software' } }));
+        expect(container.querySelector('[aria-label="Software sample rate"]').value).toBe('48000');
+        expect(container.querySelector('[aria-label="Software quantum"]').value).toBe('256');
+        await act(async () => Simulate.change(container.querySelector('[aria-label="Software sample rate"]'), { target: { value: '96000' } }));
+        await act(async () => Simulate.change(container.querySelector('[aria-label="Software quantum"]'), { target: { value: '128' } }));
+        window.vasio.getState.mockResolvedValueOnce(state).mockResolvedValue({ ...state,
+            engine: { ...state.engine, state: 'running', clockSource: { kind: 'software' },
+                physicalDriverId: null, sampleRate: 96000, bufferFrames: 128 } });
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+            clockSource: { kind: 'software' }, physicalDriverId: null, sampleRate: 96000, bufferFrames: 128, routes: [] }));
+        expect(container.querySelector('.notice').textContent).not.toContain('remains stopped');
+    });
+});
+
+test('software clock applies with hardware routes preserved dormant and can keep the running source', async () => {
+    const route = { id: 'keep', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
+        destinationEndpointId: 'physical:interface-1:output:1', gainDb: 0, mute: false };
+    await withClockApp({ ...state, routes: [route] }, async container => {
+        const source = container.querySelector('[aria-label="Clock source"]');
+        expect(source).not.toBeNull();
+        await act(async () => Simulate.change(source, { target: { value: 'software' } }));
+        expect(container.querySelector('.apply-configuration').disabled).toBe(false);
+        expect(container.textContent).toContain('physical connections remain saved');
+        await act(async () => Simulate.click([...container.querySelectorAll('button')].find(button => button.textContent === 'Keep running clock')));
+        expect(source.value).toBe('asio');
+        await act(async () => Simulate.change(source, { target: { value: 'software' } }));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+            physicalDriverId: null, clockSource: { kind: 'software' }, routes: [route] }));
+    });
+});
+
+test('running software clock exposes reset and stop and excludes hardware from routing', async () => {
+    await withClockApp({ ...state, engine: { ...state.engine, state: 'running', physicalDriverId: null,
+        clockSource: { kind: 'software' } }, virtualDrivers: [{ ...state.virtualDrivers[0], clients: [] }] }, async container => {
+        expect(container.querySelector('.engine-reset')).not.toBeNull();
+        await act(async () => { Simulate.click(container.querySelector('.engine-reset')); await new Promise(resolve => setTimeout(resolve, 170)); });
+        expect(window.vasio.executeCommand).toHaveBeenCalledWith(expect.objectContaining({ command: 'engine.reset' }));
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        expect(container.querySelector('[data-port-id="physical:interface-1:output:1"]')).toBeNull();
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[3]));
+        expect(container.querySelector('.clock-source').textContent).not.toContain('selected card');
+        expect(container.querySelector('.buffer-health h2').textContent).toBe('Software clock callback');
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[5]));
+        expect(container.querySelector('.engine-stop')).not.toBeNull();
+        await act(async () => { Simulate.click(container.querySelector('.engine-stop')); await new Promise(resolve => setTimeout(resolve, 170)); });
+        expect(window.vasio.stopAudio).toHaveBeenCalledTimes(1);
+    });
+});
+
+test('software clock rejects invalid formats and switching back to hardware resets the source', async () => {
+    await withClockApp(state, async container => {
+        const source = container.querySelector('[aria-label="Clock source"]');
+        await act(async () => Simulate.change(source, { target: { value: 'software' } }));
+        for (const value of ['0', '7999', '384001', '48000.5']) {
+            await act(async () => Simulate.change(container.querySelector('[aria-label="Software sample rate"]'), { target: { value } }));
+            expect(container.querySelector('.apply-configuration').disabled).toBe(true);
+        }
+        await act(async () => Simulate.change(source, { target: { value: 'asio' } }));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+            physicalDriverId: 'interface-1' }));
+        expect(window.vasio.applyConfiguration.mock.calls[0][0].clockSource?.kind || 'asio').toBe('asio');
+    });
+});
+
 test('route updates from the engine keep unapplied edits available to Apply', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     let onEvent;
@@ -463,7 +704,7 @@ test('switching physical drivers migrates existing hardware connections by chann
         await act(async () => { Simulate.click(container.querySelector('.migrate-hardware-routes'));
             await new Promise(resolve => setTimeout(resolve, 0)); });
         expect(applyConfiguration).toHaveBeenCalledTimes(2);
-        expect(applyConfiguration.mock.calls[0][0].routes).toEqual([virtualRoute]);
+        expect(applyConfiguration.mock.calls[0][0].routes).toEqual([physicalRoute, virtualRoute]);
         expect(applyConfiguration.mock.calls[1][0].routes).toEqual([virtualRoute,
             { ...physicalRoute, destinationEndpointId: 'physical:asio4all-1:output:1' }]);
         expect(container.textContent).toContain('1 hardware connection transferred to ASIO4ALL v2');
@@ -521,6 +762,52 @@ test('a missing new-driver channel keeps a recoverable copy of the old connectio
         await act(async () => root.unmount()); container.remove(); window.localStorage.clear();
         delete window.vasio; delete window.electronAPI;
     }
+});
+
+test.each(['1.0', '1.1'])('failed hardware transfer restores software clock, dormant connections and bridges on API %s', async apiVersion => {
+    const bridges = [{ id: 'keep', kind: 'capture', defaultRole: 'console', enabled: false, bufferDuration100ns: 0 }];
+    const route = { id: 'dormant-right', sourceEndpointId: 'virtual:TimoxVasio:42:output:1',
+        destinationEndpointId: 'physical:interface-1:output:2', gainDb: -3, mute: false };
+    const target = { id: 'new-card', name: 'New card', inputEndpoints: [], outputEndpoints: [],
+        sampleRates: [], bufferSizes: null, capabilitiesKnown: false };
+    let current = { ...state, apiVersion, ...(apiVersion === '1.1' ? { configuredWasapiBridges: bridges, wasapiBridges: [], wasapiDevices: [] } : {}),
+        engine: { ...state.engine, state: 'running', physicalDriverId: null,
+        clockSource: { kind: 'software' }, sampleRate: 96000, bufferFrames: 128 },
+        configuredRoutes: [route], routes: [], physicalDrivers: [target] };
+    await withClockApp(current, async container => {
+        window.vasio.getState.mockImplementation(async () => current);
+        window.vasio.applyConfiguration.mockImplementation(async draft => {
+            if (apiVersion === '1.1') expect(draft.wasapiBridges).toEqual(bridges);
+            else expect(draft).not.toHaveProperty('wasapiBridges');
+            const knownEndpoints = new Set([
+                ...current.physicalDrivers.flatMap(driver => [...driver.inputEndpoints, ...driver.outputEndpoints].map(endpoint => endpoint.id)),
+                ...current.virtualDrivers.flatMap(driver => [...driver.inputEndpoints, ...driver.outputEndpoints].map(endpoint => endpoint.id)),
+                ...current.configuredRoutes.flatMap(saved => [saved.sourceEndpointId, saved.destinationEndpointId])
+            ]);
+            if (draft.routes.some(saved => [saved.sourceEndpointId, saved.destinationEndpointId].some(endpoint => !knownEndpoints.has(endpoint))))
+                throw new Error('UNKNOWN_ENDPOINT');
+            current = { ...current, engine: { ...current.engine, physicalDriverId: draft.physicalDriverId,
+                clockSource: draft.clockSource, sampleRate: draft.sampleRate, bufferFrames: draft.bufferFrames },
+                configuredRoutes: draft.routes, routes: [], physicalDrivers: [
+                    { ...target, capabilitiesKnown: true, outputEndpoints: [{ id: 'physical:new-card:output:1' }] }] };
+            return { accepted: true };
+        });
+        await act(async () => Simulate.change(container.querySelector('[aria-label="Clock source"]'), { target: { value: 'asio' } }));
+        await act(async () => Simulate.change(container.querySelector('[aria-label="Replacement physical ASIO driver"]'), { target: { value: 'new-card' } }));
+        await act(async () => Simulate.click(container.querySelector('.migrate-hardware-routes')));
+        expect(container.textContent).toContain('new driver lacks output 2');
+        const restore = [...container.querySelectorAll('.driver-change-recovery button')]
+            .find(button => button.textContent.includes('Restore previous'));
+        expect(restore).toBeDefined();
+        await act(async () => Simulate.click(restore));
+        expect(window.vasio.applyConfiguration).toHaveBeenLastCalledWith(expect.objectContaining({
+            clockSource: { kind: 'software' }, physicalDriverId: null, sampleRate: 96000,
+            bufferFrames: 128, routes: [route] }));
+        expect(container.querySelector('.driver-change-recovery')).toBeNull();
+        expect(container.querySelector('[aria-label="Clock source"]').value).toBe('software');
+        expect(container.querySelector('[aria-label="Clock source"]').disabled).toBe(false);
+        expect(window.localStorage.getItem('timoxvasio.hardware-transfer.v1')).toBeNull();
+    });
 });
 
 test('a connection label and color persist locally without applying audio configuration', async () => {

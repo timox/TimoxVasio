@@ -26,6 +26,10 @@ if ($forbidden.Count) {
 }
 
 $cmake = Get-Content -LiteralPath (Join-Path $repoRoot 'cmake\CMakeLists_VASIO_Drivers.txt') -Raw
+$backendViolations = @(Get-DriverBackendBoundaryViolations -CMakeText $cmake)
+if ($backendViolations.Count) {
+    throw "Driver backend boundary violation: $($backendViolations -join '; ')"
+}
 $sources = [regex]::Match($cmake, '(?s)set\(COMMON_SOURCES(?<body>.*?)\r?\n\)')
 if (-not $sources.Success) { throw 'The driver source list could not be audited.' }
 if ($sources.Groups['body'].Value -match 'application_profile_store_write') {
@@ -41,4 +45,5 @@ if ($readSource -match 'ApplicationProfileStore::Save|GENERIC_WRITE|WriteFile\s*
     dll = $dll
     sha256 = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash
     diskWriteImports = @()
+    backendBoundaryViolations = @()
 } | ConvertTo-Json -Compress

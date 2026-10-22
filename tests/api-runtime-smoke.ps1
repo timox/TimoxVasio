@@ -12,7 +12,7 @@ function Assert-ApiSchema($value, [string]$description) {
 }
 
 $httpState = Invoke-RestMethod -Method Get -Uri "$BaseUri/api/v1/state"
-if ($httpState.apiVersion -ne '1.0' -or $httpState.engine.state -notin @('stopped', 'running', 'error', 'reconfiguring')) {
+if ($httpState.apiVersion -notin @('1.0', '1.1') -or $httpState.engine.state -notin @('stopped', 'running', 'error', 'reconfiguring')) {
     throw 'GET /api/v1/state returned an invalid runtime state.'
 }
 Assert-ApiSchema $httpState 'GET /api/v1/state'

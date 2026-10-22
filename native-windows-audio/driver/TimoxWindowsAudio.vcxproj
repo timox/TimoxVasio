@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{2563B2F9-AD30-418C-A0E3-7BE566F41474}</ProjectGuid>
+    <RootNamespace>TimoxWindowsAudio</RootNamespace>
+    <Configuration Condition="'$(Configuration)'==''">Release</Configuration>
+    <Platform Condition="'$(Platform)'==''">x64</Platform>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+    <KMDF_VERSION_MAJOR>1</KMDF_VERSION_MAJOR>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+    <DriverType>KMDF</DriverType>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <SignMode>Off</SignMode>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <TargetName>TimoxWindowsAudio</TargetName>
+    <OutDir>$(MSBuildProjectDirectory)\..\..\build_native_windows_audio\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(OutDir)obj\</IntDir>
+    <InfToolPath>$(TimoxPackages)\Microsoft.Windows.WDK.x64.$(TimoxKitVersion)\c\bin\10.0.28000.0\x64</InfToolPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <WarningLevel>Level4</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <ExceptionHandling></ExceptionHandling>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory);upstream;upstream\EndpointsCommon;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN32;UNICODE;_UNICODE;PC_IMPLEMENTATION;_USE_WAVERT_;_USE_IPortClsRuntimePower;_NEW_DELETE_OPERATORS_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <DisableSpecificWarnings>4595;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <Link><AdditionalDependencies>$(DDK_LIB_PATH)\wdmsec.lib;$(DDK_LIB_PATH)\portcls.lib;$(DDK_LIB_PATH)\stdunk.lib;$(DDK_LIB_PATH)\libcntpr.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="control.cpp" />
+    <ClCompile Include="upstream\adapter.cpp" />
+    <ClCompile Include="upstream\basetopo.cpp" />
+    <ClCompile Include="upstream\common.cpp" />
+    <ClCompile Include="upstream\hw.cpp" />
+    <ClCompile Include="upstream\kshelper.cpp" />
+    <ClCompile Include="upstream\EndpointsCommon\AudioModuleHelper.cpp" />
+    <ClCompile Include="upstream\EndpointsCommon\MiniportAudioEngineNode.cpp" />
+    <ClCompile Include="upstream\EndpointsCommon\MiniportStreamAudioEngineNode.cpp" />
+    <ClCompile Include="upstream\EndpointsCommon\mintopo.cpp" />
+    <ClCompile Include="upstream\EndpointsCommon\minwavert.cpp" />
+    <ClCompile Include="upstream\EndpointsCommon\minwavertstream.cpp" />
+    <ClCompile Include="upstream\EndpointsCommon\NewDelete.cpp" />
+    <Inf Include="TimoxWindowsAudio.inx" />
+    <FilesToPackage Include="$(TargetPath)" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

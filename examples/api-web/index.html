@@ -253,7 +253,7 @@
           const response = await fetch(`http://127.0.0.1:${port}/api/v1/state`, { cache: 'no-store' });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const state = await response.json();
-          if (state.apiVersion !== '1.0' || !Array.isArray(state.virtualDrivers)) throw new Error('Ce port ne répond pas comme l’API TimoxVasio v1.');
+          if (!['1.0', '1.1'].includes(state.apiVersion) || !Array.isArray(state.virtualDrivers)) throw new Error('Ce port ne répond pas comme l’API TimoxVasio v1.');
           snapshot = state;
           renderState();
           addLog('GET', { path: '/api/v1/state', engine: state.engine.state });

@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 contextBridge.exposeInMainWorld('vasio', {
     getState: () => ipcRenderer.invoke('api:get-state'),
     getDrivers: () => ipcRenderer.invoke('api:get-drivers'),
+    getWasapiDevices: () => ipcRenderer.invoke('api:get-wasapi-devices'),
     getApplicationProfiles: () => ipcRenderer.invoke('api:get-application-profiles'),
     replaceApplicationProfiles: profiles => ipcRenderer.invoke('api:replace-application-profiles', profiles),
     getDiagnostics: limit => ipcRenderer.invoke('api:get-diagnostics', limit),
