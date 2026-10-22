@@ -1,5 +1,27 @@
 # Accès SSH à la VM Windows de test
 
+## Périmètre du script
+
+Ce script prépare uniquement l'accès distant SSH. Il ne vérifie pas que toutes
+les applications Windows sont installées et n'installe ni WinGet, ni Microsoft
+Store, ni les pilotes VirtIO/audio. Le compte local `timo` convient ; aucune
+connexion à un compte Microsoft n'est nécessaire pour ce script.
+
+WinGet est facultatif pour ce banc : OpenSSH est installé par
+`Add-WindowsCapability`, sans dépendre de WinGet. Pour diagnostiquer séparément
+sa présence dans la session de `timo`, utiliser :
+
+```powershell
+Get-AppxPackage Microsoft.DesktopAppInstaller
+Get-Command winget -ErrorAction SilentlyContinue
+```
+
+L'absence de résultat ne démontre pas une installation Windows défectueuse.
+WinGet dépend d'App Installer et de son enregistrement pour l'utilisateur ;
+voir la [documentation Microsoft](https://learn.microsoft.com/en-us/windows/package-manager/winget/).
+
+## Conditions d'exécution
+
 Exécuter cette préparation **dans la VM dédiée**, depuis sa console et dans
 Windows PowerShell 5.1 x64 ouvert comme administrateur. Garder la console de
 récupération et un snapshot avant modification. Ne pas lancer le script sur
