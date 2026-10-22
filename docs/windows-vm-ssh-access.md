@@ -50,6 +50,14 @@ $publicKey = 'C:\Users\timo\Downloads\timox-vm.pub'
 $sourceAddress = '192.168.1.50' # IP du client vue par la VM, pas IP de la VM
 ```
 
+Pour ce banc, `UserName` vaut déjà `timo` par défaut et `PublicKeyPath` désigne
+déjà `timox-vm.pub` à côté du script. Si les deux fichiers sont dans le même
+dossier, seule l'adresse du poste client est à préciser :
+
+```powershell
+.\Configure-TimoxTestVmSsh.ps1 -AllowedRemoteAddress $sourceAddress
+```
+
 Un CIDR précis est accepté si nécessaire ; `Any`, les noms DNS et les préfixes
 `/0` sont refusés. Avec NAT, utiliser l'adresse réellement vue par la VM et
 configurer la redirection de port dans l'hyperviseur séparément si nécessaire.
