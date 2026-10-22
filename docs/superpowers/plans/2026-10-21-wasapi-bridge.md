@@ -130,4 +130,16 @@ Travail dans la branche de session existante ; sous-agents spécialisés et revu
 
 Build natif après contrôle racine/statut : cmake --build build_codex_110 --config Release --target <Cible>, puis exécutable build_codex_110/Release/<Cible>.exe ; lire codes retour et sorties. Les tests matériels sont notés non exécutés tant qu'ils ne le sont pas.
 
-[Journal d'avancement](2026-10-21-wasapi-bridge-progress.md). Les briques des incréments 1–6 sont désormais intégrées ; les cases non cochées conservent les exigences composites qui ne sont pas encore entièrement vérifiées. La qualification réelle de l'incrément 7 a commencé avec deux hôtes ASIO sans carte, puis un aller-retour via WASAPI. Elle a révélé un défaut de préremplissage capture, corrigé et contre-vérifié sur un essai matériel court ; la stabilité prolongée reste à qualifier. L'incrément 8 dispose d'une conception et d'un contrat de paquets testé, mais aucun pilote Windows natif n'est encore livré. Consulter les rapports datés pour distinguer implémentation, tests factices, essais matériels et limites restantes.
+[Journal d'avancement](2026-10-21-wasapi-bridge-progress.md). Les briques des incréments 1–6 sont désormais intégrées ; les cases non cochées conservent les exigences composites qui ne sont pas encore entièrement vérifiées. La qualification réelle de l'incrément 7 a commencé avec deux hôtes ASIO sans carte, puis un aller-retour via WASAPI. Le [rapport du contrôle de dérive](2026-10-22-wasapi-packet-control.md) consigne les essais courts et prolongés, leurs incidents et leurs limites ; les [courbes de synchronisation](assets/2026-10-22-wasapi-sync/synchronisation.png) montrent les corrections et le remplissage des buffers, pas une mesure du retard entre signaux.
+
+### Suivi des endpoints Windows natifs — 22 octobre 2026
+
+L'incrément 8 progresse dans des lots séparés. Le pilote ASIO et le pilote Windows Audio restent deux livrables distincts ; aucun pilote noyau natif n'a encore été chargé ni distribué.
+
+| Lot | Preuve disponible | Limite restante |
+|---|---|---|
+| [Conception et transport noyau N2](2026-10-22-native-audio-private-transport.md) | Pilote compilé, validations WDK et tests hôte du protocole/files | Chargement, duplex réel et cycle de vie sur cible Windows dédiée |
+| [Backend et laboratoire N3](2026-10-22-native-audio-backend.md) | Transport annulable, worker duplex/SRC, bindings et sonde ; tests avec transport simulé | Qualification du chemin Windows réel et mesures de latence/CPU |
+| [Production N4](2026-10-22-native-audio-production.md) | Routes dormantes, configuration désirée persistée, validateur de messages et manager de reconnexion testés jusqu'au commit `e3f60b7` | Intégration du manager au contrôleur, service authentifié, isolation des sessions, API et GUI natives |
+
+La parité de performances, la couverture graphique/API, les horloges WASAPI matérielles et la distribution restent des exigences de l'objectif global. Un test simulé du manager ou du protocole ne prouve ni la sécurité du futur service, ni le fonctionnement du pilote chargé, ni cette parité.

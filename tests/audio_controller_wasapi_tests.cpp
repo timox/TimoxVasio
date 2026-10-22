@@ -167,12 +167,15 @@ void Transactions(const std::wstring& path){
     controller.Stop();Require(!native->wrongThread,"native ownership escaped worker");
 }
 
+struct ClockTrace { unsigned starts=0;std::vector<std::uint32_t> inputs,outputs; };
 class Clock final:public AudioClockHost {
 public:
+    explicit Clock(std::shared_ptr<ClockTrace> trace={}):trace_(std::move(trace)){}
     std::vector<AudioClockDeviceInfo> enumerate()const override{return {{L"fake","Fake clock"}};}
     bool open(const std::wstring&,void*,AudioClockCapabilities& output,std::string&)override {
         caps={};caps.currentSampleRate=48000;caps.minBufferFrames=16;caps.maxBufferFrames=256;
-        caps.preferredBufferFrames=64;caps.bufferGranularity=-1;output=caps;return true;
+        caps.preferredBufferFrames=64;caps.bufferGranularity=-1;
+        if(trace_){caps.inputChannels=4;caps.outputChannels=4;}output=caps;return true;
     }
     bool setSampleRate(double rate,std::string&)override{caps.currentSampleRate=rate;return true;}
     bool refreshCapabilities(AudioClockCapabilities& output,std::string&)override{output=caps;return true;}
@@ -181,11 +184,13 @@ public:
     AudioClockTimingCounters consumeTimingCounters()noexcept override{return {};}
     void setStageMeasurementsEnabled(bool)noexcept override{}
     StageTimingCounters consumeOutputCopyStageCounters()noexcept override{return {};}
-    bool start(std::uint32_t,const std::vector<std::uint32_t>&,const std::vector<std::uint32_t>&,
-               AudioClockProcessCallback,void*,std::string&)override{return true;}
+    bool start(std::uint32_t,const std::vector<std::uint32_t>& inputs,const std::vector<std::uint32_t>& outputs,
+               AudioClockProcessCallback,void*,std::string&)override{
+        if(trace_){++trace_->starts;trace_->inputs=inputs;trace_->outputs=outputs;}return true;
+    }
     void stop()noexcept override{}
     void close()noexcept override{}
-private:AudioClockCapabilities caps;
+private:AudioClockCapabilities caps;std::shared_ptr<ClockTrace> trace_;
 };
 
 void OfflineRestoreAndStop(const std::wstring& path) {
@@ -224,6 +229,42 @@ void NativeDesireKeepsMaster(const std::wstring& path) {
         "explicit StopAudio overrides native desire");
     Require(controller.StartAudio().success && controller.Snapshot().state=="running",
         "explicit StartAudio restores master for native desire");
+    controller.Stop();
+}
+
+void DormantNativePhysicalReservations(const std::wstring& path) {
+    DeleteFileW(path.c_str());
+    auto trace=std::make_shared<ClockTrace>();VasioClientManager clients;
+    AudioController controller(clients,path,path+L".profiles",[trace]{return std::make_unique<Clock>(trace);});
+    Require(controller.Start(),"reservation startup");
+    AudioControllerConfiguration config;config.physicalDriverId="fake";
+    config.sampleRate=48000;config.bufferFrames=64;config.nativeAudio.enabled=true;
+    config.routes={{"in","physical:fake:input:3","native:windows:output:1",-6,true},
+        {"out","native:windows:input:2","physical:fake:output:4",-3,false},
+        {"bad-driver","native:windows:input:1","physical:other:output:1",0,false},
+        {"bad-range","native:windows:input:1","physical:fake:output:5",0,false},
+        {"bad-number","native:windows:input:1","physical:fake:output:01",0,false},
+        {"bad-suffix","native:windows:input:1","physical:fake:output:2x",0,false},
+        {"bad-native","native:windows:input:3","physical:fake:output:2",0,false},
+        {"bad-direction","native:windows:output:1","physical:fake:input:1",0,false}};
+    Require(controller.ApplyConfiguration(config,std::nullopt,false,false,false).success,"dormant native physical setup");
+    Require(trace->inputs==std::vector<std::uint32_t>{2} && trace->outputs==std::vector<std::uint32_t>{3},
+        "dormant native routes did not reserve sparse global channels");
+    Require(controller.Snapshot().routes.empty(),"unavailable native routes activated");
+    const auto starts=trace->starts;
+    config.routes[0].gainDb=-12;config.routes[0].mute=false;
+    Require(controller.ApplyConfiguration(config).success && trace->starts==starts,
+        "compatible dormant route edit reopened master");
+    auto snapshot=controller.Snapshot();
+    Require(snapshot.configuredRoutes[0].gainDb==-12 && !snapshot.configuredRoutes[0].mute,
+        "reservation changed desired gain or mute");
+    config.routes.push_back({"extra","native:windows:input:1","physical:fake:output:2",0,false});
+    Require(controller.ApplyConfiguration(config).success && trace->starts==starts+1 &&
+        trace->outputs==std::vector<std::uint32_t>({1,3}),"new dormant reservation bypassed host restart");
+    const auto expanded=trace->starts;
+    config.routes.pop_back();
+    Require(controller.ApplyConfiguration(config).success && trace->starts==expanded,
+        "reserved superset was not reusable");
     controller.Stop();
 }
 
@@ -278,7 +319,7 @@ int main(){
     wchar_t temp[MAX_PATH]{};GetTempPathW(MAX_PATH,temp);
     const auto path=std::wstring(temp)+L"TimoxVasio-controller-wasapi-"+std::to_wstring(GetCurrentProcessId())+L".json";
     DeleteFileW(path.c_str());
-    try{NativeCapacityPreparation();Transactions(path);OfflineRestoreAndStop(path);PublicationBackoff(path);ActiveDefaultFollowsRole(path);NativeDesireKeepsMaster(path);}catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
+    try{DormantNativePhysicalReservations(path);NativeCapacityPreparation();Transactions(path);OfflineRestoreAndStop(path);PublicationBackoff(path);ActiveDefaultFollowsRole(path);NativeDesireKeepsMaster(path);}catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
     DeleteFileW(path.c_str());DeleteFileW((path+L".profiles").c_str());
     std::cout<<"Audio controller WASAPI tests passed\n";
 }

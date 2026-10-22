@@ -11,6 +11,7 @@
 #include <cmath>
 #include <algorithm>
 #include <chrono>
+#include <charconv>
 #include <stdexcept>
 #include <utility>
 
@@ -79,6 +80,35 @@ bool hasAttachedClient(const std::vector<VasioClientSnapshot>& clients) noexcept
     return std::any_of(clients.begin(), clients.end(), [](const VasioClientSnapshot& client) {
         return client.info.driverId == 1 && client.mapping && client.mapping->EngineAttached();
     });
+}
+
+// Reserve only valid desired native/physical pairs, even before native IO exists.
+// These remain dormant graph routes; opening ASIO channels does not activate them.
+// Channel vectors contain global zero-based indices, not compact plane indices.
+void reserveNativePhysicalChannels(const std::vector<AudioRoute>& routes,
+    const std::optional<std::string>& driver,const PhysicalAsioCapabilities& caps,
+    std::vector<std::uint32_t>& inputs,std::vector<std::uint32_t>& outputs) {
+    if(!driver)return;
+    const auto add=[&](const std::string& id,const char* direction,long count,
+                       std::vector<std::uint32_t>& channels) {
+        const auto prefix="physical:"+*driver+":"+direction+":";
+        if(count<=0 || id.compare(0,prefix.size(),prefix)!=0)return;
+        const auto text=id.substr(prefix.size());std::uint32_t channel=0;
+        const auto parsed=std::from_chars(text.data(),text.data()+text.size(),channel);
+        if(parsed.ec!=std::errc{} || parsed.ptr!=text.data()+text.size() || !channel ||
+           channel>static_cast<unsigned long>(count) || text!=std::to_string(channel))return;
+        channels.push_back(channel-1);
+    };
+    for(const auto& route:routes) {
+        if(PersistentRoutes::NativeEndpointType(route.destinationEndpointId)==RoutingEndpointType::NativeDestination)
+            add(route.sourceEndpointId,"input",caps.inputChannels,inputs);
+        if(PersistentRoutes::NativeEndpointType(route.sourceEndpointId)==RoutingEndpointType::NativeSource)
+            add(route.destinationEndpointId,"output",caps.outputChannels,outputs);
+    }
+    for(auto* channels:{&inputs,&outputs}) {
+        std::sort(channels->begin(),channels->end());
+        channels->erase(std::unique(channels->begin(),channels->end()),channels->end());
+    }
 }
 
 void acknowledgePublishedGenerations(const std::vector<VasioClientSnapshot>& clients,
@@ -290,10 +320,14 @@ std::optional<AudioControllerResult> AudioController::ApplyPreparedLive(
     layout.clients=clients;layout.routes=routes;layout.wasapiBindings=std::move(bindings);
     auto replacement=AudioRoutingRuntime::Create(std::move(layout),error);
     if(!replacement)return AudioControllerResult{false,error};
+    auto requiredInputs=replacement->RoutedPhysicalInputChannels();
+    auto requiredOutputs=replacement->RoutedPhysicalOutputChannels();
+    reserveNativePhysicalChannels(configuration.routes,current.physicalDriverId,
+        current.physicalCapabilities,requiredInputs,requiredOutputs);
     if(!std::includes(hostPhysicalInputs_.begin(),hostPhysicalInputs_.end(),
-          replacement->RoutedPhysicalInputChannels().begin(),replacement->RoutedPhysicalInputChannels().end()) ||
+          requiredInputs.begin(),requiredInputs.end()) ||
        !std::includes(hostPhysicalOutputs_.begin(),hostPhysicalOutputs_.end(),
-          replacement->RoutedPhysicalOutputChannels().begin(),replacement->RoutedPhysicalOutputChannels().end()))
+          requiredOutputs.begin(),requiredOutputs.end()))
         return std::nullopt;
     // All fallible preparation precedes persistence and callback publication.
     auto updated=current;updated.routes=routes;updated.configuredRoutes=configuration.routes;
@@ -964,9 +998,13 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
         return {true, {}};
     }
 
+    auto reservedInputs=runtime_->RoutedPhysicalInputChannels();
+    auto reservedOutputs=runtime_->RoutedPhysicalOutputChannels();
+    reserveNativePhysicalChannels(configuration.routes,configuration.physicalDriverId,
+        capabilities,reservedInputs,reservedOutputs);
     callbackSlot_.Publish(runtime_.get());
-    if (!physicalHost_->start(physicalBufferFrames, runtime_->RoutedPhysicalInputChannels(),
-                               runtime_->RoutedPhysicalOutputChannels(),
+    if (!physicalHost_->start(physicalBufferFrames, reservedInputs,
+                               reservedOutputs,
                                &RealtimeCallbackSlot::Dispatch, &callbackSlot_, error)) {
         StopPhysicalRuntime();
         next.state = "error";
@@ -977,8 +1015,8 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
         SetStatus(next);
         return {false, next.lastError};
     }
-    hostPhysicalInputs_ = runtime_->RoutedPhysicalInputChannels();
-    hostPhysicalOutputs_ = runtime_->RoutedPhysicalOutputChannels();
+    hostPhysicalInputs_ = std::move(reservedInputs);
+    hostPhysicalOutputs_ = std::move(reservedOutputs);
     physicalHost_->setStageMeasurementsEnabled(ReadPerformanceMeasurements().enabled);
     acknowledgePublishedGenerations(generationClients, sampleRate, physicalBufferFrames);
     next.state = "running";
