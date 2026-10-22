@@ -72,6 +72,37 @@ int wmain() {
             "stale configuration revision cannot overwrite another apply") && passed;
         passed = require(GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES,
             "successful configuration.apply writes the persistence file") && passed;
+
+        auto nativeConfiguration = emptyConfiguration;
+        nativeConfiguration.nativeAudio.enabled = true;
+        passed = require(controller.ApplyConfiguration(nativeConfiguration, std::nullopt, false, false, false).success &&
+            controller.Snapshot().configuredNativeAudio.enabled && controller.Snapshot().state == "stopped",
+            "explicit native desire persists without activating any audio backend") && passed;
+        passed = require(controller.ApplyConfiguration(emptyConfiguration).success &&
+            controller.Snapshot().configuredNativeAudio.enabled,
+            "legacy callers preserve the native desired configuration") && passed;
+        const auto nativeRevision = controller.Snapshot().configurationRevision;
+        const auto nativeConflict = controller.ApplyConfiguration(emptyConfiguration, 0, false, false, false);
+        passed = require(nativeConflict.conflict && controller.Snapshot().configurationRevision == nativeRevision &&
+            controller.Snapshot().configuredNativeAudio.enabled,
+            "revision conflict cannot replace native desire") && passed;
+        const auto temporaryPath = path + L".tmp";
+        HANDLE heldTemporary = CreateFileW(temporaryPath.c_str(), GENERIC_WRITE, 0, nullptr,
+            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        passed = require(heldTemporary != INVALID_HANDLE_VALUE, "save failure fixture locks temporary file") && passed;
+        if (heldTemporary != INVALID_HANDLE_VALUE) {
+            const auto rejected = controller.ApplyConfiguration(emptyConfiguration, std::nullopt, false, false, false);
+            passed = require(!rejected.success && controller.Snapshot().configuredNativeAudio.enabled &&
+                controller.Snapshot().configurationRevision == nativeRevision,
+                "failed save preserves native desire and revision") && passed;
+            CloseHandle(heldTemporary);
+            DeleteFileW(temporaryPath.c_str());
+        }
+        passed = require(controller.ApplyConfiguration(emptyConfiguration, std::nullopt, false, false, false).success &&
+            !controller.Snapshot().configuredNativeAudio.enabled,
+            "explicit replacement clears native desire") && passed;
+        passed = require(controller.ApplyConfiguration(nativeConfiguration, std::nullopt, false, false, false).success,
+            "native restore fixture saved") && passed;
         controller.Stop();
     }
 
@@ -81,7 +112,7 @@ int wmain() {
         passed = require(controller.Start(), "controller starts after restart with a saved configuration") && passed;
         const auto restored = controller.Snapshot();
         passed = require(restored.state == "stopped" && restored.lastError.empty() &&
-            restored.revision >= 2,
+            restored.revision >= 2 && restored.configuredNativeAudio.enabled,
             "startup replays the saved configuration before Start returns") && passed;
         controller.Stop();
     }

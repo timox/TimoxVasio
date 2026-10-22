@@ -298,6 +298,7 @@ std::optional<AudioControllerResult> AudioController::ApplyPreparedLive(
     // All fallible preparation precedes persistence and callback publication.
     auto updated=current;updated.routes=routes;updated.configuredRoutes=configuration.routes;
     updated.configuredWasapiBridges=configuration.wasapiBridges;
+    updated.configuredNativeAudio=configuration.nativeAudio;
     replacement->SetStageMeasurementsEnabled(ReadPerformanceMeasurements().enabled);
     if(durable && !configurationStore_.Save(*durable,error))return AudioControllerResult{false,error};
     ResetPerformanceMeasurementsWindow();
@@ -411,9 +412,10 @@ AudioControllerResult AudioController::SetPerformanceMeasurementsEnabled(bool en
 
 AudioControllerResult AudioController::ApplyConfiguration(
     const AudioControllerConfiguration& configuration,
-    std::optional<std::uint64_t> expectedConfigurationRevision, bool preserveClockSource,bool preserveWasapiBridges) {
+    std::optional<std::uint64_t> expectedConfigurationRevision, bool preserveClockSource,bool preserveWasapiBridges,
+    bool preserveNativeAudio) {
     try {
-        return Invoke([this, configuration, expectedConfigurationRevision, preserveClockSource,preserveWasapiBridges] {
+        return Invoke([this, configuration, expectedConfigurationRevision, preserveClockSource,preserveWasapiBridges,preserveNativeAudio] {
             if (expectedConfigurationRevision &&
                 *expectedConfigurationRevision != configurationRevision_)
                 return AudioControllerResult{false,
@@ -421,6 +423,7 @@ AudioControllerResult AudioController::ApplyConfiguration(
             auto effective = configuration;
             if (preserveClockSource) effective.clockSource = desiredConfiguration_.clockSource;
             if (preserveWasapiBridges) effective.wasapiBridges=desiredConfiguration_.wasapiBridges;
+            if (preserveNativeAudio) effective.nativeAudio=desiredConfiguration_.nativeAudio;
             return ApplyOnWorker(effective);
         });
     } catch (const std::exception& exception) {
@@ -784,6 +787,7 @@ AudioControllerResult AudioController::ApplyOnWorker(
         auto status = Snapshot();
         status.configuredRoutes = desiredConfiguration_.routes;
         status.configuredWasapiBridges=desiredConfiguration_.wasapiBridges;
+        status.configuredNativeAudio=desiredConfiguration_.nativeAudio;
         SetStatus(status);
         audioStoppedByCommand_ = false;
         return applied;
@@ -851,6 +855,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     next.state = "reconfiguring";
     next.configuredRoutes = configuration.routes;
     next.configuredWasapiBridges=configuration.wasapiBridges;
+    next.configuredNativeAudio=configuration.nativeAudio;
     SetStatus(next);
     StopPhysicalRuntime();
     if (hostClockSource_ != configuration.clockSource) {

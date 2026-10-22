@@ -144,13 +144,14 @@ Json encodeConfiguration(const AudioControllerConfiguration& configuration) {
         {"sampleRate", configuration.sampleRate ? Json(*configuration.sampleRate) : Json(nullptr)},
         {"bufferFrames", configuration.bufferFrames ? Json(*configuration.bufferFrames) : Json(nullptr)},
         {"routes", std::move(routes)},
-        {"wasapiBridges", encodeBridges(configuration.wasapiBridges)}
+        {"wasapiBridges", encodeBridges(configuration.wasapiBridges)},
+        {"nativeAudio", {{"enabled", configuration.nativeAudio.enabled}}}
     };
 }
 
 bool decodeConfiguration(const Json& value, AudioControllerConfiguration& configuration) {
     if (!value.is_object() || value.size() != 5 + (value.contains("clockSource") ? 1 : 0) +
-            (value.contains("wasapiBridges") ? 1 : 0) ||
+            (value.contains("wasapiBridges") ? 1 : 0) + (value.contains("nativeAudio") ? 1 : 0) ||
         !value.contains("version") || !value["version"].is_number_unsigned() ||
         value["version"].get<std::uint32_t>() != kStoreVersion ||
         !value.contains("physicalDriverId") ||
@@ -159,6 +160,12 @@ bool decodeConfiguration(const Json& value, AudioControllerConfiguration& config
         !value.contains("routes") || !value["routes"].is_array()) return false;
 
     AudioControllerConfiguration decoded;
+    if (value.contains("nativeAudio")) {
+        const auto& native = value["nativeAudio"];
+        if (!native.is_object() || native.size() != 1 || !native.contains("enabled") ||
+            !native["enabled"].is_boolean()) return false;
+        decoded.nativeAudio.enabled = native["enabled"].get<bool>();
+    }
     if (value.contains("wasapiBridges") && !decodeBridges(value["wasapiBridges"], decoded.wasapiBridges)) return false;
     if (value.contains("clockSource")) {
         const auto& source = value["clockSource"];

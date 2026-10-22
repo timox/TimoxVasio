@@ -10,6 +10,7 @@
 #include "routing_graph.h"
 #include "wasapi_bridge_configuration.h"
 #include "wasapi_bridge_manager.h"
+#include "native_audio_configuration.h"
 
 #include <windows.h>
 
@@ -41,6 +42,7 @@ struct AudioControllerConfiguration {
     std::optional<std::uint32_t> bufferFrames;
     std::vector<AudioRoute> routes;
     std::vector<WasapiBridgeConfiguration> wasapiBridges;
+    NativeAudioConfiguration nativeAudio;
 };
 
 struct AudioControllerResult {
@@ -62,6 +64,7 @@ struct AudioControllerSnapshot {
     std::vector<AudioRoute> routes;
     std::vector<AudioRoute> configuredRoutes;
     std::vector<WasapiBridgeConfiguration> configuredWasapiBridges;
+    NativeAudioConfiguration configuredNativeAudio;
     std::vector<WasapiBridgeSnapshot> wasapiBridges;
     std::vector<WasapiDeviceInfo> wasapiDevices;
     std::string wasapiInventoryError;
@@ -124,9 +127,12 @@ public:
     void Stop() noexcept;
     std::vector<PhysicalAsioDriverInfo> EnumeratePhysicalDrivers();
     std::vector<WasapiDeviceInfo> EnumerateWasapiDevices();
+    // Legacy callers cannot implicitly clear native desire. A caller that owns
+    // that field must explicitly pass preserveNativeAudio=false to replace it.
     AudioControllerResult ApplyConfiguration(const AudioControllerConfiguration& configuration,
         std::optional<std::uint64_t> expectedConfigurationRevision = std::nullopt,
-        bool preserveClockSource = false, bool preserveWasapiBridges = false);
+        bool preserveClockSource = false, bool preserveWasapiBridges = false,
+        bool preserveNativeAudio = true);
     AudioControllerResult StartAudio();
     AudioControllerResult ResetAudio();
     AudioControllerResult StopAudio();
