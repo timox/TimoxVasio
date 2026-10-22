@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "status": "sysvad-reference-build-verified-no-deployment",
+  "architecture": "x64",
+  "visualStudioMajor": 18,
+  "kitVersion": "10.0.28000.2526",
+  "packages": [
+    "Microsoft.Windows.SDK.CPP",
+    "Microsoft.Windows.SDK.CPP.x64",
+    "Microsoft.Windows.WDK.x64"
+  ],
+  "nuget": {
+    "version": "7.9.0.83",
+    "downloadUrl": "https://dist.nuget.org/win-x86-commandline/v7.9.0/nuget.exe",
+    "sha256": "992D70CAC5B06C38EFEC91806CABA64CDCC07E6D963A0959DBBBAF264D33B800",
+    "signer": "Microsoft Corporation"
+  },
+  "sysvad": {
+    "repository": "https://github.com/microsoft/Windows-driver-samples.git",
+    "commit": "bb68ed5e770bce04dc5395ec9258dafab034184d",
+    "path": "audio/sysvad",
+    "license": "MS-PL"
+  },
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk",
+    "https://learn.microsoft.com/en-us/windows-hardware/drivers/install-the-wdk-using-nuget",
+    "https://github.com/microsoft/Windows-driver-samples/blob/bb68ed5e770bce04dc5395ec9258dafab034184d/packages.config"
+  ]
+}
