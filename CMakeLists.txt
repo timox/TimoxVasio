@@ -55,6 +55,18 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         target_link_libraries(NativeAudioPipeStreamTests PRIVATE bcrypt)
         add_test(NAME NativeAudioPipeStreamTests COMMAND NativeAudioPipeStreamTests)
         set_tests_properties(NativeAudioPipeStreamTests PROPERTIES TIMEOUT 30)
+        add_executable(NativeAudioSchannelPipeTests tests/native_audio_schannel_pipe_tests.cpp
+            native-windows-audio/broker/schannel_stream_win32.cpp
+            native-windows-audio/broker/pipe_stream_win32.cpp)
+        target_include_directories(NativeAudioSchannelPipeTests PRIVATE include native-windows-audio/include
+            native-windows-audio/broker)
+        target_compile_definitions(NativeAudioSchannelPipeTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN SECURITY_WIN32)
+        if(MSVC)
+            target_compile_options(NativeAudioSchannelPipeTests PRIVATE /W4 /WX /EHsc)
+        endif()
+        target_link_libraries(NativeAudioSchannelPipeTests PRIVATE secur32 crypt32 ncrypt bcrypt)
+        add_test(NAME NativeAudioSchannelPipeTests COMMAND NativeAudioSchannelPipeTests)
+        set_tests_properties(NativeAudioSchannelPipeTests PROPERTIES TIMEOUT 90 SKIP_RETURN_CODE 77)
     endif()
     return()
 endif()

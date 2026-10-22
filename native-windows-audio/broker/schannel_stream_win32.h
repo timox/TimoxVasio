@@ -1,0 +1,41 @@
+#pragma once
+#include "pipe_stream_win32.h"
+#include <wincrypt.h>
+#include <array>
+
+namespace timox_broker {
+namespace detail {
+// Completion accounting, separate from scheduling: a timeout may lose its
+// cancellation race and still consume pipe bytes. Retain those bytes before
+// returning a retryable timeout. The channel never reports ciphertext as bytes
+// of plaintext delivered to its caller.
+inline bool RetainCiphertextCompletion(NativeChannelResult& result,
+    std::size_t capacity,std::size_t& buffered) noexcept {
+    if(buffered>capacity || result.bytes>capacity-buffered)return false;
+    if(result.code==NativeChannelCode::Ok || result.code==NativeChannelCode::TimedOut)
+        buffered+=result.bytes;
+    if(result.code!=NativeChannelCode::Ok)result.bytes=0;
+    return true;
+}
+}
+// TLS on an already-connected local pipe. This does NOT bind the certificate
+// to the observed Windows logon; channel binding remains a subsequent gate.
+// Worker-only except sticky RequestCancel; callers must quiesce before destruction.
+// Own certificate context is duplicated; its backing key must remain available.
+class SchannelStream final {
+public:
+    using Deadline=PipeStream::Deadline;
+    using Pin=std::array<unsigned char,32>;
+    SchannelStream(std::unique_ptr<PipeStream>,bool server,PCCERT_CONTEXT ownCertificate,const Pin& expectedPeer);
+    ~SchannelStream();
+    SchannelStream(const SchannelStream&)=delete;
+    SchannelStream& operator=(const SchannelStream&)=delete;
+    NativeChannelResult Handshake(Deadline) noexcept;
+    NativeChannelResult ReadSome(void*,std::size_t capacity,Deadline) noexcept;
+    NativeChannelResult WriteAll(const void*,std::size_t bytes,Deadline) noexcept;
+    void RequestCancel() noexcept;
+    void Close() noexcept;
+private:
+    struct Impl;std::unique_ptr<Impl> impl_;
+};
+}
