@@ -75,6 +75,14 @@ nécessaire pour comparer à la session précédente de dix minutes.
 
 ## Nouvelle qualification de dix minutes
 
+![Correction de débit et réserves des tampons pendant l'essai](assets/2026-10-22-wasapi-sync/synchronisation.png)
+
+[Version vectorielle](assets/2026-10-22-wasapi-sync/synchronisation.svg) ·
+[Relevés CSV](assets/2026-10-22-wasapi-sync/synchronisation.csv).
+Générés depuis les snapshots bruts par `tests/plot-wasapi-sync.py` (Matplotlib),
+sans lissage ni interpolation supplémentaire. Le tracé montre la régulation
+des débits et des réserves ; il ne mesure pas l'alignement temporel des signaux.
+
 Essai de 610 secondes terminé le 22 octobre 2026. Session locale
 `build_wasapi_e2e/session-0c3eb9e3e9df48b78722d6431f30efb1/asio-engine-0eb0ed40079041f9a72e17d91b7a6ca4`.
 Même chemin SSL 12, graphe 48 kHz / 2048, FIFO 16384 et buffer natif 1056.
