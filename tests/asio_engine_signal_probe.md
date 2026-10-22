@@ -97,18 +97,116 @@ configuration audio de travail.
 
 Le délai du flux est borné à durée demandée + 12 secondes ; la barrière stdin
 reste sous le contrôle de l'orchestrateur, qui doit imposer son propre timeout.
+La sonde accepte de 1 à 1200 secondes ; le script accepte de 1 à 1198 secondes,
+car il réserve deux secondes supplémentaires à l'émetteur. Une exécution de
+dix minutes utilise `-Seconds 600`. Les tables préallouées ne grandissent pas
+avec la durée du test.
 
 ## Portée de la preuve
 
-Un succès démontre un trajet numérique entre deux véritables instances de la
+### Trajet WASAPI réel
+
+Le mode explicite suivant crée un pont de rendu et un pont de loopback du même
+endpoint, puis deux routes indépendantes : sortie ASIO du sender → rendu WASAPI,
+et capture loopback → entrée ASIO du receiver. Il n'y a aucune route du loopback
+vers ce rendu, donc aucune boucle de retour. L'ID de l'endpoint doit être choisi
+par l'orchestrateur, par exemple après résolution de la sortie multimédia par
+défaut ; le script n'en choisit pas un arbitrairement.
+
+```powershell
+pwsh -NoProfile -File tests/invoke-asio-engine-signal-probe.ps1 `
+  -ApiPort 52526 -DriverPath C:\chemin\TimoxVasio.dll `
+  -ProbePath C:\chemin\AsioEngineSignalProbe.exe -Seconds 5 `
+  -RouteMode WasapiLoopback -WasapiEndpointId '{0.0.0.00000000}.{identifiant-reel}'
+```
+
+Le script crée les bridges avant de découvrir leurs ports réels. Une seconde
+transaction installe les routes. Même si cette seconde étape échoue, la première
+configuration est restaurée si la révision et les identifiants du test prouvent
+qu'elle appartient toujours à cette exécution. Les compteurs de frames rendues
+et capturées doivent progresser, sans erreur de bridge, et sont archivés avec
+les états complets. L'option `-AllowExistingClients` reste disponible avec les
+limites précédemment décrites.
+
+Dans ce mode, le récepteur analyse des fenêtres de 25 ms après les deux secondes
+de préchauffe. Les projections complexes à 997 et 1709 Hz sont combinées en
+puissance entre fenêtres : les phases ne doivent pas rester identiques pendant
+tout le test. Une fenêtre est conforme si chaque amplitude dépasse 1e-7,
+chaque composante représente au moins 15 % de la puissance totale, leur somme
+au moins 70 %, et leur rapport d'amplitude reste entre 0,5 et 2. Au moins 90 %
+des fenêtres complètes doivent être conformes, avec au moins vingt fenêtres.
+La fraction finale de fenêtre est ignorée. Les valeurs non finies et les resets
+font toujours échouer la sonde.
+
+Ce contrôle établit la présence de deux composantes proches des fréquences
+émises malgré la dérive et le volume Windows. Il ne mesure pas précisément leurs
+fréquences et ne constitue **ni une mesure SNR, ni une qualification de latence
+ou de stabilité sans glitch**. Les champs de corrélation longue `amplitude997`,
+`amplitude1709` et `snrDb` valent `null` dans ce mode : ils ne sont pas interprétables
+sur des horloges libres. `rms` et les deux `windowAmplitude` restent des mesures.
+`qualificationScope: tone-presence-only`, `analysis: bridge-tone-presence`, `toneWindows` et
+`matchedToneWindows` indiquent le critère réellement utilisé. Le mode par défaut
+`AsioDirect` conserve ses seuils stricts d'amplitude et de SNR.
+
+`AsioEngineSignalProbe --self-test-analysis` ne charge aucune DLL et n'émet aucun
+son. Il vérifie vingt-quatre cas à 44,1/48/96 kHz : phases libres, dérive ±0,4 %,
+atténuation de 40 dB, puis refus du silence, d'un ton à 1100 Hz, d'un bruit
+déterministe, d'un seul des tons attendus et de NaN.
+
+### Stabilité observée des ponts
+
+Ajouter `-RequireStableBridges` au mode `WasapiLoopback` pour exiger une preuve
+distincte de la présence des tons. Ce mode demande `-Seconds` au moins égal à
+10. Exemple d'endurance : `-Seconds 600 -RequireStableBridges` ; on peut fixer
+explicitement `-MinimumStableSeconds 590`. Sans valeur explicite, la durée
+minimum observée vaut `max(1, Seconds - 5)`.
+
+Le script interroge l'API approximativement chaque seconde pendant que les
+deux sondes sont vivantes et archive les états complets, leur temps monotone
+écoulé et leur date UTC dans `stability-snapshots.jsonl`. La référence est prise
+après au moins deux secondes, uniquement lorsque les deux ponts sont `running`,
+sans erreur ni `primingTimedOut`. Les incidents de démarrage déjà comptés sont
+conservés dans cette référence, pas effacés.
+
+Après cette référence, chaque échantillon doit conserver les générations et
+l'état `running`, sans erreur ni timeout. Les deltas doivent rester exactement
+nuls pour `droppedCaptureFrames`, `rejectedFrames`, `renderSilencedInputFrames`,
+`silencedFrames`, `timestampErrors`, `discontinuities` et
+`renderSilencedDeviceFrames`. Une diminution de compteur, une donnée absente,
+une reconnexion ou une requête d'état échouée fait échouer ce contrôle. Les
+niveaux de remplissage et corrections ppm sont archivés sans seuil arbitraire.
+Les compteurs natifs `renderedFrames` du pont de rendu et `capturedFrames` du
+loopback doivent progresser entre **chaque paire d'états consécutifs**, pas
+seulement depuis la référence initiale. Le type effectif de chaque pont est
+vérifié. Un état figé, une régression ou un écart de sondage supérieur à 2,5
+secondes échoue, même si l'état affiché reste `running`.
+
+Le rapport sépare `signalPresencePassed` et `stabilityPassed`. L'option exige
+les deux pour le succès global, ainsi que le nettoyage/restauration habituels.
+Il donne `baselineElapsedSeconds`, `lastElapsedSeconds`, `observedSeconds`, le
+nombre d'échantillons et leur écart maximal réel. La période s'arrête au dernier
+état reçu pendant que les deux sondes tournent ; les deux secondes finales du
+sender seul en sont exclues. **600 secondes demandées ne signifient donc pas
+600 secondes de stabilité observée.** Une référence jamais disponible ou une
+durée observée insuffisante échoue.
+`observedSeconds` reste la durée entre premier et dernier états observés en cas
+d'incident ; seule la valeur `stabilityPassed` détermine si cette période satisfait
+les critères.
+
+Ce contrôle porte sur les compteurs cumulatifs et les états exposés par le
+moteur. Il n'est pas une preuve de latence, de qualité subjective, de performance
+isolée, ni de détection de toute transition d'état survenant entre deux sondages.
+Les tests hors ligne `pwsh -File tests/wasapi-stability.Tests.ps1` vérifient entre
+autres les incréments de chaque compteur, leur remise à zéro, les reconnexions,
+les états manquants et un incrément unitaire au-delà de la précision des doubles.
+
+Un succès en mode `AsioDirect` démontre un trajet numérique entre deux véritables instances de la
 DLL ASIO à travers le moteur. Il ne suffit pas à qualifier toutes les applications
 ASIO du marché, la latence aller-retour, le comportement sous charge, ou WASAPI.
 
-Pour la suite WASAPI, dupliquer la sortie vers un pont de rendu puis capturer
-l'endpoint par loopback. Conserver la mesure de fréquence/compensation de dérive
-et employer une analyse adaptée à deux horloges libres : les seuils cohérents
-de cette sonde app→app ne sont pas directement des seuils SRC. Ne pas boucler
-la capture d'un endpoint vers le rendu du même endpoint.
+Le mode WASAPI peut être perturbé par les autres sons joués sur le même endpoint,
+car le loopback observe le mélange Windows. Les seuils de présence ne doivent
+pas être abaissés après un échec pour faire passer un enregistrement contaminé.
 
 La sonde ne doit pas être présentée comme ayant réussi tant que les deux
 processus n'ont pas été exécutés avec un moteur réel et les résultats archivés.

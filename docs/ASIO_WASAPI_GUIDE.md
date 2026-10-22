@@ -135,17 +135,19 @@ Un buffer plus petit réduit la réserve de sécurité face aux retards d'ordonn
 
 Les formats sont négociés selon le mode et le périphérique, et l'exclusivité change les possibilités de partage. [Formats Microsoft](https://learn.microsoft.com/en-us/windows/win32/coreaudio/device-formats), [mode exclusif Microsoft](https://learn.microsoft.com/en-us/windows/desktop/coreaudio/exclusive-mode-streams).
 
+En cas de capture refusée, vérifier dans Windows l'accès au microphone pour l'appareil et pour les applications de bureau. Un accès permis à l'application ne suffit pas si l'accès général est désactivé. Le loopback d'une sortie et la capture d'un microphone sont deux usages distincts ; réussir le premier ne valide pas le second. [Confidentialité microphone Microsoft](https://support.microsoft.com/en-us/windows/privacy/windows-camera-microphone-and-privacy).
+
 ## Où en est le projet ?
 
 | Élément | État de cette branche de travail |
 |---|---|
 | TimoxVasio ASIO virtuel | Existant, DLL inchangée par ce travail. |
-| Horloge logicielle + choix GUI/API | Implémentés et testés ; qualification interapplications réelle encore à compléter. |
-| Anneaux, SRC, conversion PCM, inventaire et backend partagé | Implémentés ; tests unitaires et sondes d'ouverture disponibles. |
+| Horloge logicielle + choix GUI/API | Implémentés ; premier trajet réel entre deux hôtes ASIO réussi sans carte physique à 48 kHz/2048 trames. Autres formats et stabilité longue à qualifier. |
+| Anneaux, SRC, conversion PCM, inventaire et backend partagé | Implémentés ; tests unitaires et streaming réel rendu/loopback disponibles. |
 | Ports WASAPI dans le runtime | Tests de transfert, y compris avec le transport virtuel, réussis. |
-| Worker adaptatif et persistance des ponts | Implémentation et validation en cours. |
-| Activation complète depuis Control/API, reconnexion et mesures prolongées | À terminer ; le pont complet n'est pas encore livré. |
-| Notre pilote virtuel Windows | Pas encore implémenté ; lot distinct, câble tiers pour les premiers usages. |
+| Worker adaptatif et persistance des ponts | Implémentés ; qualification matérielle en cours, notamment du préremplissage et de la dérive. |
+| Activation Control/API et reconnexion | Implémentées ; GUI vérifiée visuellement avec simulation. Un premier trajet réel ASIO→WASAPI→loopback→ASIO détecte le signal attendu. Mesures prolongées et parcours complet Electron à terminer. |
+| Notre pilote virtuel Windows | Conception et validation du protocole initial disponibles ; aucun endpoint ou pilote noyau encore livré. Câble tiers pour les premiers usages. |
 | Exclusif, maître WASAPI matériel, loopback par processus | Travaux ultérieurs non livrés dans cette tranche. |
 
 L'exigence reste une GUI, une API et des performances au moins au niveau de TimoxVasio. **Cette parité n'est pas encore démontrée.** Le chemin ASIO sans pont doit être comparé séparément : il ne doit pas payer le traitement SRC des ponts inutilisés.

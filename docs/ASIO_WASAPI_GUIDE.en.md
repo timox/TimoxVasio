@@ -135,17 +135,19 @@ A smaller buffer provides less margin for Windows scheduling delays. End-to-end 
 
 Formats are negotiated according to the mode and device, and exclusivity changes sharing capabilities. [Microsoft device formats](https://learn.microsoft.com/en-us/windows/win32/coreaudio/device-formats), [Microsoft exclusive mode](https://learn.microsoft.com/en-us/windows/desktop/coreaudio/exclusive-mode-streams).
 
+If capture is denied, check Windows microphone access for the device and desktop apps. Allowing an application is insufficient when overall access is disabled. Output loopback and microphone capture are separate uses; success with the former does not validate the latter. [Microsoft microphone privacy](https://support.microsoft.com/en-us/windows/privacy/windows-camera-microphone-and-privacy).
+
 ## Where does the project stand?
 
 | Element | Status in this working branch |
 |---|---|
 | TimoxVasio virtual ASIO | Existing; this work leaves the DLL unchanged. |
-| Software clock + GUI/API selection | Implemented and tested; real interapplication qualification remains incomplete. |
-| Rings, SRC, PCM conversion, inventory and shared backend | Implemented; unit tests and stream-opening probes are available. |
+| Software clock + GUI/API selection | Implemented; first real transfer between two ASIO hosts passed without a physical card at 48 kHz/2048 frames. Other formats and extended stability remain to qualify. |
+| Rings, SRC, PCM conversion, inventory and shared backend | Implemented; unit tests and real render/loopback streaming are available. |
 | WASAPI ports in the runtime | Transfer tests, including virtual transport, have passed. |
-| Adaptive worker and bridge persistence | Implementation and validation in progress. |
-| Complete activation through Control/API, reconnection and extended measurements | Still to complete; the complete bridge has not shipped yet. |
-| Our virtual Windows driver | Not implemented yet; a separate work package, with a third-party cable for initial uses. |
+| Adaptive worker and bridge persistence | Implemented; hardware qualification is ongoing, particularly priming and drift control. |
+| Control/API activation and reconnection | Implemented; GUI visually checked with simulation. A first real ASIO→WASAPI→loopback→ASIO path detects the expected signal. Extended measurements and the complete Electron workflow remain to qualify. |
+| Our virtual Windows driver | Design and initial packet validation are available; no endpoint or kernel driver has shipped yet. A third-party cable supports initial uses. |
 | Exclusive mode, WASAPI hardware master, per-process loopback | Later work, not delivered in this increment. |
 
 The requirement remains a GUI, an API and performance at least on par with TimoxVasio. **That parity has not yet been demonstrated.** The ASIO path without bridges must be compared separately: it must not incur SRC processing for unused bridges.

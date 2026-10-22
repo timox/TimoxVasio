@@ -3,21 +3,41 @@ param(
     [Parameter(Mandatory)][ValidateRange(1, 65535)][int]$ApiPort,
     [Parameter(Mandatory)][string]$DriverPath,
     [Parameter(Mandatory)][string]$ProbePath,
-    [ValidateRange(1, 298)][int]$Seconds = 5,
+    [ValidateRange(1, 1198)][int]$Seconds = 5,
     [switch]$AllowExistingClients,
+    [ValidateSet('AsioDirect', 'WasapiLoopback')][string]$RouteMode = 'AsioDirect',
+    [string]$WasapiEndpointId,
+    [switch]$RequireStableBridges,
+    [ValidateRange(0, 1198)][int]$MinimumStableSeconds = 0,
     [string]$ResultsRoot = (Join-Path $PSScriptRoot 'results')
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'wasapi-stability.ps1')
 $baseUri = "http://127.0.0.1:$ApiPort"
 $sessionId = [Guid]::NewGuid().ToString('N')
 $resultDirectory = Join-Path $ResultsRoot "asio-engine-$sessionId"
 [void](New-Item -ItemType Directory -Path $resultDirectory -Force)
 $processes = [Collections.Generic.List[object]]::new()
 $report = [ordered]@{ passed = $false; apiPort = $ApiPort; seconds = $Seconds; restore = 'not-needed'; error = $null }
+$report.signalPresencePassed = $false
+$report.stabilityPassed = if ($RequireStableBridges) { $false } else { $null }
+$stabilityIssues = [Collections.Generic.List[object]]::new()
+$stabilityBaseline = $null
+$stabilityPrevious = $null
+$stability = [ordered]@{ required = [bool]$RequireStableBridges; baselineElapsedSeconds = $null;
+    lastElapsedSeconds = $null; observedSeconds = 0.0; samples = 0; maximumSampleGapSeconds = 0.0;
+    baselineLastIssues = @();
+    minimumRequiredSeconds = $(if ($MinimumStableSeconds) { $MinimumStableSeconds } else { [Math]::Max(1, $Seconds - 5) });
+    issues = $stabilityIssues }
+$report.stability = $stability
 $original = $null
 $ownedRevision = $null
+$previousOwnedRevision = $null
+$finalTransactionAttempted = $false
 $routeId = "asio-signal-$sessionId"
+$renderBridgeId = "signal_render_$sessionId"
+$loopbackBridgeId = "signal_loopback_$sessionId"
 
 function Get-State {
     Invoke-RestMethod -Uri "$baseUri/api/v1/state" -TimeoutSec 5
@@ -37,11 +57,11 @@ function Invoke-Apply($Payload) {
     $socket.Options.AddSubProtocol('vasio.api.v1')
     $deadline = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(15))
     try {
-        $socket.ConnectAsync([Uri]"ws://127.0.0.1:$ApiPort/api/v1/ws", $deadline.Token).GetAwaiter().GetResult()
+        [void]$socket.ConnectAsync([Uri]"ws://127.0.0.1:$ApiPort/api/v1/ws", $deadline.Token).GetAwaiter().GetResult()
         $id = [Guid]::NewGuid().ToString('N')
         $request = @{ id = $id; command = 'configuration.apply'; payload = $Payload } | ConvertTo-Json -Depth 50 -Compress
         $bytes = [Text.Encoding]::UTF8.GetBytes($request)
-        $socket.SendAsync([ArraySegment[byte]]::new($bytes), [Net.WebSockets.WebSocketMessageType]::Text,
+        [void]$socket.SendAsync([ArraySegment[byte]]::new($bytes), [Net.WebSockets.WebSocketMessageType]::Text,
             $true, $deadline.Token).GetAwaiter().GetResult()
         while (-not $deadline.IsCancellationRequested) {
             $stream = [IO.MemoryStream]::new()
@@ -82,6 +102,9 @@ function Start-Probe([string]$Role, [int]$Duration) {
     foreach ($argument in @('--dll', $DriverPath, '--role', $Role, '--seconds', "$Duration")) {
         [void]$start.ArgumentList.Add($argument)
     }
+    if ($RouteMode -eq 'WasapiLoopback' -and $Role -eq 'receive') {
+        [void]$start.ArgumentList.Add('--analysis'); [void]$start.ArgumentList.Add('bridge')
+    }
     $process = [Diagnostics.Process]::Start($start)
     $entry = [pscustomobject]@{ role = $Role; process = $process; ready = $null;
         readyTask = $process.StandardOutput.ReadLineAsync(); outputTask = $null;
@@ -90,6 +113,12 @@ function Start-Probe([string]$Role, [int]$Duration) {
     return $entry
 }
 try {
+    if ($RequireStableBridges -and ($RouteMode -ne 'WasapiLoopback' -or $Seconds -lt 10)) {
+        throw '-RequireStableBridges requires WasapiLoopback and Seconds >= 10.'
+    }
+    if ($MinimumStableSeconds -and (-not $RequireStableBridges -or $MinimumStableSeconds -gt $Seconds)) {
+        throw '-MinimumStableSeconds requires stability qualification and cannot exceed Seconds.'
+    }
     $DriverPath = (Resolve-Path -LiteralPath $DriverPath).Path
     $ProbePath = (Resolve-Path -LiteralPath $ProbePath).Path
     $report.binaries = @($DriverPath, $ProbePath | ForEach-Object {
@@ -100,9 +129,17 @@ try {
     # The host calls DllGetClassObject with this CLSID, then CreateInstance with
     # the ASIO interface ID. A foreign DLL is rejected rather than registered.
     $report.driverClsid = '{A4D39126-78CB-4D89-9E0A-54494D4F5856}'
+    $report.routeMode = $RouteMode
+    $report.qualificationScope = if ($RouteMode -eq 'WasapiLoopback') { 'tone-presence-only' } else { 'direct-signal-integrity' }
+    if ($RequireStableBridges) { $report.qualificationScope = 'tone-presence-and-observed-bridge-stability'; $report.stabilityPassed = $false }
+    if ($RouteMode -eq 'WasapiLoopback' -and [string]::IsNullOrWhiteSpace($WasapiEndpointId)) {
+        throw '-WasapiEndpointId is required for WasapiLoopback; resolve the intended default multimedia endpoint explicitly before the test.'
+    }
     $before = Get-State
-    if ($before.engine.clockSource.kind -ne 'software' -or $before.engine.sampleRate -lt 8000 -or
-        $before.engine.bufferFrames -lt 16) { throw 'Configure the isolated engine with a software clock before running this test.' }
+    if ($before.engine.state -ne 'running' -or $before.engine.clockSource.kind -ne 'software' -or
+        $before.engine.sampleRate -lt 8000 -or $before.engine.bufferFrames -lt 16) {
+        throw 'Start the isolated engine with a software clock before running this test; stopped state is not changed by the probe.'
+    }
     $clients = @($before.virtualDrivers | ForEach-Object { $_.clients } | Where-Object { $null -ne $_ })
     $report.allowExistingClients = [bool]$AllowExistingClients
     $report.preexistingClients = $clients
@@ -141,10 +178,42 @@ try {
     if ($source.Count -ne 1 -or $destination.Count -ne 1) { throw 'Real client endpoints were not discovered after createBuffers.' }
     if ($state.configurationRevision -ne $before.configurationRevision) { throw 'Configuration changed before the test route could be applied.' }
     $temporary = Get-Configuration $before
-    $temporary.routes = @($original.routes) + @(@{ id = $routeId; sourceEndpointId = $source[0].id;
-        destinationEndpointId = $destination[0].id; gainDb = 0.0; mute = $false })
-    $temporary.expectedConfigurationRevision = [ulong]$before.configurationRevision
-    $ownedRevision = [ulong]$before.configurationRevision + [ulong]1
+    $nextRevision = [ulong]$before.configurationRevision
+    if ($RouteMode -eq 'WasapiLoopback') {
+        $temporary.wasapiBridges = @($original.wasapiBridges) + @(
+            @{ id = $renderBridgeId; enabled = $true; kind = 'render'; endpointId = $WasapiEndpointId },
+            @{ id = $loopbackBridgeId; enabled = $true; kind = 'endpointLoopback'; endpointId = $WasapiEndpointId })
+        $temporary.expectedConfigurationRevision = $nextRevision
+        $ownedRevision = $nextRevision + [ulong]1
+        Invoke-Apply $temporary
+        $nextRevision = $ownedRevision
+        $bridgeDeadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $bridgeState = Get-State
+            if ($bridgeState.configurationRevision -ne $ownedRevision) { throw 'Configuration changed during bridge discovery.' }
+            $render = @($bridgeState.wasapiBridges | Where-Object id -EQ $renderBridgeId)
+            $loopback = @($bridgeState.wasapiBridges | Where-Object id -EQ $loopbackBridgeId)
+            if ($render.Count -eq 1 -and $loopback.Count -eq 1 -and
+                @($render[0].outputEndpoints).Count -gt 0 -and @($loopback[0].inputEndpoints).Count -gt 0) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $bridgeDeadline)
+        if ($render.Count -ne 1 -or $loopback.Count -ne 1 -or
+            @($render[0].outputEndpoints).Count -eq 0 -or @($loopback[0].inputEndpoints).Count -eq 0) { throw 'WASAPI bridge ports were not discovered.' }
+        if ($render[0].effectiveInfo.endpointId -ne $WasapiEndpointId -or $loopback[0].effectiveInfo.endpointId -ne $WasapiEndpointId) {
+            throw 'WASAPI bridges did not open the requested endpoint.'
+        }
+        $bridgeState | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath (Join-Path $resultDirectory 'bridges.json')
+        $temporary.routes = @($original.routes) + @(
+            @{ id = $routeId; sourceEndpointId = $source[0].id; destinationEndpointId = $render[0].outputEndpoints[0].id; gainDb = 0.0; mute = $false },
+            @{ id = "$routeId-return"; sourceEndpointId = $loopback[0].inputEndpoints[0].id; destinationEndpointId = $destination[0].id; gainDb = 0.0; mute = $false })
+    } else {
+        $temporary.routes = @($original.routes) + @(@{ id = $routeId; sourceEndpointId = $source[0].id;
+            destinationEndpointId = $destination[0].id; gainDb = 0.0; mute = $false })
+    }
+    $temporary.expectedConfigurationRevision = $nextRevision
+    $previousOwnedRevision = $ownedRevision
+    $ownedRevision = $nextRevision + [ulong]1
+    $finalTransactionAttempted = $true
     Invoke-Apply $temporary
     $applied = Get-State
     if ($applied.configurationRevision -ne $ownedRevision -or
@@ -153,13 +222,62 @@ try {
     foreach ($entry in @($sender, $receiver)) {
         $write = $entry.process.StandardInput.WriteLineAsync('start')
         if (-not $write.Wait(3000)) { throw 'ASIO start command deadline exceeded.' }
-        $write.GetAwaiter().GetResult()
+        [void]$write.GetAwaiter().GetResult()
         $entry.process.StandardInput.Close()
     }
-    $runDeadline = [DateTime]::UtcNow.AddSeconds($Seconds + 20)
+    $runClock = [Diagnostics.Stopwatch]::StartNew()
+    $nextPollSeconds = 0.0
+    while (@($processes | Where-Object { -not $_.process.HasExited }).Count) {
+        if ($runClock.Elapsed.TotalSeconds -gt $Seconds + 20) { throw 'Probe completion deadline exceeded.' }
+        # Never count the sender's extra tail after the receiver has exited as
+        # part of a bidirectional qualification interval.
+        if ($RouteMode -eq 'WasapiLoopback' -and -not $sender.process.HasExited -and
+            -not $receiver.process.HasExited -and $runClock.Elapsed.TotalSeconds -ge $nextPollSeconds) {
+            try {
+                $sampleState = Get-State
+                $sampleSeconds = $runClock.Elapsed.TotalSeconds
+                $bothStillRunning = -not $sender.process.HasExited -and -not $receiver.process.HasExited
+                [ordered]@{ utc = [DateTime]::UtcNow.ToString('o'); elapsedSeconds = $sampleSeconds;
+                    bothProbesRunning = $bothStillRunning; state = $sampleState } |
+                    ConvertTo-Json -Depth 50 -Compress |
+                    Add-Content -LiteralPath (Join-Path $resultDirectory 'stability-snapshots.jsonl')
+                if ($RequireStableBridges -and $bothStillRunning -and $sampleSeconds -ge 2) {
+                    $sampleGap = if ($null -eq $stabilityPrevious) { 1.0 } else { $sampleSeconds - $stability.lastElapsedSeconds }
+                    $evaluation = Get-WasapiStabilitySample -Snapshot $sampleState -BridgeIds @($renderBridgeId, $loopbackBridgeId) -Baseline $stabilityBaseline -Previous $stabilityPrevious -GapSeconds $sampleGap
+                    if ($null -eq $stabilityBaseline) {
+                        $stability.baselineLastIssues = @($evaluation.issues)
+                        if ($evaluation.ready) {
+                            $stabilityBaseline = $evaluation
+                            $stability.baselineElapsedSeconds = $sampleSeconds
+                            $stability.lastElapsedSeconds = $sampleSeconds
+                            $evaluation | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath (Join-Path $resultDirectory 'stability-baseline.json')
+                        }
+                    } else {
+                        $gap = $sampleSeconds - $stability.lastElapsedSeconds
+                        $stability.maximumSampleGapSeconds = [Math]::Max($stability.maximumSampleGapSeconds, $gap)
+                        $stability.lastElapsedSeconds = $sampleSeconds
+                        $stability.observedSeconds = $sampleSeconds - $stability.baselineElapsedSeconds
+                        foreach ($issue in $evaluation.issues) { $stabilityIssues.Add([pscustomobject]@{ elapsedSeconds = $sampleSeconds; issue = $issue }) }
+                    }
+                    if ($null -ne $stabilityBaseline) { $stability.samples++; $stabilityPrevious = $evaluation }
+                }
+            } catch {
+                $stabilityIssues.Add([pscustomobject]@{ elapsedSeconds = $runClock.Elapsed.TotalSeconds;
+                    issue = "Snapshot unavailable: $($_.Exception.Message)" })
+            }
+            $nextPollSeconds = $runClock.Elapsed.TotalSeconds + 1
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    $report.actualRunWallSeconds = $runClock.Elapsed.TotalSeconds
+    if ($RequireStableBridges) {
+        if ($null -eq $stabilityBaseline) { $stabilityIssues.Add([pscustomobject]@{ issue = 'No eligible running baseline without priming timeout.' }) }
+        if ($stability.observedSeconds -lt $stability.minimumRequiredSeconds) {
+            $stabilityIssues.Add([pscustomobject]@{ issue = 'Observed stability interval shorter than required minimum.' })
+        }
+        $report.stabilityPassed = $stabilityIssues.Count -eq 0
+    }
     foreach ($entry in $processes) {
-        $remaining = [Math]::Max(1, [int]($runDeadline - [DateTime]::UtcNow).TotalMilliseconds)
-        if (-not $entry.process.WaitForExit($remaining)) { throw "$($entry.role) completion deadline exceeded." }
         if (-not $entry.outputTask.Wait(3000) -or -not $entry.errorTask.Wait(3000)) { throw 'Probe output deadline exceeded.' }
         $output = $entry.outputTask.GetAwaiter().GetResult()
         $errors = $entry.errorTask.GetAwaiter().GetResult()
@@ -171,7 +289,20 @@ try {
         }
         $report[$entry.role] = $result[0]
     }
-    Get-State | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath (Join-Path $resultDirectory 'after.json')
+    $report.signalPresencePassed = $true
+    $after = Get-State
+    $after | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath (Join-Path $resultDirectory 'after.json')
+    if ($RouteMode -eq 'WasapiLoopback') {
+        $finalRender = @($after.wasapiBridges | Where-Object id -EQ $renderBridgeId)
+        $finalLoopback = @($after.wasapiBridges | Where-Object id -EQ $loopbackBridgeId)
+        if ($finalRender.Count -ne 1 -or $finalLoopback.Count -ne 1 -or
+            $finalRender[0].health.renderedFrames -le 0 -or $finalLoopback[0].health.capturedFrames -le 0 -or
+            $finalRender[0].health.error -ne 0 -or $finalLoopback[0].health.error -ne 0) {
+            throw 'WASAPI bridge counters did not confirm a successful render/capture path.'
+        }
+        $report.bridgeEvidence = @($finalRender[0], $finalLoopback[0])
+    }
+    if ($RequireStableBridges -and -not $report.stabilityPassed) { throw 'Bridge stability qualification failed; see stability issues and snapshots.' }
     $report.passed = $true
 } catch {
     $report.error = $_.Exception.Message
@@ -202,13 +333,20 @@ try {
             $current = Get-State
             # A lost acknowledgement is recoverable only when both revision and
             # our unique route establish ownership of the published transaction.
-            if ($current.configurationRevision -eq $ownedRevision -and
-                @($current.configuredRoutes | Where-Object id -EQ $routeId).Count -eq 1) {
-                $original.expectedConfigurationRevision = $ownedRevision
+            $hasOwnedRoute = @($current.configuredRoutes | Where-Object id -EQ $routeId).Count -eq 1
+            $hasOwnedBridges = @($current.configuredWasapiBridges | Where-Object { $_.id -in @($renderBridgeId, $loopbackBridgeId) }).Count -eq 2
+            $ownsCurrent = $current.configurationRevision -eq $ownedRevision -and
+                $(if ($finalTransactionAttempted) { $hasOwnedRoute } else { $hasOwnedBridges })
+            $ownsBridgeOnly = $null -ne $previousOwnedRevision -and
+                $current.configurationRevision -eq $previousOwnedRevision -and $hasOwnedBridges -and -not $hasOwnedRoute
+            if ($ownsCurrent -or $ownsBridgeOnly) {
+                $restoreRevision = [ulong]$current.configurationRevision
+                $original.expectedConfigurationRevision = $restoreRevision
                 Invoke-Apply $original
                 $restored = Get-State
-                if ($restored.configurationRevision -ne ($ownedRevision + [ulong]1) -or
-                    @($restored.configuredRoutes | Where-Object id -EQ $routeId).Count) { throw 'Restoration was not confirmed.' }
+                if ($restored.configurationRevision -ne ($restoreRevision + [ulong]1) -or
+                    @($restored.configuredRoutes | Where-Object id -EQ $routeId).Count -or
+                    @($restored.configuredWasapiBridges | Where-Object { $_.id -in @($renderBridgeId, $loopbackBridgeId) }).Count) { throw 'Restoration was not confirmed.' }
                 $report.restore = 'restored'
             } elseif ($current.configurationRevision -eq $before.configurationRevision) {
                 $report.restore = 'unchanged'
