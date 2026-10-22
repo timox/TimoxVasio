@@ -20,7 +20,7 @@ Cette VM, hébergée sur une autre machine, servira à tester le futur pilote au
 | Secure Boot | Activé pour l'installation initiale ; modification ultérieure uniquement dans cette VM pour le pilote de laboratoire |
 | Réseau | Adresse stable et joignable depuis le poste de développement, par bridge LAN ou réseau routé/VPN |
 | Console | SPICE ou VNC via l'hyperviseur, utilisable même lorsque Windows ne démarre plus |
-| Audio | Aucun passthrough USB/PCI nécessaire pour les premiers essais du pilote virtuel |
+| Audio | Intel HD Audio **ICH9** (`ich9`), avec backend SPICE si la console utilise SPICE ; aucun passthrough USB/PCI nécessaire pour les premiers essais |
 
 Les valeurs CPU, mémoire et disque sont nos recommandations de travail. Les prérequis Microsoft comprennent notamment UEFI, TPM 2.0, au moins 4 Go de RAM et 64 Go de stockage.
 
@@ -34,7 +34,7 @@ Il se trouve actuellement dans `C:\Users\timo\Downloads` sur le poste de dévelo
 
 ## Installation initiale
 
-1. Créer la VM et installer Windows depuis l'ISO.
+1. Créer la VM et installer Windows depuis l'ISO. Choisir **Windows 11 Enterprise LTSC Evaluation sans N** pour ce banc audio.
 2. Installer les pilotes réseau/stockage nécessaires et les mises à jour Windows.
 3. Créer un compte local dédié, par exemple `timoxlab`, administrateur pour les opérations d'installation du pilote.
 4. Vérifier le réseau et conserver l'accès à la console de l'hyperviseur.
