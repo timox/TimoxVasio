@@ -4,6 +4,42 @@
 #include <cstdio>
 
 int main() {
+    const std::vector<AudioRoute> nativeRoutes{
+        {"native", "native:windows:input:1", "native:windows:output:2", 0.0, false}};
+    if (!PersistentRoutes::ResolveForClock(nativeRoutes, {}, std::nullopt).empty()) {
+        std::fputs("FAIL: unavailable native route was activated\n", stderr);
+        return 1;
+    }
+    const auto generation = [](std::uint64_t epoch) {
+        return std::make_shared<NativeAudioGeneration>(NativeAudioGeneration{epoch, 7,
+            std::make_shared<WasapiBridgeIo>(WasapiBridgeFormat{WasapiBridgeDirection::Capture, 2, 48000, 256, epoch, 1024}),
+            std::make_shared<WasapiBridgeIo>(WasapiBridgeFormat{WasapiBridgeDirection::Render, 2, 48000, 256, epoch, 1024})});
+    };
+    std::string nativeError;
+    const auto storedNative = PersistentRoutes::Encode(nativeRoutes, {}, nativeError);
+    for (const auto epoch : {1u, 2u}) {
+        const auto restored = PersistentRoutes::ResolveForClock(storedNative, {}, std::nullopt, {}, {{"windows", generation(epoch)}});
+        if (!nativeError.empty() || restored.size() != 1 || restored[0].sourceEndpointId != nativeRoutes[0].sourceEndpointId ||
+            restored[0].destinationEndpointId != nativeRoutes[0].destinationEndpointId) {
+            std::fputs("FAIL: native route did not survive a new epoch with the same wire generation\n", stderr);
+            return 1;
+        }
+    }
+    for (const auto* invalid : {"native:windows:input:0", "native:windows:input:3", "native:windows:output:01",
+            "native:other:input:1", "native:windows:input:1:2", "native:windows:side:1"}) {
+        auto malformed = nativeRoutes;
+        malformed[0].sourceEndpointId = invalid;
+        if (PersistentRoutes::NativeEndpointType(invalid) ||
+            !PersistentRoutes::ResolveForClock(malformed, {}, std::nullopt, {}, {{"windows", generation(1)}}).empty()) {
+            std::fputs("FAIL: malformed native endpoint accepted\n", stderr);
+            return 1;
+        }
+    }
+    if (!PersistentRoutes::ResolveForClock(storedNative, {}, std::nullopt, {}, {{"windows", nullptr}}).empty() ||
+        !PersistentRoutes::ResolveForClock(storedNative, {}, std::nullopt).empty() || storedNative.size() != 1) {
+        std::fputs("FAIL: removing a native binding lost desired routes or retained active routes\n", stderr);
+        return 1;
+    }
     const auto pid = GetCurrentProcessId();
     auto mapping = AudioClientMapping::CreateClient(1, pid, 48000, 256);
     if (!mapping) return 2;

@@ -4,6 +4,7 @@
 #include "application_profile.h"
 #include "vasio_client_manager.h"
 #include "audio_routing_runtime.h"
+#include "native_audio_backend.h"
 
 #include <windows.h>
 
@@ -148,12 +149,38 @@ inline std::vector<AudioRoute> Resolve(const std::vector<AudioRoute>& routes,
     return result;
 }
 
+// The initial native device has two fixed stereo endpoints in each direction.
+// Persistent IDs identify ports, never a worker epoch or a device generation.
+inline std::optional<RoutingEndpointType> NativeEndpointType(const std::string& id) {
+    if (id == "native:windows:input:1" || id == "native:windows:input:2")
+        return RoutingEndpointType::NativeSource;
+    if (id == "native:windows:output:1" || id == "native:windows:output:2")
+        return RoutingEndpointType::NativeDestination;
+    return {};
+}
+
 inline std::vector<AudioRoute> ResolveForClock(const std::vector<AudioRoute>& routes,
         const std::vector<VasioClientSnapshot>& clients,
         const std::optional<std::string>& physicalDriverId,
-        const std::vector<WasapiRoutingBinding>& wasapiBindings = {}) {
+        const std::vector<WasapiRoutingBinding>& wasapiBindings = {},
+        const std::vector<NativeRoutingBinding>& nativeBindings = {}) {
     auto active = Resolve(routes, clients);
-    const auto available = [&physicalDriverId,&wasapiBindings](const std::string& endpoint) {
+    const auto available = [&physicalDriverId,&wasapiBindings,&nativeBindings](const std::string& endpoint) {
+        if (endpoint.rfind("native:", 0) == 0) {
+            const auto type = NativeEndpointType(endpoint);
+            if (!type) return false;
+            for (const auto& binding : nativeBindings) {
+                const auto& generation = binding.generation;
+                if (binding.id != "windows" || !generation || !generation->epoch || !generation->wireGeneration)
+                    continue;
+                const bool source = *type == RoutingEndpointType::NativeSource;
+                const auto& io = source ? generation->windowsRenderSource : generation->windowsCaptureDestination;
+                if (io && io->Format().generationId == generation->epoch && io->Format().channels == 2 &&
+                    io->Format().direction == (source ? WasapiBridgeDirection::Capture : WasapiBridgeDirection::Render))
+                    return true;
+            }
+            return false;
+        }
         if (endpoint.rfind("physical:", 0) == 0)
             return physicalDriverId && endpoint.rfind("physical:" + *physicalDriverId + ":", 0) == 0;
         if (endpoint.rfind("wasapi:",0)!=0)return true;
