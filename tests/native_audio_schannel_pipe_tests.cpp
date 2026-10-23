@@ -4,6 +4,7 @@
 #include "pipe_identity_win32.h"
 #include "native_audio_authenticated_channel_win32.h"
 #include "broker_session.h"
+#include "broker_dispatcher.h"
 #include <sddl.h>
 #include <atomic>
 #include <algorithm>
@@ -261,7 +262,6 @@ void ConcreteChannel(Identity& serverIdentity,Identity& clientIdentity,unsigned 
     Bytes render(MaxPayloadBytes);const auto capture=ConcretePacket(false);
     std::exception_ptr failure;
     std::thread peer([&]{try{
-        BrokerSession broker([audio]{return std::make_unique<ConcreteAudio>(audio);});
         Check(bootstrapPipe->Accept(Deadline()).code==Code::Ok,"concrete bootstrap accept");
         SchannelStream bootstrap(std::move(bootstrapPipe),true,serverIdentity.cert,Hash(clientIdentity.cert));
         Check(bootstrap.Handshake(Deadline()).code==Code::Ok,"concrete bootstrap TLS");
@@ -278,9 +278,9 @@ void ConcreteChannel(Identity& serverIdentity,Identity& clientIdentity,unsigned 
         // never qualifies Windows endpoints on the current machine.
         NativeSessionPolicySnapshot policy;policy.allowedUserSid=identity.userSid;policy.consoleSessionId=identity.sessionId;
         policy.interactiveLogonCount=1;policy.unlocked=true;policy.audioIsolationQualified=true;policy.optionalConsoleIdentity=identity;
-        broker.UpdatePolicy(policy);
+        BrokerDispatcher broker([audio]{return std::make_unique<ConcreteAudio>(audio);},policy);
         const auto attached=broker.AttachAuthenticated(identity);Check(attached.id&&attached.status==Status::Ok,"real broker attach");
-        struct Detach {BrokerSession& broker;ConnectionId id;~Detach(){broker.Disconnect(id);}} detach{broker,attached.id};
+        struct Detach {BrokerDispatcher& broker;ConnectionId id;~Detach(){broker.Disconnect(id);}} detach{broker,attached.id};
         std::array<unsigned char,MaxMessageBytes> request{},response{};
         const auto exchange=[&](SchannelStream& stream,Opcode expected){
             const auto read=ReadAudioFrame(stream,request.data(),request.size(),Deadline());

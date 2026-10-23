@@ -191,6 +191,34 @@ La DACL client n'accorde pas GENERIC_WRITE/FILE_CREATE_PIPE_INSTANCE, WRITE_DAC 
 
 ## Tâche 4 — Serveur duplex réutilisant BrokerSession
 
+**Dispatcher sérialisé du 24 octobre :** `broker_dispatcher.h/.cpp` possède
+BrokerSession et un worker dédié. File fixe de quatre jobs synchrones empruntant
+les buffers appelants, quatre connexions au maximum, aucune I/O socket sur ce
+worker. Une soumission Process/Disconnect par connexion, un seul appelant de
+contrôle ; tous les appelants doivent terminer avant destruction.
+
+RequestCancel révoque l'identifiant et annule le backend ; le worker puis le
+consommateur revérifient la suppression des réponses. L'hôte doit aussi annuler
+les pipes : une réponse déjà retournée ne peut pas être rappelée. Un changement
+de politique retire toutes les anciennes connexions et impose une nouvelle
+authentification. Les slots sont libérés même si l'ancien thread I/O termine
+tard ; les identifiants uniques protègent sa remplaçante contre un Disconnect
+retardé. Régression de rétention des slots observée rouge puis verte.
+
+Build Release /W4 /WX réussi ; neuf CTests ciblés réussis, dont arbitrage de deux
+propriétaires concurrents, cinquième connexion refusée, annulation/Stop/politique
+pendant Open bloqué et arrêt avec plusieurs appelants. Le banc PCM Schannel
+utilise maintenant ce dispatcher ; essai TLS réel réussi, trois clés temporaires
+créées/supprimées et absence vérifiée. Politique et backend audio synthétiques.
+Revue statique sans défaut important sous les contrats publics. Les fenêtres
+Attach terminé avant consommation et réponse préparée avant annulation restent
+sans injection déterministe dédiée. Aucun listener, service ou collecteur de
+politique OS livré dans ce sous-lot ; tâche 4 toujours incomplète.
+
+**Précision d'architecture :** le futur BrokerPipeServer utilisera ce dispatcher
+partagé, qui possède l'unique BrokerSession, au lieu d'en manipuler une référence
+directement depuis ses threads I/O.
+
 **Qualification d'intégration du 24 octobre (serveur de test seulement) :**
 le pair du test Schannel ne fabrique plus SESSION/STATUS/CLOSE. Il utilise le
 vrai BrokerSession, avec identité relevée sur le pipe et convertie par Windows
