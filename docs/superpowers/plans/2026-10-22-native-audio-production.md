@@ -189,6 +189,20 @@ La migration doit couvrir le filtre central `set_pre_request_handler` de `src/co
 
 ### Lot 6 — GUI unifiée et qualification du parcours
 
+**Sous-lot de statut en lecture seule (23 octobre 2026) :** `NativeAudioDialog`
+est accessible depuis le menu contextuel du fond du graphe. Il distingue les
+états d'admission, l'absence de périphérique et la déconnexion, sépare format
+natif et graphe actif, et affiche les compteurs avec leurs unités. Aucun appel
+d'activation ni détail contextuel ajouté à la navigation. Focus modal, Escape
+et retour du focus couverts. La revue a détecté le retour prématuré d'un ancien
+état Running pendant la reconnexion : correction par génération de connexion,
+avec régression couvrant aussi une deuxième déconnexion pendant la requête.
+Les trois suites App, RoutingPatchbay et NativeAudioDialog passent : 71 tests.
+Contrôle visuel sur fixture locale simulée à 1280×900 et 390×844 ; captures dans
+`output/playwright/native-audio-desktop.png` et `native-audio-mobile.png`.
+Ce sous-lot ne valide ni activation, ni ports routables natifs, ni audio réel.
+Le lot 6 complet reste à réaliser après raccord de l'API authentifiée.
+
 **Files:** modifier `gui/src/App.js`, `gui/src/RoutingPatchbay.js`, `gui/src/api-contract.js`, leurs tests et `gui/src/api-contract.test.cjs` ; créer `gui/src/NativeAudioDialog.js` et `gui/src/NativeAudioDialog.test.js` si une modale dédiée évite d'alourdir les composants existants.
 
 **Interfaces:** consomme uniquement le snapshot et la mutation du lot 5 via le client API Electron. Une paire de ports native est un objet distinct du pilote ASIO et des bridges WASAPI physiques.

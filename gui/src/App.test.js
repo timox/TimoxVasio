@@ -67,6 +67,53 @@ const withClockApp = async (initialState, check) => {
     }
 };
 
+test('native audio status opens only from graph menu and never sends configuration', async () => {
+    const nativeAudio = { enabled: true, state: 'denied', attached: false, masterRunning: true,
+        nativeFormat: { sampleRate: 48000, channels: 2, sampleType: 'pcm32' }, graphFormat: null,
+        systemError: 5, retryInMs: 0, health: {} };
+    await withClockApp({ ...state, apiVersion: '1.1', nativeAudio }, async container => {
+        expect(document.querySelector('[aria-label="Native Windows audio"]')).toBeNull();
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await chooseContextAction(container.querySelector('.patchbay-flow'), 'Native Windows audio status…');
+        const dialog = document.querySelector('[role="dialog"][aria-label="Native Windows audio"]');
+        expect(dialog).not.toBeNull();
+        expect(dialog.textContent).toContain('Access denied');
+        expect(dialog.textContent).toContain('48000 Hz');
+        expect(dialog.textContent).toContain('Windows error: 5');
+        expect(dialog.querySelectorAll('input,select')).toHaveLength(0);
+        expect(window.vasio.applyConfiguration).not.toHaveBeenCalled();
+        expect(window.vasio.executeCommand).not.toHaveBeenCalled();
+        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        expect(document.querySelector('[aria-label="Native Windows audio"]')).toBeNull();
+    });
+});
+
+test('native status waits for a fresh snapshot after reconnection', async () => {
+    const initial = { ...state, nativeAudio: { state: 'running', enabled: true,
+        nativeFormat: { sampleRate: 48000, channels: 2 }, graphFormat: { sampleRate: 44100, channels: 2, maxQuantum: 128 } } };
+    await withClockApp(initial, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await chooseContextAction(container.querySelector('.patchbay-flow'), 'Native Windows audio status…');
+        const dialog = () => document.querySelector('[aria-label="Native Windows audio"]');
+        expect(dialog().textContent).toContain('44100 Hz');
+        await act(async () => window.vasio.onDisconnect.mock.calls[0][0]());
+        expect(dialog().textContent).toContain('Connection lost');
+        let resolveState;
+        window.vasio.getState.mockImplementation(() => new Promise(resolve => { resolveState = resolve; }));
+        await act(async () => window.electronAPI.onEngineConnection.mock.calls[0][0]({ connected: true }));
+        expect(dialog().textContent).toContain('Connection lost');
+        expect(dialog().textContent).not.toContain('44100 Hz');
+        await act(async () => window.vasio.onDisconnect.mock.calls[0][0]());
+        await act(async () => { resolveState(initial); await Promise.resolve(); });
+        expect(dialog().textContent).toContain('Connection lost');
+        expect(dialog().textContent).not.toContain('44100 Hz');
+        await act(async () => window.electronAPI.onEngineConnection.mock.calls[0][0]({ connected: true }));
+        await act(async () => { resolveState({ ...initial, nativeAudio: { ...initial.nativeAudio, state: 'unavailable', graphFormat: null } }); await Promise.resolve(); });
+        expect(dialog().textContent).toContain('Unavailable');
+        expect(dialog().textContent).not.toContain('44100 Hz');
+    });
+});
+
 test('API 1.1 bridges create, edit, disable and remove through context actions and preserve routes', async () => {
     const initial = { ...state, apiVersion: '1.1', configurationRevision: 7, configuredWasapiBridges: [],
         wasapiBridges: [], wasapiDevices: [{ id: 'mic-device', name: 'Desk microphone', flow: 'capture', state: 1,

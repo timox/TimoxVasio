@@ -19,6 +19,7 @@
 *.pid.json
 *.log
 /.playwright-cli/
+/.playwright-mcp/
 /output/playwright/
 
 # Local Mixxx source/build used for compatibility investigation

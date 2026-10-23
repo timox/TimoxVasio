@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import './App.css';
 import './ProfessionalTheme.css';
 import RoutingPatchbay from './RoutingPatchbay';
+import NativeAudioDialog from './NativeAudioDialog';
 import QuickRouting from './QuickRouting';
 import BufferTimingDiagram from './BufferTimingDiagram';
 import AnalysisTimeline from './AnalysisTimeline';
@@ -21,6 +22,7 @@ const readMigrationLog = () => {
 function App() {
     const [connectionError, setConnectionError] = useState('Connecting to engine…');
     const [apiState, setApiState] = useState(null);
+    const connectionGeneration = useRef(0);
     const [configuration, setConfiguration] = useState(null);
     const [engine, setEngine] = useState(null);
     const softwareClock = configuration?.clockSource?.kind === 'software';
@@ -39,6 +41,7 @@ function App() {
     const [selectedRouteId, setSelectedRouteId] = useState(null);
     const [routingDialog, setRoutingDialog] = useState(null);
     const [bridgeDialog, setBridgeDialog] = useState(null);
+    const [nativeDialogOpen, setNativeDialogOpen] = useState(false);
     const [bridgeInventoryBusy, setBridgeInventoryBusy] = useState(false);
     const [migrationLog, setMigrationLog] = useState(readMigrationLog);
     const pendingMigrations = useRef([]);
@@ -154,7 +157,9 @@ function App() {
     }, []);
 
     const refreshState = useCallback(async ({ resetDraft = false } = {}) => {
+        const generation = connectionGeneration.current;
         const state = await window.vasio.getState();
+        if (generation !== connectionGeneration.current) return;
         recordPerformanceState(state);
         const confirmedConfiguration = configurationFromState(state);
         const previousConfirmed = lastConfirmedConfiguration.current;
@@ -235,14 +240,20 @@ function App() {
                 if (disposed) return;
                 setConnectionError('');
                 disconnectListener = window.electronAPI.onEngineConnection(status => {
+                    const generation = ++connectionGeneration.current;
                     if (!status.connected) setConnectionError(status.error || 'The VASIO engine is stopped');
-                    else { setConnectionError(''); refreshState().catch(error => setConnectionError(error.message)); }
+                    else refreshState().then(() => {
+                        if (!disposed && generation === connectionGeneration.current) setConnectionError('');
+                    }).catch(error => {
+                        if (!disposed && generation === connectionGeneration.current) setConnectionError(error.message);
+                    });
                 });
                 diagnosticListener = window.electronAPI.onEngineDiagnostic(message => {
                     setNotice(message);
                     setApiEvents(current => [...current, { time: new Date().toISOString(), event: 'engine.diagnostic', payload: { message } }].slice(-500));
                 });
                 const unsubscribeDisconnect = window.vasio.onDisconnect(() => {
+                    ++connectionGeneration.current;
                     if (!disposed) setConnectionError('API connection lost');
                 });
                 disconnectListener = (() => {
@@ -265,12 +276,14 @@ function App() {
     useEffect(() => {
         if (!window.vasio?.getState) return undefined;
         const timer = window.setInterval(() => {
+            const generation = connectionGeneration.current;
             window.vasio.getState().then(state => {
+                if (generation !== connectionGeneration.current) return;
                 recordPerformanceState(state);
                 setApiState(state);
                 setEngine(state.engine);
                 setConnectionError('');
-            }).catch(error => setConnectionError(error.message));
+            }).catch(error => { if (generation === connectionGeneration.current) setConnectionError(error.message); });
         }, 5000);
         return () => window.clearInterval(timer);
     }, [recordPerformanceState]);
@@ -1267,6 +1280,7 @@ function App() {
                         onCreateConnection={processName => setRoutingDialog({ kind: 'add', processName })}
                         onShowProcessDetail={processName => setRoutingDialog({ kind: 'process', processName })}
                         onCreateBridge={apiState?.apiVersion === '1.1' ? () => setBridgeDialog({ kind: 'add' }) : undefined}
+                        onShowNativeAudio={() => setNativeDialogOpen(true)}
                         onEditBridge={id => setBridgeDialog({ kind: 'edit', bridge: configuration.wasapiBridges.find(item => item.id === id) })}
                         onRemoveBridge={id => setBridgeDialog({ kind: 'remove', bridge: configuration.wasapiBridges.find(item => item.id === id) })}
                         isConnectionAllowed={bridgeConnectionAllowed}
@@ -1302,6 +1316,8 @@ function App() {
 
 
 
+                {activeView === 'channels' && nativeDialogOpen && <NativeAudioDialog status={apiState?.nativeAudio}
+                    connected={!connectionError} onClose={() => setNativeDialogOpen(false)} />}
                 {bridgeDialog && <BridgeDialog key={`${bridgeDialog.kind}:${bridgeDialog.bridge?.id || ''}`} dialog={bridgeDialog}
                     bridges={configuration?.wasapiBridges || []} routes={configuration?.routes || []}
                     devices={apiState?.wasapiDevices || []} runtime={apiState?.wasapiBridges?.find(item => item.id === bridgeDialog.bridge?.id)}
