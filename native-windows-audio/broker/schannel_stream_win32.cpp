@@ -25,11 +25,12 @@ struct SchannelStream::Impl {
     std::atomic<bool> cancelled{false};
     unsigned long attributes=0;
     SecPkgContext_StreamSizes sizes{};
-    // 133120 retained bytes, plus bounded SSPI output token <=65536 during
-    // handshake. The OS/Schannel provider's internal allocations are opaque.
-    std::array<unsigned char,65536> encrypted{};
-    std::array<unsigned char,32768> plaintext{};
-    std::array<unsigned char,34816> output{};
+    // 67589 retained buffer bytes; handshake output accepted up to 32768.
+    // Provider-owned internal allocations (including rejected larger output)
+    // are opaque and are not claimed to have this application-memory bound.
+    std::array<unsigned char,CipherBufferBytes> encrypted{};
+    std::array<unsigned char,PlainBufferBytes> plaintext{};
+    std::array<unsigned char,OutputBufferBytes> output{};
     std::size_t encryptedBytes=0,plainOffset=0,plainBytes=0;
     Impl(std::unique_ptr<PipeStream> stream,bool isServer,PCCERT_CONTEXT own,const Pin& pin)
         :pipe(std::move(stream)),server(isServer),expected(pin),certificate(own?CertDuplicateCertificateContext(own):nullptr){
@@ -115,7 +116,7 @@ struct SchannelStream::Impl {
                 ISC_REQ_MANUAL_CRED_VALIDATION|ISC_REQ_USE_SUPPLIED_CREDS,0,0,
                 initial?nullptr:&input,0,&context,&out,&attributes,&expiry);
             NativeChannelResult sent{Code::Ok};
-            const bool outputBounded=static_cast<std::size_t>(outputBuffers[0].cbBuffer)+outputBuffers[1].cbBuffer<=encrypted.size();
+            const bool outputBounded=static_cast<std::size_t>(outputBuffers[0].cbBuffer)+outputBuffers[1].cbBuffer<=MaxHandshakeTokenBytes;
             if(!outputBounded)sent={Code::Failed,0,ERROR_BUFFER_OVERFLOW};
             if(outputBuffers[0].pvBuffer){
                 if(outputBounded && outputBuffers[0].cbBuffer)sent=pipe->WriteAll(outputBuffers[0].pvBuffer,outputBuffers[0].cbBuffer,deadline);
@@ -189,6 +190,7 @@ struct SchannelStream::Impl {
 SchannelStream::SchannelStream(std::unique_ptr<PipeStream> pipe,bool server,PCCERT_CONTEXT certificate,const Pin& pin)
     :impl_(std::make_unique<Impl>(std::move(pipe),server,certificate,pin)){}
 SchannelStream::~SchannelStream()=default;
+std::size_t SchannelStream::RetainedApplicationBytes() noexcept{return sizeof(SchannelStream)+sizeof(Impl);}
 NativeChannelResult SchannelStream::Handshake(Deadline deadline) noexcept{return impl_->Handshake(deadline);}
 NativeChannelResult SchannelStream::ReadSome(void* buffer,std::size_t capacity,Deadline deadline) noexcept{return impl_->ReadSome(buffer,capacity,deadline);}
 NativeChannelResult SchannelStream::WriteAll(const void* buffer,std::size_t bytes,Deadline deadline) noexcept{return impl_->WriteAll(buffer,bytes,deadline);}

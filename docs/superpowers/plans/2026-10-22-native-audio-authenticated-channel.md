@@ -80,13 +80,35 @@ fragments ciphertext de 17 octets. Exécution explicite `--temporary-user-key`
 réussie : trois clés créées, supprimées et absence vérifiée, aucune confiance
 installée. Ce test de framing ne valide pas le contenu PCM ni le futur serveur.
 
-**Point mémoire à résoudre avant le client concret :** chaque SchannelStream
+**Point mémoire identifié avant le client concret (historique, résolu ci-dessous) :** chaque SchannelStream
 retient actuellement 133120 octets de tableaux. En garder deux pendant le
 transfert dépasse déjà les 256 KiB (266240 octets), avant les buffers du canal,
 ceux de l'adaptateur ou le token SSPI temporaire. Prévoir un cycle de vie de
 buffers partagé/libéré entre bootstrap et data sans perdre les restes TLS,
 sans course avec RequestCancel et sans abandonner prématurément le bail.
 Ne pas prétendre le plafond tenu par une simple somme des buffers de framing.
+
+**Correction mémoire du 24 octobre :** les buffers de chaque flux sont désormais
+32768 octets chiffrés, 16384 en clair et 18437 en sortie. Le profil TLS 1.2 garde
+la limite de 16 KiB par record plaintext et couvre 18 KiB de ciphertext plus
+l'en-tête de cinq octets ([RFC 5246, section 6.2](https://www.rfc-editor.org/rfc/rfc5246.html#section-6.2)).
+Le plafond de handshake accepté est explicitement 32 KiB : les certificats/chaînes
+provisionnés devront tenir ce profil. Aucune réduction du contrôle de pin, EKU,
+validité ou chiffrement ; pas d'agrandissement dynamique ou de partage de scratch.
+
+Test rouge observé avec les anciens tableaux, puis GREEN : deux `sizeof(Impl)`
+et objets Schannel, un token handshake maximal, les deux buffers de l'adaptateur
+et 16 KiB de réserve donnent **250400 octets** sur la build x64 courante.
+La réserve doit encore être remplacée/vérifiée par les tailles du canal concret
+et de ses objets/scratch lors du raccord. Les allocations internes OS/Schannel,
+y compris un token surdimensionné rejeté après retour SSPI, restent opaques et
+ne sont pas présentées comme bornées par ce total applicatif.
+`NativeAudioSchannelAccountingTests` vérifie sans clé ce budget et la conservation
+des octets complétés lors d'un timeout. Essai TLS réel réussi : premier flux
+gardant deux octets plaintext en attente pendant le handshake du second, puis
+lecture intacte ; régressions de framing maximal, fragmentation, pins/EKU et
+tamper réussies. Trois clés utilisateur temporaires créées/supprimées, absence
+vérifiée. Le bail et le canal concret restent à raccorder et à qualifier.
 
 **Avancement du 24 octobre 2026 — codec et observation OS :**
 `channel_binding.h/.cpp` fournit les cinq trames TNAC v1, avec stockage fixe,

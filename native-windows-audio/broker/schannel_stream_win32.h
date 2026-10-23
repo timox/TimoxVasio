@@ -26,6 +26,15 @@ class SchannelStream final {
 public:
     using Deadline=PipeStream::Deadline;
     using Pin=std::array<unsigned char,32>;
+    // TLS 1.2 records: <=16 KiB plaintext, <=18 KiB ciphertext + 5-byte
+    // header. Provisioned handshake flights must fit the 32 KiB profile.
+    // Larger chains/tokens are rejected; buffers never grow dynamically.
+    static constexpr std::size_t CipherBufferBytes=32768;
+    static constexpr std::size_t PlainBufferBytes=16384;
+    static constexpr std::size_t OutputBufferBytes=18437;
+    static constexpr std::size_t MaxHandshakeTokenBytes=CipherBufferBytes;
+    // Includes this object and Impl (not OS/Schannel allocations or PipeStream).
+    static std::size_t RetainedApplicationBytes() noexcept;
     SchannelStream(std::unique_ptr<PipeStream>,bool server,PCCERT_CONTEXT ownCertificate,const Pin& expectedPeer);
     ~SchannelStream();
     SchannelStream(const SchannelStream&)=delete;

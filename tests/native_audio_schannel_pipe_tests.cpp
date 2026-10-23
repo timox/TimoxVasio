@@ -180,6 +180,22 @@ struct Duplex {
 void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
     const auto serverPin=Hash(serverIdentity.cert),clientPin=Hash(clientIdentity.cert);
     {
+        // Preserve the bootstrap connection (and buffered plaintext) while a
+        // separately authenticated data connection is established. No scratch
+        // sharing, implicit closing, or loss of bootstrap leftovers is allowed.
+        Duplex bootstrap(serverIdentity,&clientIdentity,serverPin,clientPin);
+        Check(bootstrap.Authenticate(),"bootstrap memory fixture handshake");
+        const std::array<unsigned char,3> marker{{7,8,9}};std::array<unsigned char,3> received{};
+        Check(bootstrap.server->WriteAll(marker.data(),marker.size(),Deadline()).code==Code::Ok,"bootstrap memory fixture write");
+        Check(bootstrap.client->ReadSome(received.data(),1,Deadline()).bytes==1&&received[0]==7,"bootstrap initial byte");
+        Duplex data(serverIdentity,&clientIdentity,serverPin,clientPin);
+        Check(data.Authenticate(),"second retained stream handshake");
+        Check(data.client->WriteAll(marker.data(),marker.size(),Deadline()).code==Code::Ok,"second retained stream write");
+        Check(data.server->ReadSome(received.data(),received.size(),Deadline()).bytes==3&&received==marker,"second retained stream payload");
+        received.fill(0);
+        Check(bootstrap.client->ReadSome(received.data(),received.size(),Deadline()).bytes==2&&received[0]==8&&received[1]==9,"data handshake destroyed bootstrap leftovers");
+    }
+    {
         Duplex wire(serverIdentity,&clientIdentity,serverPin,clientPin);
         Check(wire.Authenticate(),"real pipe mutual Schannel handshake failed");
         {
@@ -254,7 +270,16 @@ void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
 }
 }
 int main(int argc,char** argv){
-    try{TimeoutCompletionAccounting();}catch(const std::exception& e){std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}
+    try{
+        // Two retained streams, one active handshake, existing adapter request/
+        // reply arrays and 16 KiB reserved for pipe objects/channel/frame/EKU
+        // scratch. Final concrete-channel sizeof accounting remains mandatory.
+        const auto bytes=2*SchannelStream::RetainedApplicationBytes()+SchannelStream::MaxHandshakeTokenBytes+
+            2*timox_broker::MaxMessageBytes+16*1024;
+        Check(bytes<=256*1024,"two-stream application memory envelope exceeds 256 KiB");
+        std::printf("Two-stream application envelope: %zu bytes (includes 16 KiB integration reserve)\n",bytes);
+        TimeoutCompletionAccounting();
+    }catch(const std::exception& e){std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}
     if(argc==2 && std::strcmp(argv[1],"--completion-accounting-only")==0){std::puts("Ciphertext completion accounting passed (no credentials created)");return 0;}
     if(argc==1){std::puts("SKIP: real TLS requires explicitly authorized --temporary-user-key; no keys created");return 77;}
     if(argc!=2 || std::strcmp(argv[1],"--temporary-user-key")!=0){std::fprintf(stderr,"Usage: NativeAudioSchannelPipeTests [--temporary-user-key|--completion-accounting-only]\n");return 2;}
