@@ -73,6 +73,18 @@ UnixSocketStream::UnixSocketStream():impl_(std::make_unique<Impl>()){}
 UnixSocketStream::~UnixSocketStream()=default;
 void UnixSocketStream::RequestCancel() noexcept {impl_->cancelled.store(true,std::memory_order_release);}
 void UnixSocketStream::Close() noexcept {impl_->Close();}
+NativeChannelResult UnixSocketStream::GetPeerProcessId(std::uint32_t& output) noexcept {
+    auto result=impl_->Ready(Deadline::max());if(result.code!=Code::Ok)return result;
+    if(!impl_->connected)return {Code::Failed};
+    ULONG pid=0;DWORD bytes=0;
+    if(WSAIoctl(impl_->socket,SIO_AF_UNIX_GETPEERPID,nullptr,0,&pid,sizeof(pid),&bytes,nullptr,nullptr)==SOCKET_ERROR)
+        return Error(WSAGetLastError());
+    // Windows 10.0.26200 populates ULONG but reports zero bytes on success.
+    // Accept that observed convention or the explicit ULONG size, never an
+    // unpopulated PID or a different output shape.
+    if((bytes!=0&&bytes!=sizeof(pid))||!pid)return {Code::Failed};
+    output=pid;return {Code::Ok};
+}
 NativeChannelResult UnixSocketStream::Listen(const char* path) noexcept {
     auto result=impl_->Ready(Deadline::max());if(result.code!=Code::Ok)return result;
     sockaddr_un address{};if(!Address(path,address))return {Code::Failed};

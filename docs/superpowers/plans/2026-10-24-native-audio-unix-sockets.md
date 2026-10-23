@@ -41,6 +41,24 @@ destination seule ne réveille pas son attente.
 
 ## Suite d'implémentation
 
+**Observation du pair :** le SDK partagé `afunix.h` définit
+SIO_AF_UNIX_GETPEERPID, renvoyant un ULONG. GetPeerProcessId l'utilise uniquement
+sur une socket connectée et conserve la sortie lors d'un échec. Le test réel
+vérifie le PID courant puis démarre un processus enfant sans fenêtre et contrôle
+que le serveur voit son PID exact et que l'enfant voit celui du parent. Les
+processus et sockets restent vivants pendant ces assertions. Cela exclut un
+simple retour accidentel de GetCurrentProcessId, mais ne qualifie pas l'identité
+de sécurité. Windows 10.0.26200 retourne le PID valide avec bytes=0 ; l'hypothèse
+initiale bytes==4 a échoué, puis le contrôle 0-ou-4/non-zéro passe.
+
+**Limite d'autorisation :** un PID ne conserve pas le processus vivant. Ouvrir
+son token après cette lecture peut rencontrer un PID réutilisé ; un handle de
+socket transféré ou un relais ne prouve pas l'identité du détenteur actuel. Ne
+pas remplacer directement ObservePipeIdentity par PID→OpenProcessToken. Le
+contrat d'authentification reste à définir avec preuves contre ces scénarios,
+et accès LocalService à vérifier. La connexion n'est pas encore autorisée au
+broker sur la base de cette observation.
+
 **Avancement TLS du 24 octobre :** ByteStream fournit ReadSome/WriteAll/Close/
 RequestCancel, destruction virtuelle, limites et délais communs. SchannelStream
 en possède une instance ; PipeStream et UnixSocketStream l'implémentent. Le test

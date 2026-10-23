@@ -22,6 +22,10 @@ public:
     // and after accept, not while waiting for a connection.
     NativeChannelResult Accept(UnixSocketStream& destination,Deadline) noexcept;
     NativeChannelResult Connect(const char* path,Deadline) noexcept;
+    // Kernel-reported peer PID; output unchanged on failure. This is an
+    // observation, NOT authorization: it does not pin a process lifetime/token
+    // or establish which process currently owns a transferred socket handle.
+    NativeChannelResult GetPeerProcessId(std::uint32_t& output) noexcept;
     NativeChannelResult ReadSome(void*,std::size_t,Deadline) noexcept override;
     // Failure bytes is the prefix already sent; never retry the whole message.
     NativeChannelResult WriteAll(const void*,std::size_t,Deadline) noexcept override;
