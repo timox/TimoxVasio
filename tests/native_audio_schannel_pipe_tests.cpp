@@ -1,10 +1,13 @@
 // Real local pipes; no service, driver, machine key or certificate store writes.
 #include "schannel_stream_win32.h"
+#include "pipe_stream_win32.h"
 #include "channel_frames.h"
 #include "pipe_identity_win32.h"
 #include "native_audio_authenticated_channel_win32.h"
 #include "broker_session.h"
 #include "broker_dispatcher.h"
+#include "unix_socket_stream_win32.h"
+#include <filesystem>
 #include <sddl.h>
 #include <atomic>
 #include <algorithm>
@@ -336,7 +339,41 @@ void ConcreteChannel(Identity& serverIdentity,Identity& clientIdentity,unsigned 
     if(failure)std::rethrow_exception(failure);
     Check(status.code==NativeTransferCode::Ok&&counters[0]==12&&counters[1]==34&&counters[2]==56,"concrete status reply differs");
 }
+void UnixTls(Identity& serverIdentity,Identity& clientIdentity,bool wrongPin){
+    using namespace timox_broker;
+    struct Path {
+        std::string value=std::filesystem::absolute("tls-unix-"+std::to_string(GetCurrentProcessId())+".sock").string();
+        Path(){Check(!std::filesystem::exists(value),"TLS socket path exists");}
+        ~Path(){std::error_code error;std::filesystem::remove(value,error);}
+    } path;
+    UnixSocketStream listener;auto clientPipe=std::make_unique<UnixSocketStream>();auto serverPipe=std::make_unique<UnixSocketStream>();
+    Check(listener.Listen(path.value.c_str()).code==Code::Ok,"TLS socket listen");
+    Check(clientPipe->Connect(path.value.c_str(),Deadline()).code==Code::Ok,"TLS socket connect");
+    Check(listener.Accept(*serverPipe,Deadline()).code==Code::Ok,"TLS socket accept");
+    auto serverPin=Hash(serverIdentity.cert);if(wrongPin)serverPin[0]^=1;
+    SchannelStream server(std::move(serverPipe),true,serverIdentity.cert,Hash(clientIdentity.cert));
+    SchannelStream client(std::move(clientPipe),false,clientIdentity.cert,serverPin);
+    std::array<unsigned char,32768> sent{},received{},echo{};
+    for(std::size_t n=0;n<sent.size();++n)sent[n]=static_cast<unsigned char>(n*31);
+    NativeChannelResult peerResult;
+    std::thread peer([&]{
+        peerResult=server.Handshake(Deadline());if(peerResult.code!=Code::Ok)return;
+        peerResult=frames_detail::Exact(server,received.data(),received.size(),Deadline());
+        if(peerResult.code==Code::Ok)peerResult=server.WriteAll(received.data(),received.size(),Deadline());
+    });
+    const auto handshake=client.Handshake(Deadline());NativeChannelResult sentResult,echoResult;
+    if(handshake.code==Code::Ok){
+        sentResult=client.WriteAll(sent.data(),sent.size(),Deadline());
+        if(sentResult.code==Code::Ok)echoResult=frames_detail::Exact(client,echo.data(),echo.size(),Deadline());
+    }
+    client.Close();peer.join();server.Close();
+    if(wrongPin){Check(handshake.code==Code::AccessDenied,"AF_UNIX TLS accepted wrong pin");return;}
+    Check(handshake.code==Code::Ok&&peerResult.code==Code::Ok&&sentResult.code==Code::Ok&&echoResult.code==Code::Ok,"AF_UNIX TLS duplex failed");
+    Check(sent==received&&sent==echo,"AF_UNIX TLS payload changed");
+}
 void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
+    UnixTls(serverIdentity,clientIdentity,false);
+    UnixTls(serverIdentity,clientIdentity,true);
     ConcreteCancellation(serverIdentity,clientIdentity);
     for(unsigned fault=0;fault<=7;++fault)ConcreteChannel(serverIdentity,clientIdentity,fault);
     const auto serverPin=Hash(serverIdentity.cert),clientPin=Hash(clientIdentity.cert);

@@ -1,5 +1,6 @@
 #pragma once
-#include "pipe_stream_win32.h"
+#include "byte_stream.h"
+#include <Windows.h>
 #include <wincrypt.h>
 #include <array>
 
@@ -18,13 +19,13 @@ inline bool RetainCiphertextCompletion(NativeChannelResult& result,
     return true;
 }
 }
-// TLS on an already-connected local pipe. This does NOT bind the certificate
+// TLS on an already-connected byte stream. This does NOT bind the certificate
 // to the observed Windows logon; channel binding remains a subsequent gate.
 // Worker-only except sticky RequestCancel; callers must quiesce before destruction.
 // Own certificate context is duplicated; its backing key must remain available.
 class SchannelStream final {
 public:
-    using Deadline=PipeStream::Deadline;
+    using Deadline=ByteStream::Deadline;
     using Pin=std::array<unsigned char,32>;
     // TLS 1.2 records: <=16 KiB plaintext, <=18 KiB ciphertext + 5-byte
     // header. Provisioned handshake flights must fit the 32 KiB profile.
@@ -33,9 +34,9 @@ public:
     static constexpr std::size_t PlainBufferBytes=16384;
     static constexpr std::size_t OutputBufferBytes=18437;
     static constexpr std::size_t MaxHandshakeTokenBytes=CipherBufferBytes;
-    // Includes this object and Impl (not OS/Schannel allocations or PipeStream).
+    // Includes this object and Impl (not OS/Schannel allocations or transport).
     static std::size_t RetainedApplicationBytes() noexcept;
-    SchannelStream(std::unique_ptr<PipeStream>,bool server,PCCERT_CONTEXT ownCertificate,const Pin& expectedPeer);
+    SchannelStream(std::unique_ptr<ByteStream>,bool server,PCCERT_CONTEXT ownCertificate,const Pin& expectedPeer);
     ~SchannelStream();
     SchannelStream(const SchannelStream&)=delete;
     SchannelStream& operator=(const SchannelStream&)=delete;

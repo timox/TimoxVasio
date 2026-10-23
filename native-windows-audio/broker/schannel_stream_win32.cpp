@@ -16,7 +16,7 @@ NativeChannelResult SspiError(SECURITY_STATUS status) noexcept {
 }
 }
 struct SchannelStream::Impl {
-    const std::unique_ptr<PipeStream> pipe;
+    const std::unique_ptr<ByteStream> pipe;
     const bool server;
     const Pin expected;
     PCCERT_CONTEXT certificate=nullptr;
@@ -32,7 +32,7 @@ struct SchannelStream::Impl {
     std::array<unsigned char,PlainBufferBytes> plaintext{};
     std::array<unsigned char,OutputBufferBytes> output{};
     std::size_t encryptedBytes=0,plainOffset=0,plainBytes=0;
-    Impl(std::unique_ptr<PipeStream> stream,bool isServer,PCCERT_CONTEXT own,const Pin& pin)
+    Impl(std::unique_ptr<ByteStream> stream,bool isServer,PCCERT_CONTEXT own,const Pin& pin)
         :pipe(std::move(stream)),server(isServer),expected(pin),certificate(own?CertDuplicateCertificateContext(own):nullptr){
         SecInvalidateHandle(&credential);SecInvalidateHandle(&context);
     }
@@ -138,7 +138,7 @@ struct SchannelStream::Impl {
     }
     NativeChannelResult ReadSome(void* buffer,std::size_t capacity,Deadline deadline) noexcept {
         if(cancelled.load(std::memory_order_acquire))return {Code::Cancelled,0,ERROR_OPERATION_ABORTED};
-        if(!ready || !buffer || !capacity || capacity>PipeStream::MaxTransferBytes)return {Code::Failed,0,ERROR_INVALID_PARAMETER};
+        if(!ready || !buffer || !capacity || capacity>ByteStream::MaxTransferBytes)return {Code::Failed,0,ERROR_INVALID_PARAMETER};
         for(;;){
             if(cancelled.load(std::memory_order_acquire)){Close();return {Code::Cancelled,0,ERROR_OPERATION_ABORTED};}
             if(std::chrono::steady_clock::now()>=deadline)return {Code::TimedOut,0,WAIT_TIMEOUT};
@@ -167,7 +167,7 @@ struct SchannelStream::Impl {
     }
     NativeChannelResult WriteAll(const void* buffer,std::size_t bytes,Deadline deadline) noexcept {
         if(cancelled.load(std::memory_order_acquire))return {Code::Cancelled,0,ERROR_OPERATION_ABORTED};
-        if(!ready || !buffer || !bytes || bytes>PipeStream::MaxTransferBytes)return {Code::Failed,0,ERROR_INVALID_PARAMETER};
+        if(!ready || !buffer || !bytes || bytes>ByteStream::MaxTransferBytes)return {Code::Failed,0,ERROR_INVALID_PARAMETER};
         std::size_t total=0;
         while(total<bytes){
             if(cancelled.load(std::memory_order_acquire)){Close();return {Code::Cancelled,static_cast<std::uint32_t>(total),ERROR_OPERATION_ABORTED};}
@@ -187,7 +187,7 @@ struct SchannelStream::Impl {
         return {Code::Ok,static_cast<std::uint32_t>(total)};
     }
 };
-SchannelStream::SchannelStream(std::unique_ptr<PipeStream> pipe,bool server,PCCERT_CONTEXT certificate,const Pin& pin)
+SchannelStream::SchannelStream(std::unique_ptr<ByteStream> pipe,bool server,PCCERT_CONTEXT certificate,const Pin& pin)
     :impl_(std::make_unique<Impl>(std::move(pipe),server,certificate,pin)){}
 SchannelStream::~SchannelStream()=default;
 std::size_t SchannelStream::RetainedApplicationBytes() noexcept{return sizeof(SchannelStream)+sizeof(Impl);}

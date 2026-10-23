@@ -1,5 +1,10 @@
 # Native Audio Authenticated Channel Implementation Plan
 
+> **Choix de transport remplacé le 24 octobre 2026 à la demande utilisateur :**
+> poursuivre avec AF_UNIX selon [le plan de migration](2026-10-24-native-audio-unix-sockets.md).
+> Les résultats pipe ci-dessous restent historiques ; ne pas poursuivre le
+> listener pipe comme architecture cible. Réutiliser codecs, dispatcher et tests.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Relier le transport client existant à `BrokerSession` par de vrais pipes Windows, chiffrés et authentifiés avec Schannel, sans ouvrir le pilote pendant les tests de ce lot.

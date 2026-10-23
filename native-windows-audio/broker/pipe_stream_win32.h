@@ -1,5 +1,6 @@
 #pragma once
 #include "native_audio_broker_transport.h"
+#include "byte_stream.h"
 #include <Windows.h>
 #include <memory>
 
@@ -10,12 +11,11 @@ namespace timox_broker {
 // Destruction must not race any method. No FlushFileBuffers (peer-dependent wait).
 // A deadline triggers cancellation; draining the OS completion can exceed it.
 // This guarantees buffer lifetime, not a hard realtime completion bound.
-class PipeStream final {
+class PipeStream final : public ByteStream {
 public:
     using Deadline=INativeAudioAuthenticatedChannel::Deadline;
-    static constexpr std::size_t MaxTransferBytes=256u*1024u;
     PipeStream();
-    ~PipeStream();
+    ~PipeStream() override;
     PipeStream(const PipeStream&)=delete;
     PipeStream& operator=(const PipeStream&)=delete;
     // Caller supplies the production DACL. Null attributes are only suitable for
@@ -24,11 +24,11 @@ public:
         SECURITY_ATTRIBUTES* attributes,bool firstInstance=true) noexcept;
     NativeChannelResult Accept(Deadline) noexcept;
     NativeChannelResult Connect(const wchar_t* localName,Deadline) noexcept;
-    NativeChannelResult ReadSome(void*,std::size_t capacity,Deadline) noexcept;
+    NativeChannelResult ReadSome(void*,std::size_t capacity,Deadline) noexcept override;
     // On failure bytes reports the prefix transferred, never an implicit retry.
-    NativeChannelResult WriteAll(const void*,std::size_t bytes,Deadline) noexcept;
-    void RequestCancel() noexcept;
-    void Close() noexcept;
+    NativeChannelResult WriteAll(const void*,std::size_t bytes,Deadline) noexcept override;
+    void RequestCancel() noexcept override;
+    void Close() noexcept override;
     // Borrowed worker-only handle for subsequent Windows identity observation.
     HANDLE BorrowHandle() const noexcept;
     static std::size_t RetainedApplicationBytes() noexcept;

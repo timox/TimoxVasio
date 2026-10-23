@@ -1,5 +1,6 @@
 #include "native_audio_authenticated_channel_win32.h"
 #include "schannel_stream_win32.h"
+#include "pipe_stream_win32.h"
 #include "pipe_identity_win32.h"
 #include "channel_frames.h"
 #include <algorithm>

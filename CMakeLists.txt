@@ -16,6 +16,18 @@ option(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY "Build isolated native admission
 
 if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
     enable_testing()
+    if(WIN32)
+        add_executable(NativeAudioUnixSocketTests tests/native_audio_unix_socket_tests.cpp
+            native-windows-audio/broker/unix_socket_stream_win32.cpp)
+        target_include_directories(NativeAudioUnixSocketTests PRIVATE include native-windows-audio/include native-windows-audio/broker)
+        target_compile_definitions(NativeAudioUnixSocketTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_link_libraries(NativeAudioUnixSocketTests PRIVATE ws2_32)
+        if(MSVC)
+            target_compile_options(NativeAudioUnixSocketTests PRIVATE /W4 /WX /EHsc)
+        endif()
+        add_test(NAME NativeAudioUnixSocketTests COMMAND NativeAudioUnixSocketTests)
+        set_tests_properties(NativeAudioUnixSocketTests PROPERTIES TIMEOUT 15)
+    endif()
     add_executable(NativeAudioBrokerDispatcherTests tests/native_audio_broker_dispatcher_tests.cpp
         native-windows-audio/broker/broker_dispatcher.cpp native-windows-audio/broker/broker_session.cpp src/native_audio_access_policy.cpp)
     target_include_directories(NativeAudioBrokerDispatcherTests PRIVATE include native-windows-audio/include native-windows-audio/broker)
@@ -103,6 +115,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         add_test(NAME NativeAudioPipeStreamTests COMMAND NativeAudioPipeStreamTests)
         set_tests_properties(NativeAudioPipeStreamTests PROPERTIES TIMEOUT 30)
         add_executable(NativeAudioSchannelPipeTests tests/native_audio_schannel_pipe_tests.cpp
+            native-windows-audio/broker/unix_socket_stream_win32.cpp
             native-windows-audio/broker/broker_dispatcher.cpp
             native-windows-audio/broker/broker_session.cpp src/native_audio_access_policy.cpp
             src/native_audio_authenticated_channel_win32.cpp src/native_audio_broker_transport.cpp
@@ -116,7 +129,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         if(MSVC)
             target_compile_options(NativeAudioSchannelPipeTests PRIVATE /W4 /WX /EHsc)
         endif()
-        target_link_libraries(NativeAudioSchannelPipeTests PRIVATE secur32 crypt32 ncrypt bcrypt advapi32)
+        target_link_libraries(NativeAudioSchannelPipeTests PRIVATE secur32 crypt32 ncrypt bcrypt advapi32 ws2_32)
         add_test(NAME NativeAudioSchannelPipeTests COMMAND NativeAudioSchannelPipeTests)
         set_tests_properties(NativeAudioSchannelPipeTests PROPERTIES TIMEOUT 90 SKIP_RETURN_CODE 77)
         add_test(NAME NativeAudioSchannelAccountingTests COMMAND NativeAudioSchannelPipeTests --completion-accounting-only)
