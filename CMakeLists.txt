@@ -60,6 +60,16 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
     add_test(NAME NativeAudioBrokerTransportTests COMMAND NativeAudioBrokerTransportTests)
     set_tests_properties(NativeAudioBrokerTransportTests PROPERTIES TIMEOUT 30)
     if(WIN32)
+        # Compile the production surface without the test endpoint override.
+        add_library(NativeAudioWindowsChannel STATIC src/native_audio_authenticated_channel_win32.cpp
+            native-windows-audio/broker/channel_binding.cpp native-windows-audio/broker/pipe_identity_win32.cpp
+            native-windows-audio/broker/pipe_stream_win32.cpp native-windows-audio/broker/schannel_stream_win32.cpp)
+        target_include_directories(NativeAudioWindowsChannel PUBLIC include PRIVATE native-windows-audio/include native-windows-audio/broker)
+        target_compile_definitions(NativeAudioWindowsChannel PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN SECURITY_WIN32)
+        if(MSVC)
+            target_compile_options(NativeAudioWindowsChannel PRIVATE /W4 /WX /EHsc)
+        endif()
+        target_link_libraries(NativeAudioWindowsChannel PRIVATE secur32 crypt32 advapi32 bcrypt)
         add_executable(NativeAudioPipeIdentityTests tests/native_audio_pipe_identity_tests.cpp
             native-windows-audio/broker/pipe_identity_win32.cpp
             native-windows-audio/broker/channel_binding.cpp
@@ -85,16 +95,18 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         add_test(NAME NativeAudioPipeStreamTests COMMAND NativeAudioPipeStreamTests)
         set_tests_properties(NativeAudioPipeStreamTests PROPERTIES TIMEOUT 30)
         add_executable(NativeAudioSchannelPipeTests tests/native_audio_schannel_pipe_tests.cpp
+            src/native_audio_authenticated_channel_win32.cpp src/native_audio_broker_transport.cpp
+            native-windows-audio/broker/pipe_identity_win32.cpp
             native-windows-audio/broker/channel_binding.cpp
             native-windows-audio/broker/schannel_stream_win32.cpp
             native-windows-audio/broker/pipe_stream_win32.cpp)
         target_include_directories(NativeAudioSchannelPipeTests PRIVATE include native-windows-audio/include
             native-windows-audio/broker)
-        target_compile_definitions(NativeAudioSchannelPipeTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN SECURITY_WIN32)
+        target_compile_definitions(NativeAudioSchannelPipeTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN SECURITY_WIN32 TIMOX_NATIVE_CHANNEL_TEST_ENDPOINT)
         if(MSVC)
             target_compile_options(NativeAudioSchannelPipeTests PRIVATE /W4 /WX /EHsc)
         endif()
-        target_link_libraries(NativeAudioSchannelPipeTests PRIVATE secur32 crypt32 ncrypt bcrypt)
+        target_link_libraries(NativeAudioSchannelPipeTests PRIVATE secur32 crypt32 ncrypt bcrypt advapi32)
         add_test(NAME NativeAudioSchannelPipeTests COMMAND NativeAudioSchannelPipeTests)
         set_tests_properties(NativeAudioSchannelPipeTests PROPERTIES TIMEOUT 90 SKIP_RETURN_CODE 77)
         add_test(NAME NativeAudioSchannelAccountingTests COMMAND NativeAudioSchannelPipeTests --completion-accounting-only)

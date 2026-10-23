@@ -1,7 +1,10 @@
 // Real local pipes; no service, driver, machine key or certificate store writes.
 #include "schannel_stream_win32.h"
 #include "channel_frames.h"
+#include "pipe_identity_win32.h"
+#include "native_audio_authenticated_channel_win32.h"
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <thread>
 #include <windows.h>
@@ -177,7 +180,99 @@ struct Duplex {
         const auto local=client->Handshake(Deadline());thread.join();
         return local.code==Code::Ok && remote.code==Code::Ok;}
 };
+void ConcreteCancellation(Identity& serverIdentity,Identity& clientIdentity){
+    const auto name=PipeName();PipeStream peer;
+    Check(peer.CreateServer(name.c_str(),nullptr).code==Code::Ok,"cancel fixture create");
+    NativeAudioChannelCredentials credentials{clientIdentity.cert,Hash(serverIdentity.cert)};
+    auto channel=CreateWindowsNativeAudioAuthenticatedChannelForTest(credentials,name.c_str());
+    NativeChannelResult result;
+    std::thread connecting([&]{result=channel->Connect(Deadline());});
+    const auto accepted=peer.Accept(Deadline());std::array<unsigned char,4096> hello{};
+    const auto read=accepted.code==Code::Ok?peer.ReadSome(hello.data(),hello.size(),Deadline()):NativeChannelResult{};
+    // A received ClientHello proves Connect is active, not just scheduled.
+    channel->RequestCancel();connecting.join();
+    Check(accepted.code==Code::Ok&&read.code==Code::Ok&&read.bytes>0,"cancel fixture never reached TLS");
+    Check(result.code==Code::Cancelled,"concrete handshake cancellation failed");
+    channel->Close();
+    Check(channel->Connect(Deadline()).code==Code::Cancelled,"close reset concrete cancellation");
+    Check(channel->ConfirmLease(17,23,Deadline()).code==Code::Cancelled,"cancelled concrete lease confirmed");
+    std::array<unsigned char,48> output;output.fill(42);
+    Check(channel->Exchange(nullptr,0,output.data(),output.size(),Deadline()).code==Code::Cancelled&&
+        std::all_of(output.begin(),output.end(),[](auto b){return b==0;}),"cancelled concrete exchange leaked output");
+}
+void ConcreteChannel(Identity& serverIdentity,Identity& clientIdentity,unsigned fault=0){
+    using namespace timox_broker;
+    const auto name=PipeName();auto bootstrapPipe=std::make_unique<PipeStream>();
+    Check(bootstrapPipe->CreateServer(name.c_str(),nullptr).code==Code::Ok,"concrete bootstrap create");
+    const auto bootstrapHandle=bootstrapPipe->BorrowHandle();
+    auto dataPipe=std::make_unique<PipeStream>();
+    ChannelBinding offer;offer.type=BindingType::DataOffer;offer.lease=17;offer.generation=23;offer.nonce[15]=42;
+    auto dataName=name+L".data.";
+    for(auto c:offer.nonce){dataName+=L"0123456789abcdef"[c>>4];dataName+=L"0123456789abcdef"[c&15];}
+    Check(dataPipe->CreateServer(dataName.c_str(),nullptr).code==Code::Ok,"concrete data create");
+    const auto dataHandle=dataPipe->BorrowHandle();
+    NativeAudioChannelCredentials credentials{clientIdentity.cert,Hash(serverIdentity.cert)};
+    auto transport=CreateBrokerNativeAudioTransport(CreateWindowsNativeAudioAuthenticatedChannelForTest(credentials,name.c_str()));
+    std::exception_ptr failure;
+    std::thread peer([&]{try{
+        Check(bootstrapPipe->Accept(Deadline()).code==Code::Ok,"concrete bootstrap accept");
+        SchannelStream bootstrap(std::move(bootstrapPipe),true,serverIdentity.cert,Hash(clientIdentity.cert));
+        Check(bootstrap.Handshake(Deadline()).code==Code::Ok,"concrete bootstrap TLS");
+        ChannelBinding binding;ChannelIdentity observed;
+        Check(ReadBindingFrame(bootstrap,binding,Deadline()).code==Code::Ok,"concrete bootstrap binding read");
+        Check(ObservePipeIdentity(bootstrapHandle,observed)==ERROR_SUCCESS&&SameChannelIdentity(binding.identity,observed),"concrete observed bootstrap identity");
+        Check(binding.type==BindingType::BindRequest,"concrete bootstrap binding type");
+        binding.type=BindingType::BindReply;
+        if(fault==1)++binding.identity.authenticationId;
+        Check(WriteBindingFrame(bootstrap,binding,Deadline()).code==Code::Ok,"concrete bootstrap binding reply");
+        if(fault==1)return;
+        std::array<unsigned char,MaxMessageBytes> request{};
+        const auto put=[](unsigned char* at,std::uint64_t value,unsigned width){for(unsigned n=0;n<width;++n)at[n]=static_cast<unsigned char>(value>>(8*n));};
+        const auto respond=[&](SchannelStream& stream,std::size_t payload){
+            request[7]|=0x80;put(request.data()+12,payload,4);put(request.data()+24,17,8);
+            Check(stream.WriteAll(request.data(),HeaderBytes+payload,Deadline()).code==Code::Ok,"concrete audio reply");
+        };
+        Check(ReadAudioFrame(bootstrap,request.data(),request.size(),Deadline()).code==Code::Ok&&request[6]==1,"concrete SESSION request");
+        put(request.data()+48,23,8);respond(bootstrap,8);
+        if(fault==2)++offer.lease;
+        Check(WriteBindingFrame(bootstrap,offer,Deadline()).code==Code::Ok,"concrete data offer");
+        if(fault==2)return;
+        Check(dataPipe->Accept(Deadline()).code==Code::Ok,"concrete data accept");
+        SchannelStream data(std::move(dataPipe),true,serverIdentity.cert,Hash(clientIdentity.cert));
+        Check(data.Handshake(Deadline()).code==Code::Ok,"concrete data TLS");
+        ChannelBinding dataBinding;
+        Check(ReadBindingFrame(data,dataBinding,Deadline()).code==Code::Ok,"concrete data binding read");
+        ChannelBinding expected=offer;expected.type=BindingType::DataBindRequest;expected.identity=observed;
+        Check(MatchesBinding(dataBinding,expected)&&ObservePipeIdentity(dataHandle,observed)==ERROR_SUCCESS&&
+            SameChannelIdentity(dataBinding.identity,observed),"concrete data identity/lease differs");
+        dataBinding.type=BindingType::DataBindReply;
+        if(fault==3)++dataBinding.identity.authenticationId;
+        if(fault==4)dataBinding.nonce[0]^=1;
+        if(fault==5)++dataBinding.generation;
+        if(fault==6)++dataBinding.lease;
+        Check(WriteBindingFrame(data,dataBinding,Deadline()).code==Code::Ok,"concrete data binding reply");
+        if(fault>=3)return;
+        bootstrap.Close();
+        Check(ReadAudioFrame(data,request.data(),request.size(),Deadline()).code==Code::Ok&&request[6]==4,"concrete STATUS request");
+        put(request.data()+48,12,8);put(request.data()+56,34,8);put(request.data()+64,56,8);respond(data,24);
+        Check(ReadAudioFrame(data,request.data(),request.size(),Deadline()).code==Code::Ok&&request[6]==5,"concrete CLOSE request");
+        respond(data,0);
+    }catch(...){failure=std::current_exception();}});
+    NativeSessionInfo session;const auto opened=transport->Open(session);
+    std::uint64_t counters[3]{};const auto status=opened.code==NativeTransferCode::Ok?transport->ReadStatus(counters):NativeTransferResult{};
+    transport->Close();peer.join();
+    if(fault){
+        if(failure)std::rethrow_exception(failure);
+        Check(opened.code==NativeTransferCode::AccessDenied&&session.wireGeneration==0,"concrete channel accepted mismatched binding");
+        return;
+    }
+    Check(opened.code==NativeTransferCode::Ok&&session.wireGeneration==23,"concrete authenticated channel open failed");
+    if(failure)std::rethrow_exception(failure);
+    Check(status.code==NativeTransferCode::Ok&&counters[0]==12&&counters[1]==34&&counters[2]==56,"concrete status reply differs");
+}
 void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
+    ConcreteCancellation(serverIdentity,clientIdentity);
+    for(unsigned fault=0;fault<=6;++fault)ConcreteChannel(serverIdentity,clientIdentity,fault);
     const auto serverPin=Hash(serverIdentity.cert),clientPin=Hash(clientIdentity.cert);
     {
         // Preserve the bootstrap connection (and buffered plaintext) while a
@@ -278,6 +373,12 @@ int main(int argc,char** argv){
             2*timox_broker::MaxMessageBytes+16*1024;
         Check(bytes<=256*1024,"two-stream application memory envelope exceeds 256 KiB");
         std::printf("Two-stream application envelope: %zu bytes (includes 16 KiB integration reserve)\n",bytes);
+        const auto concreteBytes=WindowsNativeAudioChannelRetainedBytesForTest()+SchannelStream::MaxHandshakeTokenBytes+
+            2*timox_broker::MaxMessageBytes+1024+8192;
+        // 1 KiB bounds adapter metadata beyond its two message arrays; 8 KiB
+        // bounds application stack scratch (EKU, framing, identities, names).
+        Check(concreteBytes<=256*1024,"concrete channel memory exceeds envelope");
+        std::printf("Concrete channel envelope: %zu bytes (adapter metadata + stack reserve included)\n",concreteBytes);
         TimeoutCompletionAccounting();
     }catch(const std::exception& e){std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}
     if(argc==2 && std::strcmp(argv[1],"--completion-accounting-only")==0){std::puts("Ciphertext completion accounting passed (no credentials created)");return 0;}

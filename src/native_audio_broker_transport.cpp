@@ -163,5 +163,6 @@ private:
     bool requestsExhausted_=false,renderSeen_=false,captureSeen_=false;
     std::array<unsigned char,MaxMessageBytes> request_{},reply_{};
 };
+static_assert(sizeof(BrokerTransport)<=2*MaxMessageBytes+1024,"adapter metadata exceeds channel memory accounting");
 }
 std::unique_ptr<INativeAudioTransport> CreateBrokerNativeAudioTransport(std::unique_ptr<INativeAudioAuthenticatedChannel> channel){return std::make_unique<BrokerTransport>(std::move(channel));}

@@ -138,4 +138,5 @@ NativeChannelResult PipeStream::WriteAll(const void* buffer,std::size_t bytes,De
 void PipeStream::RequestCancel() noexcept {if(impl_->cancelled)SetEvent(impl_->cancelled);}
 void PipeStream::Close() noexcept {impl_->Close();}
 HANDLE PipeStream::BorrowHandle() const noexcept{return impl_->pipe;}
+std::size_t PipeStream::RetainedApplicationBytes() noexcept{return sizeof(PipeStream)+sizeof(Impl);}
 }

@@ -31,6 +31,7 @@ public:
     void Close() noexcept;
     // Borrowed worker-only handle for subsequent Windows identity observation.
     HANDLE BorrowHandle() const noexcept;
+    static std::size_t RetainedApplicationBytes() noexcept;
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

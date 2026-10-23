@@ -65,6 +65,43 @@ Le prototype prouve TLS 1.2 ECDHE/ECDSA AES-GCM en mémoire, pas le framing pipe
 
 ## Tâche 3 — Identité Windows et client concret
 
+**Client concret du 24 octobre :** factory Windows ajoutée, endpoint bootstrap
+fixe en production, certificats déjà provisionnés et pin serveur obligatoires.
+Les deux objets pipe/TLS gardent une adresse et une durée de vie fixes pour
+RequestCancel. Connect observe le jeton du processus, authentifie TLS et compare
+BindReply ; Exchange n'autorise que SESSION sur bootstrap puis valide requête et
+réponse avec le codec audio. ConfirmLease vérifie DataOffer, réobserve l'identité,
+construit localement le nom data depuis le nonce, refait TLS et vérifie la liaison
+complète avant de fermer bootstrap. Erreur = fermeture des deux flux, aucun
+réemploi après Close ; annulation sticky. Aucun branchement au moteur effectué.
+
+Test rouge observé avant implémentation, puis parcours réel
+CreateBrokerNativeAudioTransport → Open/SESSION/ConfirmLease/STATUS/CLOSE réussi
+contre un pair TLS de test qui observe indépendamment les deux jetons pipe.
+Six altérations bootstrap/offer/data (logon, bail, génération, nonce) refusées.
+Annulation pendant Connect vérifiée après réception réelle du ClientHello,
+puis refus de réutilisation et effacement de la sortie Exchange. Les essais TLS
+utilisent trois clés temporaires : suppression et absence vérifiées après chaque
+exécution. Une exécution intermédiaire après un échec de compilation utilisait
+encore l'ancien binaire ; elle est exclue des preuves du contrôle d'annulation.
+Après ajout de l'en-tête standard manquant, rebuild et nouvelle exécution ont
+réussi avec l'affichage du bilan concret ci-dessous.
+
+Build de la bibliothèque `NativeAudioWindowsChannel` sans macro d'endpoint de
+test réussie (/W4 /WX). Huit CTests ciblés passent ; TLS réel exécuté séparément.
+Mémoire x64 : objets Channel + deux PipeStream/Impl + deux SchannelStream/Impl,
+token handshake maximal, tableaux adaptateur, 1 KiB de métadonnées adaptateur
+(static_assert) et 8 KiB de réserve de pile = **243904 octets**. La réserve couvre
+les buffers EKU/framing et les identités/noms locaux ; allocations OS/Schannel
+opaques séparées. Le futur serveur a besoin de son propre bilan.
+
+Reste : serveur BrokerSession réel, mapping certificat-vers-compte provisionné,
+révocation/transfert concurrent et PCM via le vrai canal, qualification inter-logons,
+service/provisioning et branchement moteur. Le pair scripté ne prouve pas ces points.
+Revue indépendante favorable. Couverture complémentaire requise avec le serveur :
+réponses contextuellement invalides, EOF après SESSION, annulation pendant le
+handshake data et Exchange, ainsi que retrait du bail après ces échecs.
+
 **Framing vérifié le 24 octobre :** `channel_frames.h` fournit les lectures
 bornées audio/TNAC et l'écriture TNAC directement sur SchannelStream. Aucun buffer
 audio supplémentaire ni pointeur retenu. Lecture exacte de l'en-tête, validation
