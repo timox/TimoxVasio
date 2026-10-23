@@ -25,6 +25,7 @@ TimoxVasio reste distinct du pilote Windows et des backends WASAPI. « Autonome 
 Les flèches pleines transportent du son. Les pointillés représentent le contrôle. Les noms de périphériques virtuels ci-dessous sont illustratifs.
 
 ```mermaid
+
 flowchart LR
     ASIO[Applications ASIO] <--> TV[TimoxVasio.dll]
     TV <--> G[Moteur commun : graphe et mixage]
