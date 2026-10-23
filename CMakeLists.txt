@@ -16,6 +16,14 @@ option(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY "Build isolated native admission
 
 if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
     enable_testing()
+    add_executable(NativeAudioChannelBindingTests tests/native_audio_channel_binding_tests.cpp
+        native-windows-audio/broker/channel_binding.cpp)
+    target_include_directories(NativeAudioChannelBindingTests PRIVATE native-windows-audio/broker)
+    if(MSVC)
+        target_compile_options(NativeAudioChannelBindingTests PRIVATE /W4 /WX /EHsc)
+    endif()
+    add_test(NAME NativeAudioChannelBindingTests COMMAND NativeAudioChannelBindingTests)
+    set_tests_properties(NativeAudioChannelBindingTests PROPERTIES TIMEOUT 30)
     add_executable(NativeAudioAccessPolicyTests tests/native_audio_access_policy_tests.cpp
         src/native_audio_access_policy.cpp)
     target_include_directories(NativeAudioAccessPolicyTests PRIVATE include)
@@ -44,6 +52,19 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
     add_test(NAME NativeAudioBrokerTransportTests COMMAND NativeAudioBrokerTransportTests)
     set_tests_properties(NativeAudioBrokerTransportTests PROPERTIES TIMEOUT 30)
     if(WIN32)
+        add_executable(NativeAudioPipeIdentityTests tests/native_audio_pipe_identity_tests.cpp
+            native-windows-audio/broker/pipe_identity_win32.cpp
+            native-windows-audio/broker/channel_binding.cpp
+            native-windows-audio/broker/pipe_stream_win32.cpp)
+        target_include_directories(NativeAudioPipeIdentityTests PRIVATE include native-windows-audio/include
+            native-windows-audio/broker)
+        target_compile_definitions(NativeAudioPipeIdentityTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        if(MSVC)
+            target_compile_options(NativeAudioPipeIdentityTests PRIVATE /W4 /WX /EHsc)
+        endif()
+        target_link_libraries(NativeAudioPipeIdentityTests PRIVATE advapi32 bcrypt)
+        add_test(NAME NativeAudioPipeIdentityTests COMMAND NativeAudioPipeIdentityTests)
+        set_tests_properties(NativeAudioPipeIdentityTests PROPERTIES TIMEOUT 30)
         add_executable(NativeAudioPipeStreamTests tests/native_audio_pipe_stream_tests.cpp
             native-windows-audio/broker/pipe_stream_win32.cpp)
         target_include_directories(NativeAudioPipeStreamTests PRIVATE include native-windows-audio/include

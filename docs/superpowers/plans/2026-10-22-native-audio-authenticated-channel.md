@@ -65,6 +65,38 @@ Le prototype prouve TLS 1.2 ECDHE/ECDSA AES-GCM en mémoire, pas le framing pipe
 
 ## Tâche 3 — Identité Windows et client concret
 
+**Avancement du 24 octobre 2026 — codec et observation OS :**
+`channel_binding.h/.cpp` fournit les cinq trames TNAC v1, avec stockage fixe,
+longueurs exactes, SID binaires canoniques et comparaisons de tous les champs
+de liaison. Le logon SID doit être de forme S-1-5-5-X-Y. Bootstrap : bail,
+génération et nonce nuls ; data : tous présents. DataOffer ne contient aucune
+identité. Le protocole ne confère aucune confiance aux identités décodées.
+`pipe_identity_win32.h/.cpp` capture le jeton du client après lecture du pipe,
+revient immédiatement à l'identité serveur puis extrait SID utilisateur/logon,
+AuthenticationId et SessionId. Une impersonation préexistante est refusée sans
+la remplacer ; un échec de RevertToSelf termine le processus, conformément au
+[contrat Windows](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-reverttoself).
+
+Tests rouges observés séparément (encode absent puis observation OS absente),
+puis builds Release /W4 /WX réussis. Six CTests passent : ChannelBinding,
+PipeIdentity, PipeStream, BrokerTransport, Broker et AccessPolicy. Le codec
+couvre les cinq types, tous leurs préfixes tronqués, suffixes, champs invalides,
+SID maximal, altération de chaque octet et réutilisation de SessionId avec un
+autre LUID. Le test OS utilise un vrai pipe sous le logon courant et vérifie le
+retour d'identité et le refus d'une impersonation imbriquée. Aucune clé créée,
+aucun pilote installé ; pas de preuve inter-logons ou audio. Le chemin fatal
+d'échec de RevertToSelf n'a pas été injecté dans ce test.
+Revue indépendante statique favorable ; limite également signalée pour l'échec
+d'OpenThreadToken après impersonation, non injecté. Le code effectue le revert
+avant de renvoyer cet échec ; aucune qualification de relais inter-logons.
+
+**Ruling de séquencement :** l'API reste HTTP/WS ; une migration partielle du
+bearer serait insuffisante. Poursuivre le client concret et le serveur prévus
+ci-dessous avant activation native. Ce sous-lot ne réalise pas encore la machine
+d'états BootstrapBound/LeasePending/DataBound, la liaison aux pins TLS, la
+comparaison avec le certificat provisionné ou le transfert du bail. Ne pas
+cocher la tâche 3 complète.
+
 **Files:** créer `native-windows-audio/broker/channel_binding.h/.cpp`, `native-windows-audio/broker/pipe_identity_win32.h/.cpp`, `include/native_audio_authenticated_channel_win32.h`, `src/native_audio_authenticated_channel_win32.cpp`, `tests/native_audio_channel_binding_tests.cpp`.
 
 **Interface publique :** `CreateWindowsNativeAudioAuthenticatedChannel(const NativeAudioChannelCredentials&) -> std::unique_ptr<INativeAudioAuthenticatedChannel>`. La configuration contient uniquement le certificat client déjà provisionné, pin serveur attendu et endpoint local fixe ; la factory duplique/détient les références de certificat. Pas de création de clé, découverte non authentifiée ou confiance automatique. La définition Win32 reste dans ce header dédié.
