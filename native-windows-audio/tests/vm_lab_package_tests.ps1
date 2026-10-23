@@ -4,6 +4,7 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '../scripts/vm-lab-package.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '../scripts/vm-lab-signing.psm1') -Force
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('TimoxPackageTests-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 $failures = 0
@@ -72,9 +73,46 @@ try {
             Refuses { Test-TimoxLabPackage $out } "manifest provenance/inspection contradiction refused: $case"
         }
         [IO.File]::WriteAllText($manifestPath, $manifestText)
+        try {
+            $snapshot=Get-TimoxUnsignedSigningSnapshot -SourceDirectory $out
+            $copy=Join-Path $testRoot 'signing-copy'
+            Copy-TimoxUnsignedSigningSnapshot -Snapshot $snapshot -OutputDirectory $copy
+            Check ((Test-TimoxLabPackage $copy).valid) 'signing copy preserves verified unsigned package'
+            $lowerManifest=$manifestText | ConvertFrom-Json
+            foreach($entry in $lowerManifest.files){$entry.sha256=$entry.sha256.ToLowerInvariant()}
+            foreach($entry in $lowerManifest.buildEvidence){$entry.sha256=$entry.sha256.ToLowerInvariant()}
+            [IO.File]::WriteAllText($manifestPath,($lowerManifest | ConvertTo-Json -Depth 10))
+            try {
+                $lowerSnapshot=Get-TimoxUnsignedSigningSnapshot -SourceDirectory $out
+                Copy-TimoxUnsignedSigningSnapshot -Snapshot $lowerSnapshot -OutputDirectory (Join-Path $testRoot 'lowercase-copy')
+            }finally{[IO.File]::WriteAllText($manifestPath,$manifestText)}
+            Refuses {Copy-TimoxUnsignedSigningSnapshot -Snapshot $snapshot -OutputDirectory $copy} 'signing copy refuses existing destination'
+            Refuses {Copy-TimoxUnsignedSigningSnapshot -Snapshot $snapshot -OutputDirectory (Join-Path $out 'nested')} 'signing copy refuses nested destination'
+            $junction=Join-Path $testRoot 'signing-junction'
+            New-Item -ItemType Junction -Path $junction -Target $copy | Out-Null
+            try {
+                Refuses {Get-TimoxUnsignedSigningSnapshot -SourceDirectory $junction} 'snapshot refuses reparse source'
+                Refuses {Copy-TimoxUnsignedSigningSnapshot -Snapshot $snapshot -OutputDirectory (Join-Path $junction 'child')} 'copy refuses reparse destination ancestor'
+            }finally{[IO.Directory]::Delete($junction)}
+            $mutated=Join-Path $out 'docs/lab-device.md'
+            $savedBytes=[IO.File]::ReadAllBytes($mutated)
+            try {
+                [IO.File]::AppendAllText($mutated,'changed after snapshot')
+                Refuses {Copy-TimoxUnsignedSigningSnapshot -Snapshot $snapshot -OutputDirectory (Join-Path $testRoot 'changed-copy')} 'copy refuses source changed since snapshot'
+            }finally{[IO.File]::WriteAllBytes($mutated,$savedBytes)}
+            [IO.File]::WriteAllText($manifestPath,($manifestText+"`n"))
+            try {
+                Refuses {Copy-TimoxUnsignedSigningSnapshot -Snapshot $snapshot -OutputDirectory (Join-Path $testRoot 'manifest-copy')} 'copy refuses even a valid manifest changed since snapshot'
+            }finally{[IO.File]::WriteAllText($manifestPath,$manifestText)}
+        }catch{Check $false "signing snapshot/copy fixture: $_"}
         $extra = Join-Path $out 'unlisted-private-key.pem'
+        . (Join-Path $PSScriptRoot 'vm_lab_transaction_fixture.ps1')
+        Test-SigningTransactions -SourceDirectory $out -TestRoot $testRoot
         [IO.File]::WriteAllText($extra, 'NOT A KEY: fake extra file')
         Refuses { Test-TimoxLabPackage $out } 'extra unlisted file refused'
+        if($null -ne (Get-Variable snapshot -ErrorAction SilentlyContinue)){
+            Refuses {Copy-TimoxUnsignedSigningSnapshot -Snapshot $snapshot -OutputDirectory (Join-Path $testRoot 'extra-copy')} 'copy refuses files added after snapshot'
+        }
         Remove-Item -LiteralPath $extra
         [IO.File]::AppendAllText((Join-Path $out 'probes/NativeAudioDriverProbe.exe'), 'corrupt')
         Refuses { Test-TimoxLabPackage $out } 'one byte mutation invalidates package'

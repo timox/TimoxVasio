@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [Parameter(Mandatory=$true)][string]$CertificateThumbprint,
     [Parameter(Mandatory=$true)][string]$SignToolPath,
-    [Parameter(Mandatory=$true)][string]$Inf2CatPath
+    [Parameter(Mandatory=$true)][string]$Inf2CatPath,
+    [string]$WdkPackagePath
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -42,73 +43,32 @@ if($source -ieq $destination -or $destination.StartsWith($source+'\',[StringComp
 if(Test-Path -LiteralPath $destination){throw 'Output already exists; refusing overwrite.'}
 $null=& (Join-Path $PSScriptRoot 'test-vm-lab-package.ps1') -PackageDirectory $source
 $signTool=Check-Tool $SignToolPath 'signtool.exe'
-$inf2Cat=Check-Tool $Inf2CatPath 'inf2cat.exe'
+$toolProvenance=@{}
+if($WdkPackagePath){
+    $WdkPackagePath=Safe-LocalPath $WdkPackagePath
+    $inf2CatEvidence=Get-TimoxPinnedInf2Cat -PackagePath $WdkPackagePath -ToolPath $Inf2CatPath
+    $inf2Cat=$inf2CatEvidence.path
+    $toolProvenance['Inf2Cat']=$inf2CatEvidence
+}else{$inf2Cat=Check-Tool $Inf2CatPath 'inf2cat.exe'}
 $driver=Join-Path $destination 'driver'
 $plan=New-TimoxSigningPlan -Thumbprint $CertificateThumbprint -DriverDirectory $driver
 $certificate=Get-Item -LiteralPath ('Cert:\CurrentUser\My\'+$CertificateThumbprint)
-$now=Get-Date
-if(-not $certificate.HasPrivateKey -or $certificate.NotBefore -gt $now -or $certificate.NotAfter -le $now){throw 'Certificate missing private key or outside validity interval.'}
-$eku=@($certificate.EnhancedKeyUsageList | ForEach-Object {$_.ObjectId.Value})
-if('1.3.6.1.5.5.7.3.3' -notin $eku){throw 'Explicit code-signing EKU required.'}
+Assert-TimoxSigningCertificate -Certificate $certificate -Thumbprint $CertificateThumbprint
 $rsa=[Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($certificate)
 try {
     if($rsa -isnot [Security.Cryptography.RSACng] -or $rsa.Key.ExportPolicy -ne [Security.Cryptography.CngExportPolicies]::None){throw 'Only non-exportable RSA CNG signing keys are supported.'}
 }finally{if($rsa){$rsa.Dispose()}}
-$manifestPath=Join-Path $source 'manifest-unsigned.json'
-$originalManifest=[IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
-$sourceFiles=@(Get-ChildItem -LiteralPath $source -Recurse -File -Force)
-$initial=@{}
-foreach($file in $sourceFiles){$relative=$file.FullName.Substring($source.Length+1);$initial[$relative]=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}
+$snapshot=Get-TimoxUnsignedSigningSnapshot -SourceDirectory $source
+$publicCertificate=$certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+if([Convert]::ToBase64String($publicCertificate) -cne [Convert]::ToBase64String($certificate.RawData)){throw 'Certificate export differs from selected public identity.'}
 if(-not $PSCmdlet.ShouldProcess($destination,'Copy unsigned package and test-sign SYS and CAT using existing CurrentUser key')){return}
-New-Item -ItemType Directory -Path $destination | Out-Null
-# Never delete an incomplete candidate automatically: preserve diagnostics.
-foreach($file in $sourceFiles){
-    $relative=$file.FullName.Substring($source.Length+1)
-    $target=Join-Path $destination $relative
-    New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($target)) -Force | Out-Null
-    Copy-Item -LiteralPath $file.FullName -Destination $target
-    if((Get-FileHash -LiteralPath $target).Hash -cne $initial[$relative]){throw 'Source changed during copy.'}
+$runner={
+    param($ToolPath,$Arguments,$LogPath)
+    if($WdkPackagePath){$null=Get-TimoxPinnedInf2Cat -PackagePath $WdkPackagePath -ToolPath $inf2Cat}
+    Invoke-TimoxSigningCommand -ToolPath $ToolPath -Arguments $Arguments -LogPath $LogPath
+    if($WdkPackagePath){$null=Get-TimoxPinnedInf2Cat -PackagePath $WdkPackagePath -ToolPath $inf2Cat}
+    return 0
 }
-$logDirectory=Join-Path $destination 'signing-logs'
-New-Item -ItemType Directory -Path $logDirectory | Out-Null
-$cat=Join-Path $driver 'TimoxWindowsAudio.cat'
-Remove-Item -LiteralPath $cat
-$step=0
-foreach($command in $plan.commands){
-    $step++
-    $tool=if($command.tool -ceq 'SignTool'){$signTool}else{$inf2Cat}
-    $log=Join-Path $logDirectory ("step-$step.log")
-    $arguments=$command.arguments
-    $saved=$ErrorActionPreference
-    try {
-        $ErrorActionPreference='Continue'
-        & $tool @arguments 2>&1 | ForEach-Object {Add-Content -LiteralPath $log -Value ([string]$_) -Encoding UTF8;Write-Host $_}
-        $code=$LASTEXITCODE
-    }finally{$ErrorActionPreference=$saved}
-    if($code -ne 0){throw "Signing step $step failed with exit $code. Candidate is incomplete."}
-}
-foreach($name in @('TimoxWindowsAudio.sys','TimoxWindowsAudio.cat')){
-    $signature=Get-AuthenticodeSignature -LiteralPath (Join-Path $driver $name)
-    if($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ine $CertificateThumbprint){throw "Unexpected signer: $name"}
-    # NotTrusted is expected without host trust. This is identity evidence only.
-    if($signature.Status -notin @('Valid','NotTrusted')){throw "Invalid signature structure/status for $name : $($signature.Status)"}
-}
-foreach($relative in $initial.Keys){
-    if($relative -in @('driver\TimoxWindowsAudio.sys','driver\TimoxWindowsAudio.cat')){continue}
-    if((Get-FileHash -LiteralPath (Join-Path $destination $relative)).Hash -cne $initial[$relative]){throw "Unexpected content change: $relative"}
-}
-$publicPath=Join-Path $destination 'signer.cer'
-[IO.File]::WriteAllBytes($publicPath,$certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-$records=@(Get-ChildItem -LiteralPath $destination -Recurse -File -Force | ForEach-Object {
-    [pscustomobject]@{path=$_.FullName.Substring($destination.Length+1).Replace('\','/');size=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}
-})
-$result=[ordered]@{
-    schemaVersion=1;state='signed-candidate';vmVerified=$false;targetOs='10_GE_X64';createdUtc=[DateTime]::UtcNow.ToString('o')
-    unsignedManifestSha256=$initial['manifest-unsigned.json'];certificateThumbprint=$CertificateThumbprint.ToUpperInvariant()
-    certificateSha256=(Get-FileHash -LiteralPath $publicPath).Hash
-    tools=@(@{name='SignTool';sha256=(Get-FileHash -LiteralPath $signTool).Hash},@{name='Inf2Cat';sha256=(Get-FileHash -LiteralPath $inf2Cat).Hash})
-    originalDriverHashes=@{sys=$initial['driver\TimoxWindowsAudio.sys'];cat=$initial['driver\TimoxWindowsAudio.cat']}
-    files=$records;qualification='Signature trust, catalog membership, kernel policy and audio remain to be verified in VM. Manifest is an inventory, not a signed document.'
-}
-$result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $destination 'manifest-signed.json') -Encoding UTF8
-Write-Output ([pscustomobject]@{state='signed-candidate';vmVerified=$false;directory=$destination;certificateSha256=$result.certificateSha256})
+$inspector={param($Path) Get-AuthenticodeSignature -LiteralPath $Path -ErrorAction Stop}
+# Incomplete transactions are retained for diagnosis; only a complete transaction publishes a manifest.
+Invoke-TimoxSigningTransaction -Snapshot $snapshot -OutputDirectory $destination -Thumbprint $CertificateThumbprint -PublicCertificate $publicCertificate -Tools @{SignTool=$signTool;Inf2Cat=$inf2Cat} -RunCommand $runner -InspectSignature $inspector -ToolProvenance $toolProvenance

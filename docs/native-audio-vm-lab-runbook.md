@@ -34,6 +34,41 @@ sa clé reste non exportée et son empreinte est enregistrée. Seul le certifica
 public est destiné à la VM. Ne pas installer cette confiance sur l'hôte par
 commodité.
 
+Un certificat commercial n'est pas nécessaire pour ce laboratoire : un
+certificat auto-signé dédié convient à la procédure de test. Il ne constitue
+pas une signature de distribution publique. Voir les procédures Microsoft
+[test signing](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/test-signing)
+et [New-SelfSignedCertificate](https://learn.microsoft.com/en-us/powershell/module/pki/new-selfsignedcertificate).
+
+Préparation proposée sur le poste de signature, après validation du script et
+autorisation de créer la clé (identité du 23 octobre créée : réutiliser son
+empreinte enregistrée, ne pas relancer cette commande pour cette session) :
+
+```powershell
+$labCertificateParameters = @{
+    Type = 'Custom'
+    Subject = 'CN=Timox Windows Audio VM Lab 2026-10-23'
+    CertStoreLocation = 'Cert:\CurrentUser\My'
+    Provider = 'Microsoft Software Key Storage Provider'
+    KeyAlgorithm = 'RSA'
+    KeyLength = 3072
+    HashAlgorithm = 'SHA256'
+    KeyExportPolicy = 'NonExportable'
+    KeyUsage = 'DigitalSignature'
+    TextExtension = @('2.5.29.37={text}1.3.6.1.5.5.7.3.3')
+    NotAfter = (Get-Date).AddMonths(6)
+}
+$labCertificate = New-SelfSignedCertificate @labCertificateParameters
+$labCertificate.Thumbprint
+```
+
+Conserver cette empreinte exacte pour `CertificateThumbprint`. Le script de
+signature contrôle les extensions, la validité et la clé CNG non exportable.
+Cette commande crée une identité dans `My` ; elle n'ajoute pas de confiance
+Root/TrustedPublisher et n'active pas TESTSIGNING. Le script exportera uniquement
+le certificat public dans le candidat signé. Ne pas relancer la création à
+chaque tentative : réutiliser l'identité enregistrée tant qu'elle reste valide.
+
 Ordre impératif : signer `driver/TimoxWindowsAudio.sys` en SHA-256, régénérer
 `driver/TimoxWindowsAudio.cat` avec Inf2Cat pour l'OS cible exact, signer ce
 catalogue en SHA-256. Ne pas réutiliser le catalogue unsigned après modification
