@@ -95,6 +95,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         add_test(NAME NativeAudioPipeStreamTests COMMAND NativeAudioPipeStreamTests)
         set_tests_properties(NativeAudioPipeStreamTests PROPERTIES TIMEOUT 30)
         add_executable(NativeAudioSchannelPipeTests tests/native_audio_schannel_pipe_tests.cpp
+            native-windows-audio/broker/broker_session.cpp src/native_audio_access_policy.cpp
             src/native_audio_authenticated_channel_win32.cpp src/native_audio_broker_transport.cpp
             native-windows-audio/broker/pipe_identity_win32.cpp
             native-windows-audio/broker/channel_binding.cpp

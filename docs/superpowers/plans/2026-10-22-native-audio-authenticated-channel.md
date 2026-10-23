@@ -191,6 +191,33 @@ La DACL client n'accorde pas GENERIC_WRITE/FILE_CREATE_PIPE_INSTANCE, WRITE_DAC 
 
 ## Tâche 4 — Serveur duplex réutilisant BrokerSession
 
+**Qualification d'intégration du 24 octobre (serveur de test seulement) :**
+le pair du test Schannel ne fabrique plus SESSION/STATUS/CLOSE. Il utilise le
+vrai BrokerSession, avec identité relevée sur le pipe et convertie par Windows
+en SID canonique. La politique `audioIsolationQualified=true` est une injection
+explicitement synthétique du banc, pas une observation de la machine.
+
+Le client Windows concret et CreateBrokerNativeAudioTransport échangent désormais
+un paquet N0 maximal de 4096 frames dans les deux sens à travers TLS et le broker.
+Octets render et capture comparés intégralement ; premier WriteCapture renvoie
+Full, puis la même séquence/les mêmes octets sont acceptés avec une nouvelle
+requête. Les compteurs et CLOSE traversent aussi BrokerSession. Test rouge PCM
+observé avec l'ancien pair scripté, puis build /W4 /WX et essai TLS réel réussis.
+Les trois clés temporaires ont été supprimées, absence vérifiée.
+
+Un garde Disconnect conserve la même connexion logique pendant le transfert et
+retire le propriétaire à chaque sortie du handler de test. Les six altérations
+de liaison et un nouveau cas EOF après SESSION réussissent ; nombre d'ouvertures
+égal au nombre de fermetures, zéro propriétaire restant après join. Cela prouve
+ce chemin séquentiel du banc, pas la révocation concurrente ou un serveur partagé
+par plusieurs clients. Les classes de production pipe_server_win32 restent à
+écrire, avec dispatcher sérialisé, connexions bornées et retraits sur échec.
+Précision : EOF après SESSION est une fermeture initiée par le serveur de test,
+détectée par le client ; ce n'est pas encore la détection serveur d'un client
+disparu. Revue indépendante : allocations des paquets déplacées avant lancement
+du thread pour qu'une exception d'allocation ne termine pas le processus avant
+join/nettoyage des clés. Aucun essai de faute d'allocation injecté.
+
 **Files:** créer `native-windows-audio/broker/pipe_server_win32.h/.cpp`, `tests/native_audio_broker_pipe_tests.cpp`. Aucun SCM dans ces fichiers.
 
 **Interface :** `BrokerPipeServer` possède les connexions pipe/TLS et reçoit un unique `BrokerSession&`, les credentials serveur et une politique fournie par l'hôte. Un worker sérialise Attach/Process/UpdatePolicy/Disconnect ; le contrôle peut demander RequestCancel pour débloquer le transport avant retrait. Le futur service fournit la politique OS et la révocation, pas les tests.

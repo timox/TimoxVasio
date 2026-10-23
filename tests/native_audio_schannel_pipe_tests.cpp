@@ -3,6 +3,8 @@
 #include "channel_frames.h"
 #include "pipe_identity_win32.h"
 #include "native_audio_authenticated_channel_win32.h"
+#include "broker_session.h"
+#include <sddl.h>
 #include <atomic>
 #include <algorithm>
 #include <chrono>
@@ -200,6 +202,46 @@ void ConcreteCancellation(Identity& serverIdentity,Identity& clientIdentity){
     Check(channel->Exchange(nullptr,0,output.data(),output.size(),Deadline()).code==Code::Cancelled&&
         std::all_of(output.begin(),output.end(),[](auto b){return b==0;}),"cancelled concrete exchange leaked output");
 }
+Bytes ConcretePacket(bool render){
+    Bytes bytes(64+4096*8);
+    const auto put=[&](std::size_t at,std::uint64_t value,unsigned width){for(unsigned n=0;n<width;++n)bytes[at+n]=static_cast<unsigned char>(value>>(8*n));};
+    put(0,0x41575654,4);put(4,64,4);put(8,1,2);put(12,render?1:2,2);put(14,render?1:2,2);
+    put(16,23,8);put(24,1,8);put(40,4096,4);put(44,48000,4);put(48,2,2);put(50,1,2);put(52,4096*8,4);
+    for(std::size_t n=64;n<bytes.size();++n)bytes[n]=static_cast<unsigned char>(n*37+11);
+    return bytes;
+}
+struct ConcreteAudioState {
+    unsigned opens=0,closes=0,owners=0,maxOwners=0,writes=0;
+    Bytes render=ConcretePacket(true);
+    std::array<unsigned char,timox_broker::MaxPayloadBytes> captured{};
+    std::uint32_t captureBytes=0;
+};
+class ConcreteAudio final:public INativeAudioTransport {
+    std::shared_ptr<ConcreteAudioState> state_;bool owned_=false;
+public:
+    explicit ConcreteAudio(std::shared_ptr<ConcreteAudioState> state):state_(std::move(state)){}
+    NativeTransferResult Open(NativeSessionInfo& info)noexcept override{
+        ++state_->opens;++state_->owners;owned_=true;state_->maxOwners=(std::max)(state_->maxOwners,state_->owners);
+        info.wireGeneration=23;return {NativeTransferCode::Ok};
+    }
+    NativeTransferResult ReadRender(std::uint32_t frames,void* out,std::uint32_t capacity)noexcept override{
+        if(frames<4096||capacity<state_->render.size())return {NativeTransferCode::InvalidPacket};
+        std::memcpy(out,state_->render.data(),state_->render.size());
+        return {NativeTransferCode::Ok,static_cast<std::uint32_t>(state_->render.size())};
+    }
+    NativeTransferResult WriteCapture(const void* data,std::uint32_t bytes)noexcept override{
+        ++state_->writes;if(state_->writes==1)return {NativeTransferCode::Full};
+        if(bytes>state_->captured.size())return {NativeTransferCode::InvalidPacket};
+        std::memcpy(state_->captured.data(),data,bytes);state_->captureBytes=bytes;return {NativeTransferCode::Ok};
+    }
+    NativeTransferResult ReadStatus(std::uint64_t (&values)[3])noexcept override{values[0]=12;values[1]=34;values[2]=56;return {NativeTransferCode::Ok};}
+    void RequestCancel()noexcept override{}
+    void Close()noexcept override{if(owned_){owned_=false;++state_->closes;--state_->owners;}}
+};
+std::string ObservedSidText(const std::array<std::uint8_t,68>& sid){
+    LPSTR text=nullptr;Check(ConvertSidToStringSidA(const_cast<std::uint8_t*>(sid.data()),&text)!=FALSE,"observed SID conversion");
+    try{std::string result(text);LocalFree(text);return result;}catch(...){LocalFree(text);throw;}
+}
 void ConcreteChannel(Identity& serverIdentity,Identity& clientIdentity,unsigned fault=0){
     using namespace timox_broker;
     const auto name=PipeName();auto bootstrapPipe=std::make_unique<PipeStream>();
@@ -213,8 +255,13 @@ void ConcreteChannel(Identity& serverIdentity,Identity& clientIdentity,unsigned 
     const auto dataHandle=dataPipe->BorrowHandle();
     NativeAudioChannelCredentials credentials{clientIdentity.cert,Hash(serverIdentity.cert)};
     auto transport=CreateBrokerNativeAudioTransport(CreateWindowsNativeAudioAuthenticatedChannelForTest(credentials,name.c_str()));
+    const auto audio=std::make_shared<ConcreteAudioState>();
+    // Complete potentially throwing allocations before starting a joinable
+    // thread, so allocation failure can still unwind and clean up test keys.
+    Bytes render(MaxPayloadBytes);const auto capture=ConcretePacket(false);
     std::exception_ptr failure;
     std::thread peer([&]{try{
+        BrokerSession broker([audio]{return std::make_unique<ConcreteAudio>(audio);});
         Check(bootstrapPipe->Accept(Deadline()).code==Code::Ok,"concrete bootstrap accept");
         SchannelStream bootstrap(std::move(bootstrapPipe),true,serverIdentity.cert,Hash(clientIdentity.cert));
         Check(bootstrap.Handshake(Deadline()).code==Code::Ok,"concrete bootstrap TLS");
@@ -226,14 +273,26 @@ void ConcreteChannel(Identity& serverIdentity,Identity& clientIdentity,unsigned 
         if(fault==1)++binding.identity.authenticationId;
         Check(WriteBindingFrame(bootstrap,binding,Deadline()).code==Code::Ok,"concrete bootstrap binding reply");
         if(fault==1)return;
-        std::array<unsigned char,MaxMessageBytes> request{};
-        const auto put=[](unsigned char* at,std::uint64_t value,unsigned width){for(unsigned n=0;n<width;++n)at[n]=static_cast<unsigned char>(value>>(8*n));};
-        const auto respond=[&](SchannelStream& stream,std::size_t payload){
-            request[7]|=0x80;put(request.data()+12,payload,4);put(request.data()+24,17,8);
-            Check(stream.WriteAll(request.data(),HeaderBytes+payload,Deadline()).code==Code::Ok,"concrete audio reply");
+        NativePeerIdentity identity{ObservedSidText(observed.userSid),ObservedSidText(observed.logonSid),observed.authenticationId,observed.sessionId};
+        // Explicit synthetic isolation policy: exercises transport/admission,
+        // never qualifies Windows endpoints on the current machine.
+        NativeSessionPolicySnapshot policy;policy.allowedUserSid=identity.userSid;policy.consoleSessionId=identity.sessionId;
+        policy.interactiveLogonCount=1;policy.unlocked=true;policy.audioIsolationQualified=true;policy.optionalConsoleIdentity=identity;
+        broker.UpdatePolicy(policy);
+        const auto attached=broker.AttachAuthenticated(identity);Check(attached.id&&attached.status==Status::Ok,"real broker attach");
+        struct Detach {BrokerSession& broker;ConnectionId id;~Detach(){broker.Disconnect(id);}} detach{broker,attached.id};
+        std::array<unsigned char,MaxMessageBytes> request{},response{};
+        const auto exchange=[&](SchannelStream& stream,Opcode expected){
+            const auto read=ReadAudioFrame(stream,request.data(),request.size(),Deadline());
+            Check(read.code==Code::Ok&&request[6]==static_cast<unsigned>(expected),"concrete broker request");
+            const auto dispatched=broker.Process(attached.id,request.data(),read.bytes,response.data(),response.size());
+            Check(dispatched.disposition==Dispatch::Reply,"real broker dispatch refused");
+            Check(stream.WriteAll(response.data(),dispatched.bytes,Deadline()).code==Code::Ok,"real broker reply");
+            return dispatched;
         };
-        Check(ReadAudioFrame(bootstrap,request.data(),request.size(),Deadline()).code==Code::Ok&&request[6]==1,"concrete SESSION request");
-        put(request.data()+48,23,8);respond(bootstrap,8);
+        Check(exchange(bootstrap,Opcode::Session).status==Status::Ok,"real broker SESSION");
+        offer.lease=frames_detail::Read(response.data(),24,8);offer.generation=frames_detail::Read(response.data(),48,8);
+        if(fault==7)return; // EOF after successful SESSION must retire its owner.
         if(fault==2)++offer.lease;
         Check(WriteBindingFrame(bootstrap,offer,Deadline()).code==Code::Ok,"concrete data offer");
         if(fault==2)return;
@@ -253,26 +312,33 @@ void ConcreteChannel(Identity& serverIdentity,Identity& clientIdentity,unsigned 
         Check(WriteBindingFrame(data,dataBinding,Deadline()).code==Code::Ok,"concrete data binding reply");
         if(fault>=3)return;
         bootstrap.Close();
-        Check(ReadAudioFrame(data,request.data(),request.size(),Deadline()).code==Code::Ok&&request[6]==4,"concrete STATUS request");
-        put(request.data()+48,12,8);put(request.data()+56,34,8);put(request.data()+64,56,8);respond(data,24);
-        Check(ReadAudioFrame(data,request.data(),request.size(),Deadline()).code==Code::Ok&&request[6]==5,"concrete CLOSE request");
-        respond(data,0);
+        for(auto op:{Opcode::ReadRender,Opcode::WriteCapture,Opcode::WriteCapture,Opcode::Status,Opcode::Close})exchange(data,op);
     }catch(...){failure=std::current_exception();}});
     NativeSessionInfo session;const auto opened=transport->Open(session);
+    NativeTransferResult rendered,full,written;
+    if(opened.code==NativeTransferCode::Ok){
+        rendered=transport->ReadRender(4096,render.data(),static_cast<std::uint32_t>(render.size()));
+        full=transport->WriteCapture(capture.data(),static_cast<std::uint32_t>(capture.size()));
+        written=transport->WriteCapture(capture.data(),static_cast<std::uint32_t>(capture.size()));
+    }
     std::uint64_t counters[3]{};const auto status=opened.code==NativeTransferCode::Ok?transport->ReadStatus(counters):NativeTransferResult{};
     transport->Close();peer.join();
+    Check(audio->owners==0&&audio->opens==audio->closes&&audio->maxOwners<=1,"real broker owner leaked after connection exit");
     if(fault){
         if(failure)std::rethrow_exception(failure);
-        Check(opened.code==NativeTransferCode::AccessDenied&&session.wireGeneration==0,"concrete channel accepted mismatched binding");
+        Check(opened.code==(fault==7?NativeTransferCode::Removed:NativeTransferCode::AccessDenied)&&session.wireGeneration==0,"concrete channel accepted mismatched binding or SESSION EOF");
         return;
     }
     Check(opened.code==NativeTransferCode::Ok&&session.wireGeneration==23,"concrete authenticated channel open failed");
+    Check(rendered.code==NativeTransferCode::Ok&&rendered.bytes==render.size()&&render==ConcretePacket(true),"PCM render differs through TLS client/broker");
+    Check(full.code==NativeTransferCode::Full&&written.code==NativeTransferCode::Ok,"capture Full retry failed through TLS client/broker");
+    Check(audio->writes==2&&audio->captureBytes==capture.size()&&std::equal(capture.begin(),capture.end(),audio->captured.begin()),"capture PCM changed through TLS client/broker");
     if(failure)std::rethrow_exception(failure);
     Check(status.code==NativeTransferCode::Ok&&counters[0]==12&&counters[1]==34&&counters[2]==56,"concrete status reply differs");
 }
 void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
     ConcreteCancellation(serverIdentity,clientIdentity);
-    for(unsigned fault=0;fault<=6;++fault)ConcreteChannel(serverIdentity,clientIdentity,fault);
+    for(unsigned fault=0;fault<=7;++fault)ConcreteChannel(serverIdentity,clientIdentity,fault);
     const auto serverPin=Hash(serverIdentity.cert),clientPin=Hash(clientIdentity.cert);
     {
         // Preserve the bootstrap connection (and buffered plaintext) while a
