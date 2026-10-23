@@ -39,6 +39,29 @@ présenter ces routes dans Swagger UI.
 
 Les réponses HTTP sont des objets JSON conformes à `definitions.state` ou `definitions.drivers`. Un pilote matériel contient ses ports d’entrée et de sortie, les taux annoncés par son pilote ainsi que ses capacités de buffer. TimoxVasio expose les clients détectés et seulement les canaux alloués par chacun via `createBuffers`, avec leurs ports actifs.
 
+Le snapshot expose aussi `nativeAudio` en lecture seule. `enabled` décrit
+l'intention du contrôleur ; `state` vaut `disabled`, `starting`, `running`,
+`unavailable`, `denied`, `ownedElsewhere`, `removed` ou `failed`. Un état conservé
+du worker ne suffit pas à déclarer le backend actif : `running` exige un manager
+attaché et un worker en fonctionnement. `masterRunning` et `attached` sont les
+observations du manager. Une erreur du worker peut précéder son retrait du
+graphe : `attached=true` seul ne prouve donc pas que le flux fonctionne.
+
+`nativeFormat` décrit le protocole fixe PCM32 stéréo à 48 kHz, pas la détection
+d'un périphérique installé. `graphFormat` vaut `null` hors fonctionnement ;
+sinon il contient `sampleRate`, `channels` et `maxQuantum`. `epoch` et
+`wireGeneration` sont des chaînes décimales conservant les 64 bits. `retryInMs`
+est un délai en millisecondes ; `systemError` conserve le code Windows brut.
+Les compteurs `health` suffixés `NativeFrames` et `discardedPacingFrames`
+comptent des frames à 48 kHz ; `captureSilencedGraphFrames` compte des frames
+à la fréquence du graphe. Les autres compteurs comptent des événements. Ils
+peuvent conserver la dernière observation après désactivation et ne constituent
+pas une mesure de latence ni de silence acoustique.
+
+Ce lot n'ajoute aucune commande d'activation native : `nativeAudio` est encore
+refusé dans `configuration.apply`. L'authentification API/IPC et la qualification
+du service restent requises avant activation publique du backend.
+
 Forme des identifiants d’extrémités :
 
 ```text

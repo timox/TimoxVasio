@@ -1,5 +1,6 @@
 #include "audio_controller.h"
 #include "native_audio_manager.h"
+#include "native_audio_api.h"
 #include "native_audio_packet_validation.h"
 #include "vasio_client_manager.h"
 #include <algorithm>
@@ -15,6 +16,35 @@
 
 namespace {
 void Require(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
+void PublicStateProjection(){
+    NativeAudioManagerSnapshot s;
+    s.health.state=NativeAudioState::Running;
+    Require(NativeAudioApiJson(s)["state"]=="disabled","retained worker health cannot make disabled backend running");
+    s.enabled=true;s.state=NativeAudioManagerState::WaitingForMaster;
+    Require(NativeAudioApiJson(s)["state"]=="starting","master absent must not report running");
+    s.state=NativeAudioManagerState::Attached;s.attached=true;s.graphRate=44100;s.graphQuantum=128;
+    s.epoch=UINT64_MAX;s.wireGeneration=UINT64_MAX;
+    const auto running=NativeAudioApiJson(s);
+    Require(running["state"]=="running" && running["graphFormat"]["sampleRate"]==44100 &&
+        running["nativeFormat"]["sampleRate"]==48000 && running["epoch"]=="18446744073709551615" &&
+        running["wireGeneration"]=="18446744073709551615",
+        "native and graph rates stay distinct; generation retains full precision");
+    s.state=NativeAudioManagerState::Detaching;s.health.state=NativeAudioState::Failed;
+    for(const auto code:{NativeTransferCode::AccessDenied,NativeTransferCode::OwnedElsewhere,NativeTransferCode::Removed,NativeTransferCode::Unavailable,NativeTransferCode::InvalidPacket}){
+        s.health.error=code;s.health.systemError=5;
+        const auto status=NativeAudioApiJson(s);
+        const char* expected=code==NativeTransferCode::AccessDenied?"denied":code==NativeTransferCode::OwnedElsewhere?"ownedElsewhere":code==NativeTransferCode::Removed?"removed":code==NativeTransferCode::Unavailable?"unavailable":"failed";
+        Require(status["state"]==expected && status["graphFormat"].is_null() && status["systemError"]==5,"worker failure retains typed status without running graph format");
+    }
+    s.enabled=false;
+    Require(NativeAudioApiJson(s)["state"]=="disabled","disabled state overrides historical failure");
+    s={};s.enabled=true;s.state=NativeAudioManagerState::Retrying;
+    s.lastResult={NativeTransferCode::Unavailable,0,2};
+    Require(NativeAudioApiJson(s)["state"]=="unavailable" && NativeAudioApiJson(s)["systemError"]==2,
+        "missing transport uses last attempt error without worker health");
+    s.state=NativeAudioManagerState::Failed;s.lastResult={NativeTransferCode::AccessDenied,0,5};
+    Require(NativeAudioApiJson(s)["state"]=="denied","failed admission remains distinct from absence");
+}
 template<class Predicate> void Await(Predicate predicate,const char* why){
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(6);
     while(!predicate()&&std::chrono::steady_clock::now()<deadline)std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -217,7 +247,7 @@ void Clean(const std::wstring& path){DeleteFileW(path.c_str());DeleteFileW((path
 int main(){
     const auto availability=TempPath(L"-availability.json"),transactions=TempPath(L"-transactions.json"),missing=TempPath(L"-missing.json"),restored=TempPath(L"-restored.json");
     Clean(availability);Clean(transactions);Clean(missing);Clean(restored);
-    try{AvailabilityAndRetirement(availability);Transactions(transactions);DefaultUnavailable(missing);RestoredDenial(restored);
+    try{PublicStateProjection();AvailabilityAndRetirement(availability);Transactions(transactions);DefaultUnavailable(missing);RestoredDenial(restored);
         Clean(availability);Clean(transactions);Clean(missing);Clean(restored);std::cout<<"Native controller tests passed (fake transport/master)\n";return 0;
     }catch(const std::exception& e){Clean(availability);Clean(transactions);Clean(missing);Clean(restored);std::cerr<<e.what()<<'\n';return 1;}
 }

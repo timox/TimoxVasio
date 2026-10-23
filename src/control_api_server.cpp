@@ -2,6 +2,7 @@
 #include <nlohmann/json.hpp>
 
 #include "control_api_server.h"
+#include "native_audio_api.h"
 #include "audio_controller.h"
 #include "routing_graph.h"
 #include "persistent_routes.h"
@@ -600,6 +601,7 @@ struct ControlApiServer::Impl {
             {"wasapiInventoryError", state.wasapiInventoryError.empty() ? Json(nullptr) : Json(state.wasapiInventoryError)},
             {"configuredWasapiBridges", wasapiConfigurationsJson(state.configuredWasapiBridges)},
             {"wasapiBridges", wasapiBridgesJson(state)},
+            {"nativeAudio", NativeAudioApiJson(state.nativeAudio)},
             {"bufferHealth", std::move(bufferHealthJson)},
             {"performanceMeasurements", {{"enabled", measurements.enabled},
                 {"sampleEveryCallbacks", 16}, {"window", std::move(measurementWindow)}}},

@@ -200,6 +200,36 @@ La migration doit couvrir le filtre central `set_pre_request_handler` de `src/co
 
 ## Gates, inconnues et suite exécutable
 
+### Avancement du 23 octobre : projection native en lecture seule
+
+Décision de séquencement : rendre l'état déjà détenu par le contrôleur lisible
+avant la migration d'authentification, sans ajouter de mutation native. Le
+backend de production reste sans factory réelle ; aucune ouverture directe
+du pilote n'est ajoutée. Le lot 5 complet reste non réalisé.
+
+- `src/native_audio_api.h` projette le snapshot manager/worker dans `nativeAudio`
+  de `/api/v1/state`. `running` exige manager attaché et worker Running ; les
+  erreurs d'admission restent distinctes, et les observations historiques ne
+  transforment pas un backend désactivé en flux actif.
+- Format natif fixe distinct du format graphe ; ce dernier est null hors
+  fonctionnement. Epoch/génération restent des chaînes décimales 64 bits.
+  Compteurs natifs/graphe documentés avec leurs unités, aucune latence déduite.
+- Schéma JSON et OpenAPI mis à jour, champ optionnel pour compatibilité des
+  anciens snapshots 1.1. `configuration.apply` refuse toujours nativeAudio :
+  test WebSocket réel du refus, sans mutation ni nouvelle voie d'activation.
+- Test HTTP rouge observé avant implémentation. Builds Release du moteur,
+  WasapiBridgeApiTests et AudioControllerNativeTests réussis. Exécutables de
+  tests code 0 ; quatre snapshots HTTP réels validés par le schéma ; tests
+  contrat GUI 7/7. Tests du contrôleur sur maître/transport simulés, pas sur VM.
+- Revue indépendante favorable ; assertions ajoutées pour wireGeneration
+  UINT64_MAX et erreurs lastResult sans worker. Suite native repassée, code 0.
+- Moteur reconstruit dans `build_codex_110/Release/TimoxVirtualAsioEngine.exe`,
+  1232896 octets, UTC 2026-10-23 16:50:47, SHA-256
+  `3490580A39BE3BAE61804C4509B3CF3674142D25153ACA422FB3DF65D8AAB614`.
+  Pas de lancement du moteur produit ni de repackaging Electron.
+- Restant : API/clients authentifiés, broker/service et binding de logon,
+  activation transactionnelle exposée après ces protections, GUI et essais VM.
+
 Les lots 1 (politique), 2 (fake/IPC), 4 (contrôleur injecté), 5 et 6 sont développables sans charger le pilote. Le lot 3 peut produire scripts et tests de transaction sans installer. Chaque lot suit rouge → vert → revue → commit intermédiaire ; le propriétaire du travail coordonne les commits/push pour éviter les sources concurrentes.
 
 Vraies dépendances externes : cible récupérable pour tester les ouvertures audio et la séparation des logons ; chaîne de signature et distribution pour le paquet final ; tests réels du jeton LocalService/CNG/ACL. Elles n'exigent aucune décision utilisateur immédiate pour écrire le code et les bancs. Le choix du mécanisme endpoint par session est tranché par le lot 1 et son prototype, puis un plan fils du pilote ; si l'ACL est contournée par la médiation Windows audio, la prochaine tâche est ce prototype, pas l'assouplissement de l'isolation.

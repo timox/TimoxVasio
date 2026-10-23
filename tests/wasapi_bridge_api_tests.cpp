@@ -39,6 +39,10 @@ int wmain(int argc, wchar_t** argv) {
     };
     auto initial = state();
     messages.push_back(initial);
+    check(initial.contains("nativeAudio") && initial["nativeAudio"].value("state", "") == "disabled" &&
+        !initial["nativeAudio"].value("enabled", true) && !initial["nativeAudio"].value("attached", true) &&
+        initial["nativeAudio"].value("graphFormat", Json{}) == nullptr,
+        "state exposes disabled native backend without inventing an active graph format");
     check(initial.value("apiVersion", "") == "1.1" && initial.contains("wasapiInventoryError") &&
         initial.value("configuredWasapiBridges", Json{}) == Json::array(), "API 1.1 exposes empty bridge configuration and inventory status");
     httplib::Headers headers{{"Sec-WebSocket-Protocol", "vasio.api.v1"}};
@@ -64,6 +68,9 @@ int wmain(int argc, wchar_t** argv) {
             {"wasapiBridges", Json::array({{{"id", "capture_a"}, {"enabled", false}, {"kind", "capture"}, {"defaultRole", "communications"}},
                 {{"id", "loopback_b"}, {"enabled", false}, {"kind", "endpointLoopback"}, {"endpointId", "test-render-endpoint"}, {"bufferDuration100ns", 100000}}})}};
         check(apply(payload).value("success", false), "API accepts disabled default and explicit loopback configurations");
+        payload["nativeAudio"] = {{"enabled", true}};
+        check(!apply(payload).value("success", true), "native activation remains rejected before authenticated API integration");
+        payload.erase("nativeAudio");
         const auto configured = state();
         messages.push_back(configured);
         const auto bridges = configured.value("configuredWasapiBridges", Json{});

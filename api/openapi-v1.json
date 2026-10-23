@@ -27,7 +27,7 @@
         "summary": "Read the confirmed engine state and complete routing configuration",
         "responses": {
           "200": {
-            "description": "Current engine state, inventory, routes, and the latest physical ASIO buffer observation window (null until observed)",
+            "description": "Current engine state, inventory, routes, read-only nativeAudio status and the latest physical ASIO buffer observation window (null until observed). nativeAudio distinguishes fixed native PCM32 stereo 48000 Hz from graphFormat (null unless running); epoch and wireGeneration are decimal strings. Native activation is not accepted by configuration.apply pending authenticated API integration.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/State" } } }
           },
           "500": { "$ref": "#/components/responses/ServerError" }
