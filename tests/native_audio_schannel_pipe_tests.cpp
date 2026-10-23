@@ -1,5 +1,6 @@
 // Real local pipes; no service, driver, machine key or certificate store writes.
 #include "schannel_stream_win32.h"
+#include "channel_frames.h"
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -181,6 +182,30 @@ void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
     {
         Duplex wire(serverIdentity,&clientIdentity,serverPin,clientPin);
         Check(wire.Authenticate(),"real pipe mutual Schannel handshake failed");
+        {
+            timox_broker::ChannelBinding offer;offer.type=timox_broker::BindingType::DataOffer;
+            offer.lease=17;offer.generation=23;offer.nonce[15]=42;
+            timox_broker::BindingBuffer encoded{};std::size_t size=0;
+            Check(timox_broker::EncodeBinding(offer,encoded,size),"binding fixture encode");
+            Bytes combined(encoded.begin(),encoded.begin()+size);
+            combined.insert(combined.end(),encoded.begin(),encoded.begin()+size);
+            Check(wire.server->WriteAll(combined.data(),combined.size(),Deadline()).code==Code::Ok,"coalesced binding write");
+            timox_broker::ChannelBinding reply;
+            for(unsigned n=0;n<2;++n)Check(timox_broker::ReadBindingFrame(*wire.client,reply,Deadline()).code==Code::Ok&&
+                timox_broker::MatchesBinding(reply,offer),"TLS binding boundary lost");
+            Check(timox_broker::WriteBindingFrame(*wire.client,offer,Deadline()).code==Code::Ok,"TLS binding frame write");
+            Check(timox_broker::ReadBindingFrame(*wire.server,reply,Deadline()).code==Code::Ok&&
+                timox_broker::MatchesBinding(reply,offer),"TLS reverse binding frame differs");
+            Bytes frame(timox_broker::MaxMessageBytes,0);
+            frame[0]='T';frame[1]='V';frame[2]='A';frame[3]='B';frame[4]=1;frame[6]=3;frame[8]=48;
+            for(unsigned n=0;n<4;++n)frame[12+n]=static_cast<unsigned char>(timox_broker::MaxPayloadBytes>>(8*n));
+            for(std::size_t n=48;n<frame.size();++n)frame[n]=static_cast<unsigned char>(n*13);
+            Bytes output(frame.size());NativeChannelResult sentFrame;
+            std::thread sender([&]{sentFrame=wire.client->WriteAll(frame.data(),frame.size(),Deadline());});
+            const auto read=timox_broker::ReadAudioFrame(*wire.server,output.data(),output.size(),Deadline());
+            if(read.code!=Code::Ok)wire.client->RequestCancel();sender.join();
+            Check(read.code==Code::Ok&&read.bytes==frame.size()&&sentFrame.code==Code::Ok&&output==frame,"TLS multi-record audio framing differs");
+        }
         Bytes expected(32880),received(expected.size());for(std::size_t i=0;i<expected.size();++i)expected[i]=static_cast<unsigned char>(i*19);
         NativeChannelResult sent;std::thread writer([&]{sent=wire.client->WriteAll(expected.data(),expected.size(),Deadline());});
         std::size_t offset=0;bool valid=true;

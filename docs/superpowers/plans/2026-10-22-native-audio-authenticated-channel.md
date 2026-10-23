@@ -65,6 +65,29 @@ Le prototype prouve TLS 1.2 ECDHE/ECDSA AES-GCM en mémoire, pas le framing pipe
 
 ## Tâche 3 — Identité Windows et client concret
 
+**Framing vérifié le 24 octobre :** `channel_frames.h` fournit les lectures
+bornées audio/TNAC et l'écriture TNAC directement sur SchannelStream. Aucun buffer
+audio supplémentaire ni pointeur retenu. Lecture exacte de l'en-tête, validation
+de longueur avant payload, aucun octet consommé du message suivant. Le délai
+absolu est conservé à chaque fragment. Tout échec ferme le flux ; une trame audio
+partielle est effacée et les sorties de liaison restent inchangées. La sémantique
+SESSION, l'admission et les comparaisons de bail restent à appliquer par le canal.
+
+Test rouge observé puis cible `/W4 /WX` verte ; sept CTests ciblés réussis.
+Le test Schannel réel a aussi été étendu : deux TNAC dans un record TLS, aller/
+retour et enveloppe audio maximale à travers plusieurs records, relayés par
+fragments ciphertext de 17 octets. Exécution explicite `--temporary-user-key`
+réussie : trois clés créées, supprimées et absence vérifiée, aucune confiance
+installée. Ce test de framing ne valide pas le contenu PCM ni le futur serveur.
+
+**Point mémoire à résoudre avant le client concret :** chaque SchannelStream
+retient actuellement 133120 octets de tableaux. En garder deux pendant le
+transfert dépasse déjà les 256 KiB (266240 octets), avant les buffers du canal,
+ceux de l'adaptateur ou le token SSPI temporaire. Prévoir un cycle de vie de
+buffers partagé/libéré entre bootstrap et data sans perdre les restes TLS,
+sans course avec RequestCancel et sans abandonner prématurément le bail.
+Ne pas prétendre le plafond tenu par une simple somme des buffers de framing.
+
 **Avancement du 24 octobre 2026 — codec et observation OS :**
 `channel_binding.h/.cpp` fournit les cinq trames TNAC v1, avec stockage fixe,
 longueurs exactes, SID binaires canoniques et comparaisons de tous les champs

@@ -16,6 +16,14 @@ option(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY "Build isolated native admission
 
 if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
     enable_testing()
+    add_executable(NativeAudioChannelFramesTests tests/native_audio_channel_frames_tests.cpp
+        native-windows-audio/broker/channel_binding.cpp)
+    target_include_directories(NativeAudioChannelFramesTests PRIVATE include native-windows-audio/include native-windows-audio/broker)
+    if(MSVC)
+        target_compile_options(NativeAudioChannelFramesTests PRIVATE /W4 /WX /EHsc)
+    endif()
+    add_test(NAME NativeAudioChannelFramesTests COMMAND NativeAudioChannelFramesTests)
+    set_tests_properties(NativeAudioChannelFramesTests PROPERTIES TIMEOUT 30)
     add_executable(NativeAudioChannelBindingTests tests/native_audio_channel_binding_tests.cpp
         native-windows-audio/broker/channel_binding.cpp)
     target_include_directories(NativeAudioChannelBindingTests PRIVATE native-windows-audio/broker)
@@ -77,6 +85,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         add_test(NAME NativeAudioPipeStreamTests COMMAND NativeAudioPipeStreamTests)
         set_tests_properties(NativeAudioPipeStreamTests PROPERTIES TIMEOUT 30)
         add_executable(NativeAudioSchannelPipeTests tests/native_audio_schannel_pipe_tests.cpp
+            native-windows-audio/broker/channel_binding.cpp
             native-windows-audio/broker/schannel_stream_win32.cpp
             native-windows-audio/broker/pipe_stream_win32.cpp)
         target_include_directories(NativeAudioSchannelPipeTests PRIVATE include native-windows-audio/include
