@@ -386,6 +386,21 @@ test('auto-arrange persists positions, preserves names and does not edit audio c
     }
 });
 
+test('auto-arrange keeps the direction of routes hidden by collapsed blocks', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const key = 'timoxvasio.patchbay.layout.v1'; window.localStorage.clear();
+    const container = document.createElement('div'); document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => root.render(<RoutingPatchbay sourceGroups={sourceGroups.slice(0, 1)} destinationGroups={destinationGroups.slice(0, 1)}
+            routes={[{ id: 'route', sourceEndpointId: sourceGroups[0].endpoints[0].id, destinationEndpointId: destinationGroups[0].endpoints[0].id }]} />));
+        await act(async () => Simulate.click(container.querySelector('[data-node-key="process:app"] .patchbay-disclosure-button')));
+        await act(async () => Simulate.click([...container.querySelectorAll('button')].find(button => button.textContent === 'Auto-arrange')));
+        const layout = JSON.parse(window.localStorage.getItem(key));
+        expect(layout['physical:hardware-out'].x).toBeGreaterThan(layout['process:app'].x);
+    } finally { await act(async () => root.unmount()); container.remove(); window.localStorage.clear(); }
+});
+
 test('a running process owns its output and saved-profile input in one zoomable block', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const output = { id: 'virtual:TimoxVasio:42:output:1', name: 'scsynth Out 1' };

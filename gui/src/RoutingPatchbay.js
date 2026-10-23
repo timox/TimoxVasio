@@ -38,7 +38,7 @@ const PatchbayZoom = ({ visibleKey, onAutoArrange, empty }) => {
             title="Arrange blocks automatically without changing connections or names">Auto-arrange</button>
     </div>;
 };
-const PatchbayCanvas = ({ modelNodes, edges, visibleKey, layoutResetVersion, onSavePosition, onSaveLayout,
+const PatchbayCanvas = ({ modelNodes, edges, layoutEdges, visibleKey, layoutResetVersion, onSavePosition, onSaveLayout,
     disabled, validConnection, onConnect, onReconnect, onEdgeClick, onPaneContextMenu,
     onNodeContextMenu, onEdgeContextMenu }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState(modelNodes);
@@ -71,7 +71,7 @@ const PatchbayCanvas = ({ modelNodes, edges, visibleKey, layoutResetVersion, onS
         <Background color="#dbe5ea" gap={20} />
         <PatchbayZoom visibleKey={visibleKey ? `${visibleKey}:${layoutResetVersion}` : ''} empty={!nodes.length}
             onAutoArrange={() => {
-                const arranged = arrangePatchbayNodes(nodes);
+                const arranged = arrangePatchbayNodes(nodes, layoutEdges);
                 setNodes(arranged);
                 onSaveLayout(arranged);
             }} />
@@ -479,6 +479,14 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
             label: route.gainDb > 0 ? '▲' : undefined,
             ariaLabel: describeRoute(route) };
     }).filter(Boolean);
+    // A collapsed block hides handles/cables, but remains connected for layout.
+    const layoutEdges = routes.map(route => {
+        const sourceGroup = sourceGroupByEndpoint.get(route.sourceEndpointId);
+        const destinationGroup = destinationGroupByEndpoint.get(route.destinationEndpointId);
+        const source = sourceGroup && groupKey('source', sourceGroup);
+        const target = destinationGroup && groupKey('destination', destinationGroup);
+        return visibleNodeKeys.has(source) && visibleNodeKeys.has(target) ? { source, target } : null;
+    }).filter(Boolean);
     const validFlowConnection = connection => {
         const sourceGroup = sourceGroupByEndpoint.get(connection.sourceHandle);
         const destinationGroup = destinationGroupByEndpoint.get(connection.targetHandle);
@@ -541,7 +549,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                     event.preventDefault(); setContextMenu({ kind: 'pane', x: 24, y: 140 });
                 }
             }}>
-            <PatchbayCanvas modelNodes={flowNodes} edges={flowEdges}
+            <PatchbayCanvas modelNodes={flowNodes} edges={flowEdges} layoutEdges={layoutEdges}
                 visibleKey={flowNodes.length ? visibleKey : ''} layoutResetVersion={layoutResetVersion}
                 disabled={disabled} validConnection={validFlowConnection}
                 onSaveLayout={arranged => {
