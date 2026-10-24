@@ -1,0 +1,72 @@
+/* Workspace chrome: navigation, controls and help have distinct places. */
+.App { --surface-page: #edf0f3; --surface-inset: #f2f5f7; --border-subtle: #ccd4db; --text-secondary: #53616d; }
+.App-header { min-height: 44px; box-sizing: border-box; padding: 9px 18px; background: #fff; }
+.brand h1 { font-size: 16px; }
+.main-content { gap: 16px; padding: 22px 24px; }
+.workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: 0 0 auto; }
+.workspace-heading h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -.3px; }
+.workspace-heading p { margin: 3px 0 0; color: var(--text-secondary); font-size: 13px; }
+.workspace-help { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; background: transparent; }
+.setup-workspace { background: var(--surface-panel); border: 1px solid var(--border-subtle); border-radius: 5px; min-width: 0; }
+.setup-tabs { display: flex; gap: 0; flex-wrap: nowrap; margin: 0; padding: 0 16px; background: #f5f7f9; border-bottom: 1px solid var(--border-subtle); border-radius: 5px 5px 0 0; }
+.setup-tabs button { position: relative; min-width: 106px; min-height: 45px; padding: 12px 20px; border: 0; border-right: 1px solid transparent; border-left: 1px solid transparent; border-radius: 0; background: transparent; color: var(--text-secondary); }
+.setup-tabs button[aria-selected="true"] { background: #fff; color: var(--text-primary); border-color: var(--border-subtle); box-shadow: inset 0 2px var(--accent); }
+.setup-tabs button[aria-selected="true"]::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: #fff; }
+.setup-workspace .setup-panel { padding: 24px; margin: 0; border: 0; border-radius: 0; background: transparent; }
+.setup-panel h2 { margin: 0 0 6px; font-size: 17px; }
+.setup-panel .setup-heading { align-items: center; margin-bottom: 8px; }
+.setup-panel .setup-heading h3 { margin: 0; }
+.setup-description { margin: 0 0 20px; color: var(--text-secondary); font-size: 13px; }
+.setup-panel > .field, .clock-settings { max-width: 640px; }
+.clock-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 24px; margin-top: 24px; }
+.clock-settings > .field:first-child { grid-column: 1 / -1; }
+.clock-settings > p, .clock-settings > .engine-reset-action { grid-column: 1 / -1; margin: 0; }
+.clock-settings .engine-reset-action { order: 2; border-top: 1px solid var(--border-subtle); padding-top: 18px; }
+.clock-settings .field select, .clock-settings .field input { min-height: 38px; }
+.setup-footnote { color: var(--text-secondary); font-size: 12px; margin: 20px 0 0; }
+.setup-profiles > .setup-heading { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border-subtle); }
+.setup-workspace .setup-footer { position: sticky; bottom: -22px; z-index: 8; margin: 0; padding: 14px 24px; border-top: 1px solid var(--border-subtle); background: #f8fafb; border-radius: 0 0 5px 5px; }
+.stage-details { margin-top: 14px; border-top: 1px solid var(--border-subtle); }
+.stage-details > summary { cursor: pointer; padding: 14px 0; font-weight: 600; }
+.setup-footer .apply-configuration { min-width: 0; }
+.setup-footer > span { margin-left: auto; font-size: 12px; color: var(--text-secondary); }
+.inventory-heading { margin: 28px 0 16px; padding-top: 20px; border-top: 1px solid var(--border-subtle); }
+.wasapi-inventory-tools { display: flex; align-items: end; flex-wrap: wrap; gap: 16px 24px; margin-bottom: 14px; }
+.wasapi-inventory-tools .field { flex: 1 1 220px; max-width: 400px; }
+.wasapi-inventory-tools .wasapi-inactive-toggle { min-height: 36px; font-size: 13px; }
+.wasapi-device-branch { background: #fff; margin-top: 0; border-radius: 0; border-bottom: 0; }
+.wasapi-device-branch:last-of-type { border-bottom: 1px solid var(--border-subtle); }
+.wasapi-device-branch > summary { padding: 13px 14px; }
+.wasapi-device-branch[open] > summary { background: var(--surface-inset); }
+.routing-content { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.performance-guide { order: 5; border: 1px solid var(--border-subtle); border-radius: 5px; background: #fff; }
+.performance-guide > summary { padding: 14px 16px; cursor: pointer; color: var(--text-secondary); }
+.view-performance .section { border-radius: 5px; }
+.view-performance .performance-kicker { display: none; }
+.view-tabs > button { transition: background-color 100ms ease; }
+button:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+@media (min-width: 960px) {
+    .App { display: grid; grid-template-columns: 176px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .App-header { grid-column: 1 / -1; }
+    .view-tabs { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 20px 8px; overflow-y: auto; border-right: 1px solid var(--border-subtle); border-bottom: 0; background: #f8fafb; }
+    .view-tabs-heading { display: block; padding: 0 12px 12px; color: var(--text-secondary); font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+    .view-tabs > button { width: 100%; min-height: 37px; padding: 8px 12px; border: 0; border-radius: 4px; text-align: left; }
+    .view-tabs > button.selected { background: #e0eaf0; color: #163e53; font-weight: 600; }
+    .main-content { grid-column: 2; grid-row: 2; min-width: 0; width: 100%; max-width: none; margin: 0; overflow-y: auto; }
+}
+@media (max-width: 959px) {
+    .view-tabs { gap: 0; padding: 0 12px; flex-shrink: 0; }
+    .view-tabs > button { min-height: 42px; padding: 8px 12px; }
+    .main-content { padding: 16px; }
+    .setup-workspace .setup-footer { bottom: -16px; }
+}
+@media (max-width: 600px) {
+    .setup-workspace .setup-panel { padding: 18px; }
+    .setup-tabs { padding: 0; }
+    .setup-tabs button { flex: 1; min-width: 0; }
+    .clock-settings { grid-template-columns: minmax(0, 1fr); }
+    .workspace-heading h2 { font-size: 19px; }
+    .setup-footer { flex-wrap: wrap; }
+    .setup-footer > span { width: 100%; margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .view-tabs > button { transition: none; } }

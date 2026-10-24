@@ -171,11 +171,12 @@ test('Audio Setup separates ASIO, Clock and WASAPI and keeps pending clock edits
         await act(async () => Simulate.click(tabs()[1]));
         expect(container.querySelector('#setup-asio').hidden).toBe(true);
         expect(container.querySelector('#setup-clock').hidden).toBe(false);
-        expect(container.querySelector('#setup-clock').textContent).toContain('not MIDI tempo');
-        expect(container.querySelector('#setup-clock').textContent).toContain('WASAPI is not a selectable master');
-        expect(container.querySelector('#setup-clock').textContent).toContain('physical ASIO routes saved but inactive');
-        expect(container.querySelector('#setup-clock').textContent).toContain('Neither choice guarantees lower total latency');
-        expect(container.querySelector('#setup-clock').textContent).toContain('a 44.1 kHz WASAPI device with a 48 kHz graph');
+        expect(container.querySelector('#setup-clock').textContent).not.toContain('Which clock should I choose');
+        await act(async () => Simulate.click(container.querySelector('[aria-label="Help with Clock"]')));
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('not MIDI tempo');
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('WASAPI is not a selectable master');
+        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        expect(document.querySelector('.audio-help-dialog')).toBeNull();
         await act(async () => Simulate.change(container.querySelector('[aria-label="Clock source"]'), { target: { value: 'software' } }));
         await act(async () => Simulate.change(container.querySelector('[aria-label="Software sample rate"]'), { target: { value: '96000' } }));
         await act(async () => Simulate.click(tabs()[2]));
@@ -382,7 +383,7 @@ test('running software clock exposes reset and stop and excludes hardware from r
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
         expect(container.querySelector('[data-port-id="physical:interface-1:output:1"]')).toBeNull();
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[3]));
-        expect(container.querySelector('.clock-source').textContent).not.toContain('selected card');
+        expect(container.querySelector('.workspace-heading').textContent).toContain('Software');
         expect(container.querySelector('.buffer-health h2').textContent).toBe('Software clock callback');
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[5]));
         expect(container.querySelector('.engine-stop')).not.toBeNull();
@@ -666,8 +667,8 @@ test('performance view distinguishes measured ASIO buffer pressure from missing 
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
             .find(button => button.textContent === 'Performance')));
-        expect(container.querySelector('main > section:first-child')).toBe(container.querySelector('.buffer-concepts'));
-        expect(container.querySelector('main > section:nth-child(2)')).toBe(container.querySelector('.buffer-health'));
+        expect(container.querySelector('.performance-guide').open).toBe(false);
+        expect(container.querySelector('main > section')).toBe(container.querySelector('.buffer-health'));
         expect(container.querySelector('.buffer-concepts')?.textContent).toContain('512 frames ÷ 44,100 frames/s = 11.61 ms');
         expect(container.querySelector('.buffer-concepts')?.textContent).toContain('A and B take turns at each callback');
         expect(container.querySelector('.performance-metrics')?.textContent).toContain('Slowest callback');
@@ -677,8 +678,8 @@ test('performance view distinguishes measured ASIO buffer pressure from missing 
         expect(container.querySelector('.buffer-health')?.textContent).toContain('Callback timing incidents were observed.');
         expect(container.querySelector('.buffer-health')?.textContent).toContain('44100 Hz');
         expect(container.querySelector('.performance-metrics')?.textContent).toContain('Processing overruns6');
-        expect(container.querySelector('.buffer-health')?.textContent).toContain('7 starts were unusually late');
-        expect(container.querySelector('.buffer-health')?.textContent).toContain('The slowest callback took 12.50 ms, exceeding the 11.61 ms available per block');
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('Delayed starts7');
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('Over time0.89 ms');
     } finally {
         await act(async () => root.unmount());
         container.remove(); delete window.vasio; delete window.electronAPI;
@@ -716,16 +717,12 @@ test('performance view explains physical buffer measurements without suggesting 
         expect(container.querySelector('.buffer-health')).toBeNull();
         await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
             .find(button => button.textContent === 'Performance')));
-        const clockDiagram = container.querySelector('.clock-source');
-        expect(clockDiagram?.textContent).toContain('Interface réelle');
-        expect(clockDiagram?.textContent).toContain('TimoxVasio');
-        expect(clockDiagram?.textContent).toContain('drift');
-        expect(clockDiagram?.textContent).toContain('jitter');
+        expect(container.querySelector('.workspace-heading').textContent).toContain('Interface réelle');
+        expect(container.querySelector('.performance-guide').open).toBe(false);
         expect(container.querySelector('.performance-flow')?.textContent).toContain('ASIO application');
         expect(container.querySelector('.performance-flow')?.textContent).toContain('Physical ASIO driver');
         expect(container.querySelector('.performance-flow')?.textContent).toContain('shared ring');
         expect(container.querySelector('.performance-flow')?.textContent).toContain('next physical callback');
-        expect(container.querySelector('.performance-flow')?.textContent).toContain('SuperCollider');
         expect(container.querySelector('.performance-flow')?.textContent).toContain('not measured');
         expect(container.querySelector('.transport-health')?.textContent).toContain('AudioApp.exe output');
         expect(container.querySelector('.routed-app-cpu')?.textContent).toContain('AudioApp.exe');
@@ -736,11 +733,10 @@ test('performance view explains physical buffer measurements without suggesting 
         await act(async () => onEvent({ event: 'audio.meter', payload: { endpointId: 'virtual:TimoxVasio:42:output:1', peakDbfs: -12, underruns: 2, overruns: 1 } }));
         expect(container.querySelector('.transport-table')?.textContent).toContain('AudioApp.exe output21');
         expect(container.querySelector('.buffer-timeline')?.getAttribute('aria-label')).toContain('2.50 ms of processing within a 21.33 ms block');
-        const explanation = container.querySelector('.buffer-health .buffer-explanation')?.textContent;
-        expect(explanation).toContain('235 callbacks were observed over 5.0 seconds');
-        expect(explanation).toContain('None started unusually late or took longer than the 21.33 ms available per block');
-        expect(explanation).toContain('The slowest callback took 2.50 ms, leaving 18.83 ms');
-        expect(explanation).not.toMatch(/try|recommended|optimal/i);
+        expect(container.querySelector('.buffer-health').textContent).toContain('5.0 s window');
+        await act(async () => Simulate.click(container.querySelector('.workspace-help')));
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('not measured here');
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('all logical processors');
     } finally {
         await act(async () => root.unmount());
         container.remove(); delete window.vasio; delete window.electronAPI;

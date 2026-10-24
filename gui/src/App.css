@@ -1,10 +1,4 @@
 .setup-panel[hidden] { display: none !important; }
-.setup-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 10px; }
-.setup-tabs button[aria-selected="true"] { background: var(--surface-raised); border-color: var(--accent); color: var(--text-primary); font-weight: 700; }
-.clock-explanation { max-width: 850px; line-height: 1.6; padding: 4px 16px; border-left: 3px solid var(--accent); margin-bottom: 20px; background: var(--surface-inset); }
-.clock-strategy { max-width: 850px; line-height: 1.6; margin-bottom: 20px; }
-.clock-strategy dt { font-weight: 700; margin-top: 12px; }
-.clock-strategy dd { margin: 4px 0 0; color: var(--text-secondary); }
 .wasapi-device-tree { min-width: 0; }
 .wasapi-device-tree summary { cursor: pointer; padding: 10px 12px; overflow-wrap: anywhere; }
 .wasapi-device-tree summary > span { display: inline-block; margin-left: 14px; color: var(--text-secondary); }

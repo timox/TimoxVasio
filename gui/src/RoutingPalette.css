@@ -1,0 +1,70 @@
+/* Routing colors only. Geometry, audio state and user cable colors stay owned
+   by RoutingPatchbay. Pending/muted retain their dashed/dotted line patterns. */
+.patchbay {
+    --routing-canvas: #edf1f4;
+    --routing-outline: #aebcc7;
+    --routing-text: #263644;
+    --routing-muted-text: #536573;
+    --routing-asio: #326984;
+    --routing-process: #695582;
+    --routing-wasapi: #28736b;
+    --routing-profile: #87652f;
+    --routing-saved: #687884;
+    --routing-selection: #155d76;
+}
+.patchbay .patchbay-flow,
+.patchbay .patchbay-scroll { background: var(--routing-canvas); border-color: var(--routing-outline); }
+.patchbay .react-flow__background-pattern { fill: #c7d1d9; }
+.patchbay .patchbay-interface { background: #fff; border-color: var(--routing-outline); }
+.patchbay .patchbay-flow .patchbay-interface { box-shadow: 0 2px 7px #2636441a; }
+.patchbay .patchbay-interface-title { color: var(--routing-text); border-bottom-color: #c7d1da; }
+.patchbay .patchbay-interface.physical { border-left-color: var(--routing-asio); }
+.patchbay .patchbay-interface.process { border-left-color: var(--routing-process); }
+.patchbay .patchbay-interface.wasapi { border-color: #83aaa5; }
+.patchbay .patchbay-interface.profile { border-color: #b79d73; }
+.patchbay .patchbay-interface.saved { border-color: #a0acb5; }
+.patchbay .patchbay-interface.physical .patchbay-interface-title { background: #e5eef4; }
+.patchbay .patchbay-interface.process .patchbay-interface-title { background: #eeeaf3; }
+.patchbay .patchbay-interface.wasapi .patchbay-interface-title { background: #e4f0ed; }
+.patchbay .patchbay-interface.profile .patchbay-interface-title { background: #f5f0e5; }
+.patchbay .patchbay-interface.saved .patchbay-interface-title { background: #eef1f3; }
+.patchbay .patchbay-object-icon.physical, .patchbay .patchbay-legend b.physical { color: var(--routing-asio); }
+.patchbay .patchbay-object-icon.process, .patchbay .patchbay-legend b.process { color: var(--routing-process); }
+.patchbay .patchbay-object-icon.wasapi { color: var(--routing-wasapi); }
+.patchbay .patchbay-object-icon.profile, .patchbay .patchbay-legend b.profile { color: var(--routing-profile); }
+.patchbay .patchbay-object-icon.saved, .patchbay .patchbay-legend b.saved { color: var(--routing-saved); }
+.patchbay .patchbay-capacity { color: var(--routing-muted-text); background: #f8fafb; border-bottom-color: #e0e6eb; }
+.patchbay .patchbay-port-heading, .patchbay .patchbay-level { color: var(--routing-muted-text); }
+.patchbay .patchbay-node-inputs { border-right-color: #dce3e9; }
+.patchbay .patchbay-port { color: var(--routing-text); background: #fff; }
+.patchbay .patchbay-port.linked { background: #eff5f8; color: var(--routing-text); }
+.patchbay .patchbay-port:hover:not(:disabled) { background: #e3edf3; }
+.patchbay .patchbay-port.selected {
+    background: #dcebf3;
+    color: #163e53;
+    box-shadow: inset 0 0 0 2px var(--routing-selection);
+}
+/* Keep the selected connection's user color on its endpoints. */
+.patchbay .patchbay-port.route-selected {
+    background: #edf3f6;
+    color: var(--routing-text);
+    box-shadow: inset 0 0 0 2px var(--selected-route-color);
+}
+.patchbay .patchbay-port:disabled { color: #6a7781; background: #f0f2f4; }
+.patchbay .patchbay-flow-handle.react-flow__handle { background: #fff; border-color: var(--routing-process); }
+.patchbay .patchbay-flow-handle.physical-input,
+.patchbay .patchbay-flow-handle.physical-output { border-color: var(--routing-asio); }
+.patchbay .patchbay-flow-handle.wasapi-capture,
+.patchbay .patchbay-flow-handle.wasapi-render { border-color: var(--routing-wasapi); }
+.patchbay .patchbay-port.selected .patchbay-flow-handle { border-color: var(--routing-selection); background: var(--routing-selection); }
+.patchbay .patchbay-port.route-selected .patchbay-flow-handle { border-color: var(--selected-route-color); background: var(--selected-route-color); }
+.patchbay .patchbay-flow-handle:hover { background: #dcebf3; }
+/* A neutral halo separates overlapping cables without replacing their colors. */
+.patchbay .patchbay-flow .react-flow__edge.selected .react-flow__edge-path { filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 2px #526b7d); }
+.patchbay .patchbay-flow .react-flow__edge.subdued { opacity: .38; }
+.patchbay .patchbay-flow .react-flow__edge-text { fill: #855a17; }
+.patchbay .patchbay-flow-controls, .patchbay .patchbay-tools > div { border-color: var(--routing-outline); background: #fff; box-shadow: 0 2px 7px #2636441a; }
+.patchbay .patchbay-legend { color: var(--routing-muted-text); background: #f8fafb; border-color: #cbd5dd; }
+.patchbay .patchbay-legend .line { border-top-color: #2c6572; }
+.patchbay .patchbay-legend .line.pending { border-top-color: #2c6572; }
+.patchbay .patchbay-legend .line.muted { border-top-color: #89919a; }

@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import './App.css';
 import './ProfessionalTheme.css';
+import './Workspace.css';
+import './RoutingPalette.css';
+import AudioHelpDialog from './AudioHelpDialog';
 import RoutingPatchbay from './RoutingPatchbay';
 import NativeAudioDialog from './NativeAudioDialog';
 import PwarDialog from './PwarDialog';
@@ -52,6 +55,7 @@ function App() {
     const [hardwareTransfer, setHardwareTransfer] = useState(readHardwareTransfer);
     const [activeView, setActiveView] = useState('configuration');
     const [setupTab, setSetupTab] = useState('asio');
+    const [helpTopic, setHelpTopic] = useState(null);
     const [diagnostics, setDiagnostics] = useState({ level: 'info', entries: [] });
     const [diagnosticsError, setDiagnosticsError] = useState('');
     const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
@@ -999,7 +1003,9 @@ function App() {
                     </dialog>
                 </section>
             </main> : activeView === 'performance' ? <main className="main-content api-console">
-                <BufferTimingDiagram sampleRate={engine?.sampleRate} bufferFrames={engine?.bufferFrames} />
+                <div className="workspace-heading"><div><h2>Performance</h2><p>Live observations · {activeClockDriver}</p></div>
+                    <button className="workspace-help" type="button" onClick={() => setHelpTopic('performance')}>? <span>Reading these measurements</span></button></div>
+                <details className="performance-guide"><summary>Buffer timing illustration</summary><BufferTimingDiagram sampleRate={engine?.sampleRate} bufferFrames={engine?.bufferFrames} /></details>
                 <section className="section buffer-health" aria-label={runningSoftwareClock ? 'Software callback performance' : 'Physical callback performance'}>
                     <h2>{runningSoftwareClock ? 'Software clock callback' : 'Physical ASIO callback'}</h2>
                     {!bufferHealth ? <p>No callback observation yet. Open an ASIO application and wait for a five-second window.</p> : <>
@@ -1018,21 +1024,12 @@ function App() {
                             <span className="buffer-timeline-work" style={{ width: `${Math.min(100, Math.max(0, bufferHealth.worstProcessingNs / bufferHealth.blockPeriodNs * 100))}%` }} />
                             <span className="buffer-timeline-remaining" />
                         </div>
-                        <p className="buffer-explanation">
-                            {bufferHealth.callbackCount} callbacks were observed over {(bufferHealth.windowDurationMs / 1000).toFixed(1)} seconds.{' '}
-                            {bufferHealth.delayedStartCount === 0 && bufferHealth.processingOverrunCount === 0
-                                ? `None started unusually late or took longer than the ${blockMs} ms available per block. `
-                                : `${bufferHealth.delayedStartCount} starts were unusually late; ${bufferHealth.processingOverrunCount} callbacks took longer than the ${blockMs} ms available per block. `}
-                            {`The slowest callback took ${worstMs} ms, `}
-                            {bufferHealth.worstMarginNs >= 0 ? `leaving ${marginMs} ms.`
-                                : `exceeding the ${blockMs} ms available per block by ${marginMs} ms.`}
-                        </p>
                         <p className="hint">{bufferHealth.sampleRate} Hz · {bufferHealth.bufferFrames} frames · {(bufferHealth.windowDurationMs / 1000).toFixed(1)} s window. Timing incidents do not by themselves prove an audible dropout.</p>
                     </>}
                 </section>
                 <section className="section routed-app-cpu" aria-label="Routed application CPU">
                     <h2>Routed application load</h2>
-                    <p className="hint">Process CPU is its share of all logical processors, including work outside audio. The callback figure shows how much of one block its audio processing used. A busy host can be identified here; TimoxVasio cannot identify an individual VST inside it.</p>
+
                     {routedClients.length === 0 ? <p>No routed ASIO application is active.</p> :
                         <div className="routed-app-list">{routedClients.map(client => {
                             const hostCallback = measurementWindow?.clients.find(item => item.processId === client.pid)?.hostCallback;
@@ -1058,26 +1055,13 @@ function App() {
                 </section>
                 <section className="section transport-health" aria-label="Virtual transport losses">
                     <h2>Virtual transport</h2>
-                    <p>Underruns and overruns are cumulative for each routed client transport. They indicate incomplete or unconsumed blocks, not elapsed transport time.</p>
+                    <p className="setup-description">Cumulative incomplete or unconsumed blocks per transport.</p>
                     {routedTransportDirections.length === 0 ? <p>No routed virtual channels.</p> :
                         <div className="transport-table-wrap"><table className="transport-table"><thead><tr><th>Client transport</th><th>Underruns</th><th>Overruns</th></tr></thead>
                             <tbody>{routedTransportDirections.map(direction => <tr key={direction.endpointId}><th scope="row">{direction.label}</th>
                                 <td>{meters[direction.endpointId]?.underruns ?? '—'}</td><td>{meters[direction.endpointId]?.overruns ?? '—'}</td></tr>)}</tbody>
                         </table></div>}
                     <p className="hint">Only directions used by active routes are shown. A dash means no meter event has arrived yet.</p>
-                </section>
-                <section className="section clock-source" aria-label="Audio clock source">
-                    <span className="performance-kicker">Audio clock</span>
-                    <h2>{runningSoftwareClock ? 'Software clock sets the pace' : 'One card sets the pace'}</h2>
-                    <div className="clock-flow">
-                        <div><strong>{activeClockDriver}</strong><span>{runningSoftwareClock ? 'Software clock callbacks' : 'Physical ASIO callbacks'}</span></div>
-                        <span aria-hidden="true">→</span>
-                        <div><strong>TimoxVasio</strong><span>Publishes virtual blocks</span></div>
-                        <span aria-hidden="true">→</span>
-                        <div><strong>ASIO applications</strong><span>Wake on those blocks</span></div>
-                    </div>
-                    {runningSoftwareClock ? <p>TimoxVasio schedules virtual blocks at the configured sample rate and quantum without a physical audio card. Timer jitter can still occur; callback measurements show the observed timing.</p> :
-                        <p>TimoxVasio follows the selected card's audio clock instead of running an independent timer. This avoids accumulating clock drift between its virtual stream and that card. Callback jitter can still occur, and a separate audio device can still drift.</p>}
                 </section>
                 <section className="section performance-flow" aria-label="Audio latency path">
                     <h2>{runningSoftwareClock ? 'Between ASIO applications' : 'From the ASIO application to the audio output'}</h2>
@@ -1093,6 +1077,7 @@ function App() {
                             !hasStageSamples ? 'No stage samples' : 'Last complete 5 s window'}</span>
                     </div>
                     {measurementsError && <p className="error-panel" role="alert">{measurementsError}</p>}
+                    <details className="stage-details" open={!!measurements?.enabled}><summary>Stage measurements</summary>
                     <ol className="transport-steps">
                         <li><strong>Application produces a block</strong><span>Its ASIO callback writes the output samples into a shared ring in TimoxVasio.</span>
                             <div className="stage-measurements">{measurementWindow?.clients.length ? measurementWindow.clients.map(client =>
@@ -1116,9 +1101,9 @@ function App() {
                                 {stageDuration('Routing', hasApplicationPath ? measurementWindow?.physical.routing : null)}
                                 {!runningSoftwareClock && stageDuration('Physical output copy', hasApplicationPath ? measurementWindow?.physical.outputCopy : null)}
                             </div></li>
-                    </ol>
-                    <p>If the route passes through SuperCollider, the engine first delivers a block to that application. SuperCollider then publishes its output for a following {runningSoftwareClock ? 'software clock' : 'physical'} callback. A direct route skips this extra application stage.</p>
-                    <p className="hint">At the selected rate and buffer size, one block represents {engine?.sampleRate && engine?.bufferFrames ? `${(engine.bufferFrames * 1000 / engine.sampleRate).toFixed(2)} ms` : 'an unknown duration'}. The complete application-to-speaker latency is not measured. The callback measurement above shows whether TimoxVasio finished routing each {runningSoftwareClock ? 'software clock' : 'physical'} block within the time available.</p>
+                    </ol></details>
+
+                    <p className="setup-footnote">Application-to-speaker latency is not measured.</p>
                 </section>
             </main> : activeView === 'diagnostics' ? <main className="main-content api-console">
                 <section className="section diagnostics-view"><div className="section-heading"><div><h2>Engine logs</h2><p className="hint">Persistent file: %LOCALAPPDATA%\TimoxVasio\logs\engine.log</p></div>
@@ -1181,6 +1166,9 @@ function App() {
                             </button>}
                     </div>}
 
+                {activeView === 'configuration' && <div className="workspace-heading"><div><h2>Audio setup</h2><p>Devices and master clock</p></div>
+                    <button className="workspace-help" type="button" onClick={() => setHelpTopic(setupTab)} aria-label={'Help with ' + (setupTab === 'clock' ? 'Clock' : setupTab.toUpperCase())}>? <span>Help</span></button></div>}
+                <div className={activeView === 'configuration' ? 'setup-workspace' : 'routing-content'}>
                 {activeView === 'configuration' && <div className="setup-tabs" role="tablist" aria-label="Audio setup categories">
                     {['asio', 'clock', 'wasapi'].map(id => <button key={id} id={`setup-tab-${id}`} type="button" role="tab"
                         aria-selected={setupTab === id} aria-controls={`setup-${id}`} tabIndex={setupTab === id ? 0 : -1}
@@ -1197,44 +1185,16 @@ function App() {
                 </div>}
 
                 {activeView === 'configuration' && <section className="section setup-physical setup-panel" id="setup-clock" role="tabpanel" aria-labelledby="setup-tab-clock" hidden={setupTab !== 'clock'}>
-                    <div className="setup-heading"><div><span className="setup-kind">▣ Audio timing</span><h2>Clock — master audio clock</h2></div>
+                    <div className="setup-heading"><div><h2>Master audio clock</h2></div>
                         <span className={`setup-state ${physicalSettingsPending ? 'pending' : 'applied'}`}>{physicalSettingsPending ? 'Changes pending' : engine?.physicalDriverId || runningSoftwareClock ? 'Configured' : 'No driver selected'}</span></div>
-                    <div className="clock-explanation">
-                        <p>The master clock tells TimoxVasio when to process each block of audio. This is audio timing, not MIDI tempo.</p>
-                        <ul><li><strong>ASIO clock:</strong> the selected audio driver supplies the processing callbacks. Choose the driver in the ASIO tab.</li>
-                            <li><strong>Software clock:</strong> TimoxVasio schedules the blocks itself, so routing can run without a physical ASIO card. Timing depends on Windows scheduling.</li></ul>
-                        <p><strong>Sample rate</strong> is the number of audio samples per second. <strong>Block size</strong> is the number processed at once. Smaller blocks reduce the processing interval but leave less time to finish each block.</p>
-                        <p>At 48,000 Hz, 256 frames represent about 5.33 ms per block. This is not the total input-to-output latency.</p>
-                        <p>WASAPI devices keep their own clocks. Their connections adapt the audio rate and use buffers to follow this master clock. MIDI Clock is not implemented here.</p>
-                    </div>
-                    <div className="clock-strategy" aria-label="Choosing the master clock">
-                        <h3>Which clock should I choose?</h3>
-                        <dl>
-                            <dt>Using a physical ASIO interface</dt>
-                            <dd>Choose ASIO and select that interface in the ASIO tab. Its callbacks pace the graph. This is the starting point when your routing uses that card's inputs or outputs.</dd>
-                            <dt>Routing without a physical ASIO interface</dt>
-                            <dd>Choose Software for routes between applications or a setup using only WASAPI devices. Windows schedules the graph; you do not need to open a physical ASIO driver.</dd>
-                            <dt>Using several WASAPI devices</dt>
-                            <dd>Keep one master for the graph. WASAPI is not a selectable master in this version: each device's connection adapts to the ASIO or software clock. Equal sample rates do not mean the device clocks are synchronized.</dd>
-                        </dl>
-                        <p>Switching to Software keeps physical ASIO routes saved but inactive. Switch back to a compatible ASIO driver to use those hardware ports again.</p>
-                        <p><strong>Example: a 44.1 kHz WASAPI device with a 48 kHz graph.</strong> Input audio is resampled from 44.1 to 48 kHz; output audio is resampled from 48 to 44.1 kHz. The device keeps the WASAPI mix format provided by Windows. Conversion adds CPU work and delay. Matching rates removes the nominal rate difference, but independent device clocks still need drift correction.</p>
-                        <p>Neither choice guarantees lower total latency. Smaller blocks give shorter processing intervals and less time for the CPU to finish; larger blocks give more margin but add buffering. Compare the actual route in Performance and watch for overruns.</p>
-                        <details className="clock-limits"><summary>Conversion limits and practical checks</summary>
-                            <ul><li>Upsampling does not restore information missing from the original signal. Converted audio is not bit-perfect.</li>
-                                <li>More channels, devices and conversions increase CPU work. Small buffers can cause dropouts when processing or Windows scheduling is late.</li>
-                                <li>Drift correction handles small clock differences, not unbounded delays or disconnections. Configurations that exceed the audio queue capacity are rejected.</li>
-                                <li>The converter is tested at 44.1 ↔ 48 kHz. Long-running stability with your actual devices and quality at other rate ratios still require measurement.</li></ul>
-                            <p>Avoid unnecessary rate changes. Start with a rate appropriate for your main audio interface and material, then check the complete route under load.</p>
-                        </details>
-                        <p className="hint">Applying a clock change briefly interrupts audio. MIDI tempo and MIDI Clock generation are separate features for later.</p>
-                    </div>
+                    <p className="setup-description">Master audio timing · MIDI Clock is separate.</p>
+                    <div className="clock-settings">
                     <label className="field">Clock source<select aria-label="Clock source" disabled={configurationLocked || !!hardwareTransfer}
                         value={softwareClock ? 'software' : 'asio'} onChange={event => selectClockSource(event.target.value)}>
                         <option value="asio">Physical ASIO driver</option><option value="software">Software clock (no audio card required)</option>
                     </select></label>
                     {clockSourceChangePending && !incompatiblePhysicalRoutes.length && <button type="button" onClick={keepRunningPhysicalDriver}>Keep running clock</button>}
-                    {(engine?.physicalDriverId || runningSoftwareClock) && <div className="analysis-actions"><button type="button" className="engine-reset"
+                    {(engine?.physicalDriverId || runningSoftwareClock) && <div className="analysis-actions engine-reset-action"><button type="button" className="engine-reset"
                         disabled={!!engineAction || applying || configurationLocked}
                         onClick={() => manageEngine('reset')}>{engineAction === 'reset' ? 'Restarting clock…' : runningSoftwareClock ? 'Reset software clock' : 'Reset physical driver'}</button>
                         <span className="hint">Briefly interrupts audio and reopens the last saved configuration; saved connections are kept.</span></div>}
@@ -1261,11 +1221,13 @@ function App() {
                         </label>
                         <p className="hint">Physical ports are discovered after these settings are applied.</p>
                     </>}
+                    </div>
+                    <p className="setup-footnote">Applying a clock change briefly interrupts audio.</p>
                 </section>}
 
                 {activeView === 'configuration' && <section className="section setup-profiles setup-panel" id="setup-asio" role="tabpanel" aria-labelledby="setup-tab-asio" hidden={setupTab !== 'asio'}>
                     <h2>ASIO devices</h2>
-                    <p className="hint">TimoxVasio is the virtual ASIO driver selected by your applications. A physical ASIO driver can provide hardware inputs, outputs and the graph's master clock.</p>
+                    <p className="setup-description">Choose the physical interface used by the routing engine.</p>
                     {softwareClock ? <p>Software clock selected. <button type="button" onClick={() => setSetupTab('clock')}>Configure master clock</button></p> :
                         incompatiblePhysicalRoutes.length > 0 ? <p className="hint">Choose the replacement driver in the warning above, or keep the running driver.</p> :
                         <label className="field">Selected driver<select aria-label="Physical ASIO driver" disabled={configurationLocked} value={configuration?.physicalDriverId || ''}
@@ -1273,9 +1235,9 @@ function App() {
                             {physicalDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                         </select></label>}
                     {!softwareClock && <p className="hint">Set sample rate and block size in <button type="button" onClick={() => setSetupTab('clock')}>Clock</button>.</p>}
-                    <div className="setup-heading"><div><span className="setup-kind">◇ Capacity for applications</span><h2>Application channel profiles</h2></div>
+                    <div className="setup-heading"><div><h3>Application channel profiles</h3></div>
                         <span className="setup-state applied">{confirmedProfiles.length} saved</span></div>
-                    <p className="hint">Assign a channel profile to an existing process from its block in Routing. Use “Show all ports” there if it has no connections yet. The profile takes effect when the application opens ASIO again.</p>
+                    <p className="setup-description">Channel changes take effect when the application reopens ASIO.</p>
                     {profilesError && <div className="error-panel" role="alert">{profilesError}</div>}
                     {profilesNotice && <div className="notice" role="status">{profilesNotice}</div>}
                     {profilesLoading ? <p className="hint">Loading profiles from the API…</p> : applicationProfiles && <>
@@ -1309,11 +1271,18 @@ function App() {
 
                 {activeView === 'configuration' && apiState?.apiVersion === '1.1' && <section className="section setup-panel" id="setup-wasapi" role="tabpanel" aria-labelledby="setup-tab-wasapi" hidden={setupTab !== 'wasapi'} aria-label="Windows audio bridges">
                     <h2>Windows audio devices (WASAPI)</h2>
-                    <p className="hint">Connect existing Windows inputs and outputs to Routing. Save each device, then apply the configuration. Offline devices stay saved with audio disabled until you enable them.</p>
+                    <p className="setup-description">Add Windows inputs and outputs to the routing graph.</p>
                     <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'add' })}>Add Windows audio bridge…</button>
                         <button type="button" onClick={() => setActiveView('channels')}>Open Routing for Windows audio</button>
                         <button type="button" disabled={bridgeInventoryBusy || !window.vasio.getWasapiDevices} onClick={refreshBridgeInventory}>Refresh Windows endpoints</button></div>
                     {apiState.wasapiInventoryError && <p role="alert">Windows endpoint discovery: {apiState.wasapiInventoryError}</p>}
+                    {!(configuration?.wasapiBridges || []).length && <p>No Windows audio bridges configured.</p>}
+                    {(configuration?.wasapiBridges || []).map(bridge => <article className="application-channel-card" key={bridge.id}>
+                        <h3>{bridge.id} · {bridge.kind}</h3><BridgeStatus bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} />
+                        <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'edit', bridge })}>Configure {bridge.id}</button>
+                            <button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'remove', bridge })}>Remove {bridge.id}</button></div>
+                    </article>)}
+                    <h3 className="inventory-heading">Available devices</h3>
                     <WasapiDeviceTree devices={apiState.wasapiDevices || []} disabled={configurationLocked || !!hardwareTransfer}
                         onAdd={(device, kind) => {
                             let number = 1;
@@ -1322,12 +1291,6 @@ function App() {
                             setBridgeDialog({ kind: 'add', bridge: { id: `${kind}_${number}`, kind, endpointId: device.id,
                                 enabled: device.state === 1, bufferDuration100ns: 0 } });
                         }} />
-                    {!(configuration?.wasapiBridges || []).length && <p>No Windows audio bridges configured.</p>}
-                    {(configuration?.wasapiBridges || []).map(bridge => <article className="application-channel-card" key={bridge.id}>
-                        <h3>{bridge.id} · {bridge.kind}</h3><BridgeStatus bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} />
-                        <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'edit', bridge })}>Configure {bridge.id}</button>
-                            <button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'remove', bridge })}>Remove {bridge.id}</button></div>
-                    </article>)}
                 </section>}
                 {activeView === 'channels' && <section className="section routing-workspace-section">
                     <h2>Routing</h2>
@@ -1407,11 +1370,14 @@ function App() {
                             routes: current.routes.filter(route => ![route.sourceEndpointId, route.destinationEndpointId].some(endpoint => endpoint.startsWith(`wasapi:${id}:`))) }));
                         setBridgeDialog(null);
                     }} />}
-                {activeView === 'configuration' && <div className="analysis-actions"><button className="apply-configuration" onClick={applyConfiguration} disabled={!apiState || !configuration || configurationLocked || !!hardwareTransfer || invalidSoftwareFormat || incompatiblePhysicalRoutes.length > 0}>
+                {activeView === 'configuration' && <div className="analysis-actions setup-footer"><button className="apply-configuration" onClick={applyConfiguration} disabled={!apiState || !configuration || configurationLocked || !!hardwareTransfer || invalidSoftwareFormat || incompatiblePhysicalRoutes.length > 0}>
                     Apply configuration
                 </button>{configurationDirty && <button type="button" className="discard-draft" onClick={discardDraft}
-                    disabled={configurationLocked || !!hardwareTransfer}>Discard pending edits</button>}</div>}
+                    disabled={configurationLocked || !!hardwareTransfer}>Discard pending edits</button>}
+                    <span role="status">{configurationDirty ? 'Changes pending' : 'Configuration applied'}</span></div>}
+                </div>
             </main>}
+            {helpTopic && <AudioHelpDialog topic={helpTopic} onClose={() => setHelpTopic(null)} />}
         </div>
     );
 }

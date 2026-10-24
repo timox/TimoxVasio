@@ -16,6 +16,7 @@ test('endpoint tree preserves distinct ports, exposes all channels and opens the
     try {
         await act(async () => root.render(<WasapiDeviceTree devices={devices} onAdd={onAdd} />));
         expect(container.querySelectorAll('[data-endpoint-id]').length).toBe(3);
+        expect(container.querySelector('.wasapi-device-branch').open).toBe(false);
         const input = container.querySelector('[data-endpoint-id="in"]');
         expect(input.textContent).toContain('8 channels');
         expect(input.querySelectorAll('.wasapi-channel-list li').length).toBe(8);
@@ -26,5 +27,10 @@ test('endpoint tree preserves distinct ports, exposes all channels and opens the
         await act(async () => Simulate.change(container.querySelector('input[type="checkbox"]'), { target: { checked: true } }));
         expect(container.textContent).toContain('Disconnected interface');
         expect(container.querySelector('[data-endpoint-id="old"]').textContent).toContain('Channels unavailable');
+        await act(async () => Simulate.change(container.querySelector('input[type="search"]'), { target: { value: 'Disconnected' } }));
+        expect(container.querySelectorAll('[data-endpoint-id]').length).toBe(1);
+        expect(container.querySelector('.wasapi-device-branch').open).toBe(true);
+        await act(async () => Simulate.change(container.querySelector('input[type="search"]'), { target: { value: 'no-such-device' } }));
+        expect(container.textContent).toContain('No devices match this search.');
     } finally { await act(async () => root.unmount()); container.remove(); }
 });
