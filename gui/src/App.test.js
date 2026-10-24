@@ -263,6 +263,19 @@ test('editing a durable route preserves its app ID alongside an existing PID rou
     });
 });
 
+test('PWAR settings open from the graph menu without changing audio configuration', async () => {
+    await withClockApp(state, async container => {
+        window.vasio.httpRequest = jest.fn().mockResolvedValue({ status: 200,
+            body: { address: '192.168.66.2', port: 8321, exists: false } });
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await chooseContextAction(container.querySelector('.patchbay-flow'), 'Configure PWAR / PipeWire…');
+        expect(document.querySelector('[aria-label="PWAR / PipeWire"]')).not.toBeNull();
+        expect(window.vasio.httpRequest).toHaveBeenCalledWith('GET', '/api/v1/pwar', undefined);
+        expect(window.vasio.applyConfiguration).not.toHaveBeenCalled();
+        expect(window.vasio.executeCommand).not.toHaveBeenCalled();
+    });
+});
+
 test('software clock stages explicit format and applies without a physical driver', async () => {
     await withClockApp(state, async container => {
         const source = container.querySelector('[aria-label="Clock source"]');

@@ -4,6 +4,7 @@ import './App.css';
 import './ProfessionalTheme.css';
 import RoutingPatchbay from './RoutingPatchbay';
 import NativeAudioDialog from './NativeAudioDialog';
+import PwarDialog from './PwarDialog';
 import QuickRouting from './QuickRouting';
 import BufferTimingDiagram from './BufferTimingDiagram';
 import AnalysisTimeline from './AnalysisTimeline';
@@ -42,6 +43,7 @@ function App() {
     const [routingDialog, setRoutingDialog] = useState(null);
     const [bridgeDialog, setBridgeDialog] = useState(null);
     const [nativeDialogOpen, setNativeDialogOpen] = useState(false);
+    const [pwarDialogOpen, setPwarDialogOpen] = useState(false);
     const [bridgeInventoryBusy, setBridgeInventoryBusy] = useState(false);
     const [migrationLog, setMigrationLog] = useState(readMigrationLog);
     const pendingMigrations = useRef([]);
@@ -1281,6 +1283,7 @@ function App() {
                         onShowProcessDetail={processName => setRoutingDialog({ kind: 'process', processName })}
                         onCreateBridge={apiState?.apiVersion === '1.1' ? () => setBridgeDialog({ kind: 'add' }) : undefined}
                         onShowNativeAudio={() => setNativeDialogOpen(true)}
+                        onConfigurePwar={() => setPwarDialogOpen(true)}
                         onEditBridge={id => setBridgeDialog({ kind: 'edit', bridge: configuration.wasapiBridges.find(item => item.id === id) })}
                         onRemoveBridge={id => setBridgeDialog({ kind: 'remove', bridge: configuration.wasapiBridges.find(item => item.id === id) })}
                         isConnectionAllowed={bridgeConnectionAllowed}
@@ -1316,6 +1319,17 @@ function App() {
 
 
 
+                {activeView === 'channels' && pwarDialogOpen && <PwarDialog drivers={physicalDrivers}
+                    activeDriver={runningPhysical} running={engine?.state === 'running'} connected={!connectionError}
+                    locked={configurationLocked || !!engineAction || !!hardwareTransfer}
+                    canReopen={!configurationDirty} onSelect={selectPhysicalDriver}
+                    onClose={() => setPwarDialogOpen(false)} onReopen={async () => {
+                        setEngineAction('reset');
+                        try {
+                            await window.vasio.executeCommand({ id: `pwar-reset-${Date.now()}`, command: 'engine.reset' });
+                            await refreshState();
+                        } finally { setEngineAction(''); }
+                    }} />}
                 {activeView === 'channels' && nativeDialogOpen && <NativeAudioDialog status={apiState?.nativeAudio}
                     connected={!connectionError} onClose={() => setNativeDialogOpen(false)} />}
                 {bridgeDialog && <BridgeDialog key={`${bridgeDialog.kind}:${bridgeDialog.bridge?.id || ''}`} dialog={bridgeDialog}

@@ -347,6 +347,8 @@ if(WIN32)
     )
 
     add_executable(TimoxVirtualAsioEngine ${SOURCES})
+    add_executable(PwarConfigurationStoreTests tests/pwar_configuration_store_tests.cpp)
+    target_include_directories(PwarConfigurationStoreTests PRIVATE ${SRC_DIR})
 
     add_executable(SoftwareClockHostTests
         tests/software_clock_host_tests.cpp

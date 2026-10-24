@@ -18,6 +18,14 @@ int wmain(int argc, wchar_t** argv) {
     wchar_t directory[MAX_PATH]{};
     if (!GetTempPathW(MAX_PATH, directory)) return 2;
     const auto base = std::wstring(directory) + L"TimoxVasio-wasapi-api-" + std::to_wstring(GetCurrentProcessId());
+    // Keep PWAR HTTP writes away from the real user's driver configuration.
+    const auto pwarProfile = base + L"-pwar-profile";
+    if (!CreateDirectoryW(pwarProfile.c_str(), nullptr)) return 2;
+    struct ProfileCleanup {
+        std::wstring path;
+        ~ProfileCleanup() { DeleteFileW((path + L"\\pwarASIO.cfg").c_str()); RemoveDirectoryW(path.c_str()); }
+    } profileCleanup{pwarProfile};
+    if (!SetEnvironmentVariableW(L"USERPROFILE", pwarProfile.c_str())) return 2;
     const auto config = base + L"-config.json", profiles = base + L"-profiles.json";
     DeleteFileW(config.c_str()); DeleteFileW(profiles.c_str());
     VasioClientManager clients;
@@ -38,6 +46,21 @@ int wmain(int argc, wchar_t** argv) {
         return response && response->status == 200 ? Json::parse(response->body) : Json::object();
     };
     auto initial = state();
+    const auto pwarDefaults = http.Get("/api/v1/pwar");
+    check(pwarDefaults && pwarDefaults->status == 200 && !Json::parse(pwarDefaults->body).value("exists", true),
+        "PWAR GET supplies defaults without writing a file");
+    const auto pwarSave = http.Put("/api/v1/pwar", R"({"address":"127.0.0.1","port":18321})", "application/json");
+    check(pwarSave && pwarSave->status == 200 && Json::parse(pwarSave->body).value("reopenRequired", false),
+        "PWAR PUT saves settings and explicitly requires reopen");
+    for (const auto* invalid : {R"({"address":"256.1.1.1","port":8321})", R"({"address":"127.0.0.1","port":0})",
+        R"({"address":"127.0.0.1","port":8321,"path":"other"})", R"({"address":"127.0.0.1","port":1.5})"}) {
+        const auto rejected = http.Put("/api/v1/pwar", invalid, "application/json");
+        check(rejected && rejected->status == 400, "PWAR rejects malformed settings");
+    }
+    const auto pwarRead = http.Get("/api/v1/pwar");
+    check(pwarRead && pwarRead->status == 200 && Json::parse(pwarRead->body).value("port", 0) == 18321,
+        "PWAR rejected writes preserve saved settings");
+    check(state()["engine"] == initial["engine"], "PWAR settings do not open or reset audio");
     messages.push_back(initial);
     check(initial.contains("nativeAudio") && initial["nativeAudio"].value("state", "") == "disabled" &&
         !initial["nativeAudio"].value("enabled", true) && !initial["nativeAudio"].value("attached", true) &&

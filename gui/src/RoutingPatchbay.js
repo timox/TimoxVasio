@@ -131,7 +131,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
     meters = {}, disabled = false, profiles = emptyProfiles, onAssignProfile = async () => {},
     onRemoveProcessConfiguration = async () => {}, onTransferProcessConnections = () => {},
     onCreateConnection = () => {}, onShowProcessDetail = () => {},
-    onCreateBridge, onShowNativeAudio, onEditBridge = () => {}, onRemoveBridge = () => {}, isConnectionAllowed = () => true }) {
+    onCreateBridge, onShowNativeAudio, onConfigurePwar, onEditBridge = () => {}, onRemoveBridge = () => {}, isConnectionAllowed = () => true }) {
     const [contextMenu, setContextMenu] = useState(null);
     const [processDialogKey, setProcessDialogKey] = useState(null);
     React.useEffect(() => {
@@ -788,6 +788,8 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                 onClick={() => menuAction(onCreateConnection)}>Create a new connection</button>}
             {contextMenu.kind === 'pane' && onCreateBridge && <button type="button" role="menuitem" disabled={disabled}
                 onClick={() => menuAction(onCreateBridge)}>Add Windows audio bridge…</button>}
+            {contextMenu.kind === 'pane' && onConfigurePwar && <button type="button" role="menuitem"
+                onClick={() => menuAction(onConfigurePwar)}>Configure PWAR / PipeWire…</button>}
             {contextMenu.kind === 'pane' && onShowNativeAudio && <button type="button" role="menuitem"
                 onClick={() => menuAction(onShowNativeAudio)}>Native Windows audio status…</button>}
             {contextMenu.kind === 'pane' && <button type="button" role="menuitem"
