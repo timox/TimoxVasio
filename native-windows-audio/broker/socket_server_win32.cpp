@@ -43,9 +43,14 @@ struct SocketServer::Impl {
         }
         listener.Close();
     }
+    void CheckDeadlines() noexcept {
+        std::lock_guard<std::mutex> lock(mutex);
+        for(auto& slot:slots)if(slot.session&&!slot.done)slot.session->CheckDeadline();
+    }
     NativeChannelResult Serve(){
         if(!listening)return {Code::Failed};
         while(Active()){
+            CheckDeadlines();
             Slot* available=nullptr;
             {
                 std::unique_lock<std::mutex> lock(mutex);
@@ -58,6 +63,7 @@ struct SocketServer::Impl {
             auto socket=std::make_unique<UnixSocketStream>();
             NativeChannelResult accepted;
             do {
+                CheckDeadlines();
                 accepted=listener.Accept(*socket,std::chrono::steady_clock::now()+std::chrono::milliseconds(200));
             }while(accepted.code==Code::TimedOut&&Active());
             if(!Active())return {Code::Cancelled};

@@ -30,6 +30,7 @@ struct SocketSession::Impl {
     const std::shared_ptr<const SocketEnrollment> enrollment;
     SchannelStream stream;
     std::mutex mutex;ConnectionId id=0;
+    bool nativePending=false;SchannelStream::Deadline nativeDeadline{};
     std::atomic<bool> cancelled{false},started{false};
     std::array<unsigned char,MaxMessageBytes> request{},response{};
     Impl(BrokerDispatcher& b,std::unique_ptr<UnixSocketStream> socket,PCCERT_CONTEXT cert,std::shared_ptr<const SocketEnrollment> e)
@@ -43,12 +44,30 @@ struct SocketSession::Impl {
     }
     void Retire() noexcept {
         ConnectionId retiring=0;
-        {std::lock_guard<std::mutex> lock(mutex);retiring=id;id=0;}
+        {std::lock_guard<std::mutex> lock(mutex);retiring=id;id=0;nativePending=false;}
         if(retiring){broker.RequestCancel(retiring);broker.Disconnect(retiring);}
         stream.Close();request.fill(0);response.fill(0);
     }
     NativeChannelResult WriteBinding(const ChannelBinding& binding,SchannelStream::Deadline deadline) noexcept {
         if(!Active())return {Code::Cancelled};return WriteBindingFrame(stream,binding,deadline);
+    }
+    void CheckDeadline() noexcept {
+        std::lock_guard<std::mutex> lock(mutex);
+        if(!nativePending||Clock::now()<nativeDeadline)return;
+        // Publication, completion and cancellation use the same mutex, so a
+        // stale timeout cannot cancel a later operation after it replaced one.
+        cancelled.store(true,std::memory_order_release);stream.RequestCancel();
+        if(id)broker.RequestCancel(id);
+    }
+    DispatchResult Process(ConnectionId connection,std::size_t bytes,SchannelStream::Deadline deadline) noexcept {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if(!Active()||Clock::now()>=deadline)return {Dispatch::CloseConnection,0,Status::Cancelled};
+            nativeDeadline=deadline;nativePending=true;
+        }
+        const auto result=broker.Process(connection,request.data(),bytes,response.data(),response.size());
+        {std::lock_guard<std::mutex> lock(mutex);nativePending=false;}
+        return result;
     }
     NativeChannelResult Serve(){
         if(!Active())return {Code::Cancelled};
@@ -67,7 +86,7 @@ struct SocketSession::Impl {
         result=ReadAudioFrame(stream,request.data(),request.size(),setupDeadline);if(result.code!=Code::Ok)return result;
         if(frames_detail::Read(request.data(),6,2)!=static_cast<unsigned>(Opcode::Session))return {Code::AccessDenied};
         if(!Active())return {Code::Cancelled};
-        auto reply=broker.Process(attached.id,request.data(),result.bytes,response.data(),response.size());
+        auto reply=Process(attached.id,result.bytes,setupDeadline);
         if(reply.disposition!=Dispatch::Reply||!Active())return {Code::Cancelled};
         result=stream.WriteAll(response.data(),reply.bytes,setupDeadline);if(result.code!=Code::Ok)return result;
         if(reply.status!=Status::Ok)return {Code::AccessDenied};
@@ -88,7 +107,7 @@ struct SocketSession::Impl {
             const auto opcode=frames_detail::Read(request.data(),6,2);
             if(opcode==static_cast<unsigned>(Opcode::Session))return {Code::AccessDenied};
             if(!Active())return {Code::Cancelled};
-            reply=broker.Process(attached.id,request.data(),result.bytes,response.data(),response.size());
+            reply=Process(attached.id,result.bytes,deadline);
             if(reply.disposition!=Dispatch::Reply||!Active())return {Code::Cancelled};
             result=stream.WriteAll(response.data(),reply.bytes,deadline);response.fill(0);
             if(result.code!=Code::Ok)return result;
@@ -106,4 +125,5 @@ NativeChannelResult SocketSession::Run() noexcept {
     impl_->Retire();return result;
 }
 void SocketSession::RequestCancel() noexcept {impl_->Cancel();}
+void SocketSession::CheckDeadline() noexcept {impl_->CheckDeadline();}
 }

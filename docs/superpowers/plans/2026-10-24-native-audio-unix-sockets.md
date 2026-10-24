@@ -77,6 +77,28 @@ Sources primaires :
 
 ### Contrat du prochain sous-lot : SocketSession sur un flux TLS
 
+**Supervision native ajoutée :** le délai du stream seul n'interrompait pas
+broker.Process bloqué dans le backend. Régression reproduite avec un Open
+simulé annulable : client TLS maintenu ouvert, Open atteint, toujours bloqué
+après sept secondes malgré l'échéance setup de cinq secondes. Après correction,
+SocketSession publie l'échéance existante avant chaque Process et l'efface à la
+completion ; CheckDeadline annule TLS et dispatcher si expirée. Publication,
+effacement, retrait et décision d'annulation partagent le mutex de session pour
+éviter une annulation tardive d'une opération remplaçante.
+
+SocketServer appelle CheckDeadline pendant ses boucles accept et quota, toutes
+les 200 ms au plus hors scheduling/traitements. Une instance SocketSession
+utilisée seule doit recevoir ces appels d'un superviseur. Aucune modification
+de l'échéance initiale ou relance automatique. Le backend doit toujours honorer
+RequestCancel : pas de prétendue borne de completion temps réel en cas contraire.
+
+Tests réels AF_UNIX/TLS avec backend bloquant : Open, ReadRender et WriteCapture
+atteints puis annulés sans fermeture client ni expiration de lecture côté client.
+Aucune réponse expirée acceptée, session retirée. Bibliothèque serveur /W4 /WX,
+dix CTests et suite crypto réussis ; trois clés temporaires supprimées et absence
+vérifiée, y compris lors de la reproduction rouge. Revue indépendante sans
+défaut bloquant ; aucune qualification d'un pilote ou périphérique physique.
+
 **Écoute autonome du 24 octobre :** SocketServer possède un listener et quatre
 slots fixes session/thread. Run appartient à un acceptor ; RequestCancel et
 ActiveConnections sont concurrents, tous les appels doivent finir avant

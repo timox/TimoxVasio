@@ -22,11 +22,11 @@ private:
     std::atomic<bool> revoked_{false};
 };
 // One accepted AF_UNIX connection, one TLS stream, one dispatcher registration.
-// Run once on a dedicated I/O worker; only RequestCancel may run concurrently.
+// Run once on a dedicated I/O worker; RequestCancel and CheckDeadline may run concurrently.
 // Host bounds handlers to four and joins all calls before destruction. Dispatcher
 // outlives sessions. No listener, provisioning, or physical peer-token assertion.
 // Socket reads/handshake/confirmation use absolute deadlines; host cancellation
-// is needed to interrupt a backend blocked inside the dispatcher.
+// or periodic CheckDeadline is needed for a backend blocked in the dispatcher.
 class SocketSession final {
 public:
     SocketSession(BrokerDispatcher&,std::unique_ptr<UnixSocketStream>,PCCERT_CONTEXT,
@@ -34,6 +34,9 @@ public:
     ~SocketSession();
     NativeChannelResult Run() noexcept;
     void RequestCancel() noexcept;
+    // Supervisor calls periodically. Cancels a pending dispatcher operation
+    // after its existing absolute deadline; never resets/extends that deadline.
+    void CheckDeadline() noexcept;
 private:
     struct Impl;std::unique_ptr<Impl> impl_;
 };

@@ -11,6 +11,8 @@
 #include "socket_server_win32.h"
 #include <filesystem>
 #include <future>
+#include <condition_variable>
+#include <mutex>
 #include <sddl.h>
 #include <atomic>
 #include <algorithm>
@@ -529,7 +531,81 @@ void SocketServerQuota(Identity& serverIdentity,Identity& clientIdentity){
     Check(served.code==Code::Cancelled&&server.ActiveConnections()==0,"quota server did not drain");
     Check(server.Listen(path.value.c_str()).code!=Code::Ok,"cancelled server reopened");
 }
+struct BlockedOpenState {
+    unsigned operation=1;
+    std::mutex mutex;std::condition_variable changed;bool cancelled=false;
+    std::promise<void> entered,finished;
+};
+class BlockedOpenAudio final:public INativeAudioTransport {
+    std::shared_ptr<BlockedOpenState> state;
+    NativeTransferResult Block()noexcept{
+        std::unique_lock<std::mutex> lock(state->mutex);state->entered.set_value();
+        state->changed.wait(lock,[&]{return state->cancelled;});state->finished.set_value();
+        return {NativeTransferCode::Cancelled};
+    }
+public:
+    explicit BlockedOpenAudio(std::shared_ptr<BlockedOpenState> s):state(std::move(s)){}
+    NativeTransferResult Open(NativeSessionInfo& info)noexcept override{
+        if(state->operation==1)return Block();info.wireGeneration=23;return {NativeTransferCode::Ok};
+    }
+    NativeTransferResult ReadRender(std::uint32_t,void*,std::uint32_t)noexcept override{return state->operation==2?Block():NativeTransferResult{NativeTransferCode::Failed};}
+    NativeTransferResult WriteCapture(const void*,std::uint32_t)noexcept override{return state->operation==3?Block():NativeTransferResult{NativeTransferCode::Failed};}
+    NativeTransferResult ReadStatus(std::uint64_t (&)[3])noexcept override{return {NativeTransferCode::Failed};}
+    void RequestCancel()noexcept override{std::lock_guard<std::mutex> lock(state->mutex);state->cancelled=true;state->changed.notify_all();}
+    void Close()noexcept override{}
+};
+void SocketNativeDeadline(Identity& serverIdentity,Identity& clientIdentity,unsigned operation){
+    using namespace timox_broker;
+    struct Path {
+        std::string value=std::filesystem::absolute("deadline-unix-"+std::to_string(GetCurrentProcessId())+".sock").string();
+        Path(){Check(!std::filesystem::exists(value),"deadline path exists");}
+        ~Path(){std::error_code error;std::filesystem::remove(value,error);}
+    } path;
+    ChannelIdentity identity;Check(ObserveProcessIdentity(identity)==ERROR_SUCCESS,"deadline identity");
+    NativePeerIdentity peer{ObservedSidText(identity.userSid),ObservedSidText(identity.logonSid),identity.authenticationId,identity.sessionId};
+    NativeSessionPolicySnapshot policy;policy.allowedUserSid=peer.userSid;policy.consoleSessionId=peer.sessionId;
+    policy.interactiveLogonCount=1;policy.unlocked=true;policy.audioIsolationQualified=true;policy.optionalConsoleIdentity=peer;
+    auto state=std::make_shared<BlockedOpenState>();auto entered=state->entered.get_future(),finished=state->finished.get_future();
+    state->operation=operation;
+    BrokerDispatcher broker([state]{return std::make_unique<BlockedOpenAudio>(state);},policy);
+    auto enrollment=std::make_shared<SocketEnrollment>(Hash(clientIdentity.cert),identity,1);
+    SocketServer server(broker,serverIdentity.cert,enrollment);
+    Check(server.Listen(path.value.c_str()).code==Code::Ok,"deadline listen");
+    std::thread worker([&]{server.Run();});
+    struct Join {SocketServer& server;std::thread& worker;~Join(){server.RequestCancel();if(worker.joinable())worker.join();}} join{server,worker};
+    auto socket=std::make_unique<UnixSocketStream>();Check(socket->Connect(path.value.c_str(),Deadline()).code==Code::Ok,"deadline connect");
+    SchannelStream client(std::move(socket),false,clientIdentity.cert,Hash(serverIdentity.cert));
+    Check(client.Handshake(Deadline()).code==Code::Ok,"deadline TLS");
+    ChannelBinding binding;binding.identity=identity;
+    Check(WriteBindingFrame(client,binding,Deadline()).code==Code::Ok&&ReadBindingFrame(client,binding,Deadline()).code==Code::Ok,"deadline binding");
+    std::array<unsigned char,48> request{};request[0]='T';request[1]='V';request[2]='A';request[3]='B';request[4]=1;request[6]=1;request[8]=48;request[16]=1;
+    Check(client.WriteAll(request.data(),request.size(),Deadline()).code==Code::Ok,"deadline SESSION send");
+    if(operation!=1){
+        std::array<unsigned char,MaxMessageBytes> response{},packet{};
+        Check(ReadAudioFrame(client,response.data(),response.size(),Deadline()).code==Code::Ok,"deadline SESSION reply");
+        const auto lease=frames_detail::Read(response.data(),24,8);
+        ChannelBinding offer;Check(ReadBindingFrame(client,offer,Deadline()).code==Code::Ok,"deadline offer");
+        offer.type=BindingType::DataBindRequest;offer.identity=identity;
+        Check(WriteBindingFrame(client,offer,Deadline()).code==Code::Ok&&ReadBindingFrame(client,offer,Deadline()).code==Code::Ok,"deadline confirmation");
+        std::copy(request.begin(),request.end(),packet.begin());packet[6]=static_cast<unsigned char>(operation);packet[16]=2;
+        for(unsigned n=0;n<8;++n)packet[24+n]=static_cast<unsigned char>(lease>>(8*n));
+        std::size_t payload=16;
+        if(operation==2){packet[48]=23;packet[57]=16;}
+        else {const auto capture=ConcretePacket(false);payload=capture.size();std::copy(capture.begin(),capture.end(),packet.begin()+48);}
+        for(unsigned n=0;n<4;++n)packet[12+n]=static_cast<unsigned char>(payload>>(8*n));
+        Check(client.WriteAll(packet.data(),48+payload,Deadline()).code==Code::Ok,"blocked native request");
+    }
+    Check(entered.wait_for(std::chrono::seconds(2))==std::future_status::ready,"native operation never entered");
+    // Keep the socket open; neither client EOF nor client-side timeout may
+    // cause this cancellation. The server must enforce its native deadline.
+    Check(finished.wait_for(std::chrono::seconds(7))==std::future_status::ready,"native operation outlived server deadline");
+    std::array<unsigned char,MaxMessageBytes> response{};
+    Check(ReadAudioFrame(client,response.data(),response.size(),Deadline()).code!=Code::Ok,"expired native operation returned a response");
+    server.RequestCancel();worker.join();
+    Check(server.ActiveConnections()==0,"expired native session did not retire");
+}
 void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
+    for(unsigned operation=1;operation<=3;++operation)SocketNativeDeadline(serverIdentity,clientIdentity,operation);
     SocketServerQuota(serverIdentity,clientIdentity);
     ConcreteSocketClient(serverIdentity,clientIdentity);
     for(unsigned fault=0;fault<=8;++fault)SocketBroker(serverIdentity,clientIdentity,fault);
