@@ -67,6 +67,53 @@ const withClockApp = async (initialState, check) => {
     }
 };
 
+test('subject tabs isolate API and analysis while keeping the console draft', async () => {
+    await withClockApp(state, async container => {
+        const section = async name => act(async () => Simulate.click([...container.querySelectorAll('.view-tabs > button')].find(button => button.textContent === name)));
+        await section('API and Swagger');
+        expect(container.querySelector('#api-panel-swagger').hidden).toBe(false);
+        expect(container.querySelector('#api-panel-console').hidden).toBe(true);
+        await act(async () => Simulate.click(container.querySelector('#api-tab-console')));
+        await act(async () => Simulate.change(container.querySelector('.api-console-panel textarea'), { target: { value: '{"id":"kept"}' } }));
+        await act(async () => Simulate.click(container.querySelector('#api-tab-websocket')));
+        expect(container.querySelector('#api-panel-console').hidden).toBe(true);
+        await act(async () => Simulate.click(container.querySelector('#api-tab-console')));
+        expect(container.querySelector('.api-console-panel textarea').value).toBe('{"id":"kept"}');
+        expect(window.vasio.executeCommand).not.toHaveBeenCalled();
+        await section('Analysis');
+        expect(container.querySelector('#analysis-panel-timeline').hidden).toBe(false);
+        expect(container.querySelector('#analysis-panel-correlation').hidden).toBe(true);
+        await act(async () => Simulate.click(container.querySelector('#analysis-tab-correlation')));
+        expect(container.querySelector('#analysis-panel-correlation').hidden).toBe(false);
+        expect(container.querySelector('.analysis-dashboard').hidden).toBe(true);
+    });
+});
+
+test('WASAPI field help preserves the bridge draft and live counters stay outside device setup', async () => {
+    const bridge = { id: 'mic', kind: 'capture', endpointId: 'input-1', enabled: false, bufferDuration100ns: 0 };
+    await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: [bridge], wasapiDevices: [],
+        wasapiBridges: [{ id: 'mic', state: 'stopped', health: { bufferedFrames: 12, rejectedFrames: 4, silencedFrames: 8 } }] }, async container => {
+        await act(async () => Simulate.click(container.querySelector('#setup-tab-wasapi')));
+        expect(container.querySelector('#wasapi-panel-devices').textContent).not.toContain('Frames currently queued');
+        await act(async () => Simulate.click(container.querySelector('#wasapi-tab-status')));
+        expect(container.querySelector('#wasapi-panel-status').hidden).toBe(false);
+        expect(container.querySelector('.bridge-metrics').textContent).toContain('Frames currently queued12');
+        await act(async () => Simulate.click(container.querySelector('#wasapi-tab-devices')));
+        await act(async () => Simulate.click([...container.querySelectorAll('button')].find(button => button.textContent === 'Configure mic')));
+        const dialog = document.querySelector('[aria-label="Configure Windows audio bridge"]');
+        const help = dialog.querySelector('[aria-label="Choose the audio direction"]');
+        help.focus();
+        await act(async () => Simulate.click(help));
+        expect(document.querySelector('.audio-help-dialog')).not.toBeNull();
+        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        expect(document.querySelector('.audio-help-dialog')).toBeNull();
+        expect(document.querySelector('[aria-label="Configure Windows audio bridge"]')).toBe(dialog);
+        expect(dialog.querySelector('[aria-label="Bridge ID"]').value).toBe('mic');
+        expect(document.activeElement).toBe(help);
+        expect(window.vasio.applyConfiguration).not.toHaveBeenCalled();
+    });
+});
+
 test('legacy engine explains unavailable WASAPI features without restarting audio', async () => {
     await withClockApp(state, async container => {
         expect(container.querySelector('[aria-label="Engine compatibility"]').textContent).toContain('API 1.0');
@@ -735,7 +782,11 @@ test('performance view explains physical buffer measurements without suggesting 
         expect(container.querySelector('.buffer-timeline')?.getAttribute('aria-label')).toContain('2.50 ms of processing within a 21.33 ms block');
         expect(container.querySelector('.buffer-health').textContent).toContain('5.0 s window');
         await act(async () => Simulate.click(container.querySelector('.workspace-help')));
-        expect(document.querySelector('.audio-help-dialog').textContent).toContain('not measured here');
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('Callback timing');
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('application-to-speaker latency');
+        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        await act(async () => Simulate.click(container.querySelector('#performance-tab-applications')));
+        await act(async () => Simulate.click(container.querySelector('.workspace-help')));
         expect(document.querySelector('.audio-help-dialog').textContent).toContain('all logical processors');
     } finally {
         await act(async () => root.unmount());

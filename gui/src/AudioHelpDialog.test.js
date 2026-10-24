@@ -1,7 +1,7 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Simulate } from 'react-dom/test-utils';
-import AudioHelpDialog from './AudioHelpDialog';
+import AudioHelpDialog, { AudioHelpContent } from './AudioHelpDialog';
 
 async function withHelp(check) {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -61,7 +61,16 @@ test.each([
     ['clock', 'not MIDI tempo', 'WASAPI is not a selectable master'],
     ['wasapi', 'audio disabled', 'not bit-perfect'],
     ['asio', 'autonomous virtual ASIO driver', 'opens ASIO again'],
-    ['performance', 'all logical processors', 'End-to-end latency is not measured']
+    ['performance', 'all logical processors', 'End-to-end latency is not measured'],
+    ['wasapi-mode', 'endpoint loopback', 'does not isolate one application'],
+    ['wasapi-buffer', '0 to let Windows choose the system default', 'does not change the graph master clock'],
+    ['wasapi-endpoint', 'Console, Multimedia and Communications', 'Enabled turned off'],
+    ['wasapi-status', 'not necessarily lost', 'capture buffer'],
+    ['analysis', 'first sample is a baseline', 'does not prove that audio is present'],
+    ['analysis-correlation', 'fully negatively correlated', 'not a correlation value of zero'],
+    ['performance-stages', 'same complete block', 'last complete five-second window'],
+    ['api', 'Run sends it', 'real engine'],
+    ['api-console', 'not a simulation', 'checking the request result']
 ])('%s help separates its explanations from live settings', async (topic, first, second) => {
     await withHelp(async ({ show }) => {
         const dialog = await show(topic);
@@ -69,4 +78,17 @@ test.each([
         expect(dialog.textContent).toContain(second);
         expect(dialog.querySelectorAll('input, select')).toHaveLength(0);
     });
+});
+
+test('inline help uses the same content without opening a modal or taking focus', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div'), origin = document.createElement('button');
+    document.body.append(origin, host); origin.focus();
+    const root = createRoot(host);
+    try {
+        await act(async () => root.render(<AudioHelpContent topic="analysis-timeline" />));
+        expect(host.textContent).toContain('Period filters the visible history');
+        expect(document.querySelector('[role="dialog"]')).toBeNull();
+        expect(document.activeElement).toBe(origin);
+    } finally { await act(async () => root.unmount()); host.remove(); origin.remove(); }
 });

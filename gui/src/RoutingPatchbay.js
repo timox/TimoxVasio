@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import RoutingHelp, { RoutingTypeBadge } from './RoutingHelp';
 import { createPortal } from 'react-dom';
 import { ReactFlow, Background, Handle, Position, useNodesState, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -133,6 +134,8 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
     onCreateConnection = () => {}, onShowProcessDetail = () => {},
     onCreateBridge, onShowNativeAudio, onConfigurePwar, onEditBridge = () => {}, onRemoveBridge = () => {}, isConnectionAllowed = () => true }) {
     const [contextMenu, setContextMenu] = useState(null);
+    const [routingTab, setRoutingTab] = useState('graph');
+    const routingTabsId = React.useId();
     const [processDialogKey, setProcessDialogKey] = useState(null);
     React.useEffect(() => {
         if (!processDialogKey) return undefined;
@@ -417,8 +420,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                 setCollapsedGroups(current => ({ ...current, [nodeKey]: !collapsed }));
                 if (!collapsed && endpointIds.has(selectedSourceId)) selectSource(null);
             }}>{collapsed ? '▸' : '▾'}</button>
-            <span className={`patchbay-object-icon ${node.type}`} aria-hidden="true">{node.type === 'wasapi' ? '◈' : node.type === 'physical' ? '▣' :
-                node.type === 'profile' ? '◇' : node.type === 'saved' ? '◌' : '▤'}</span>
+            <RoutingTypeBadge type={node.type} />
             <strong title={layout.label || node.label}>{layout.label || node.label}</strong>
             <span>{linkCount} {linkCount === 1 ? 'link' : 'links'}</span>
         </div>
@@ -495,16 +497,19 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
     };
 
     return <div className="patchbay" style={{ '--selected-route-color': selectedVisual?.color || DEFAULT_ROUTE_COLOR }}>
-        <details className="patchbay-legend" aria-label="Graph symbols">
-            <summary>Graph key</summary><div>
-            <span><b className="physical">▣</b> Physical I/O</span><span><b className="process">▤</b> Process / virtual I/O</span>
-            <span><b>◈</b> Windows audio bridge</span>
-            <span><b className="profile">◇</b> Channel profile</span><span><b className="saved">◌</b> Process not open</span>
-            <span><i className="line saved" /> Saved</span>
-            <span><i className="line pending" /> Pending</span><span><i className="line muted" /> Muted</span>
-            <span>▲ Gain above 0 dB</span>
-            </div>
-        </details>
+        <div className="routing-view-tabs" role="tablist" aria-label="Routing views">
+            {['graph', 'help'].map(tab => <button key={tab} type="button" role="tab" id={`${routingTabsId}-${tab}-tab`}
+                aria-controls={`${routingTabsId}-${tab}-panel`} aria-selected={routingTab === tab} tabIndex={routingTab === tab ? 0 : -1}
+                onClick={() => { setContextMenu(null); setRoutingTab(tab); }}
+                onKeyDown={event => {
+                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                    event.preventDefault();
+                    const next = event.key === 'Home' ? 'graph' : event.key === 'End' ? 'help' : tab === 'graph' ? 'help' : 'graph';
+                    setContextMenu(null); setRoutingTab(next);
+                    document.getElementById(`${routingTabsId}-${next}-tab`)?.focus();
+                }}>{tab === 'graph' ? 'Graph' : 'Help'}</button>)}
+        </div>
+        <div className="routing-view-panel" role="tabpanel" id={`${routingTabsId}-graph-panel`} aria-labelledby={`${routingTabsId}-graph-tab`} hidden={routingTab !== 'graph'}>
         <div className="patchbay-toolbar">
             <p>{connectedOnly ? 'Saved connections and pending changes' :
                 'Select an output, then an input. Apply configuration to activate the change.'}</p>
@@ -851,5 +856,9 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                     })}>Remove this connection</button>
             </>}
         </div>, document.body)}
+        </div>
+        <div className="routing-view-panel" role="tabpanel" id={`${routingTabsId}-help-panel`} aria-labelledby={`${routingTabsId}-help-tab`} hidden={routingTab !== 'help'}>
+            <RoutingHelp />
+        </div>
     </div>;
 }

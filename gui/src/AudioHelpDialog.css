@@ -33,10 +33,11 @@
 .audio-help-header h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--text-primary); }
 .audio-help-header button { flex-shrink: 0; }
 .audio-help-body { overflow-y: auto; overscroll-behavior: contain; padding: 20px 24px 28px; }
-.audio-help-body p { margin: 8px 0 12px; max-width: 72ch; color: var(--text-secondary); }
-.audio-help-body .audio-help-intro { margin-top: 0; color: var(--text-primary); }
-.audio-help-body section + section { margin-top: 24px; }
-.audio-help-body h3 { margin: 0 0 8px; font-size: 14px; font-weight: 650; color: var(--text-primary); }
+.audio-help-content { max-width: 72ch; font: 14px/1.6 'Segoe UI Variable Text', 'Segoe UI', Arial, sans-serif; }
+.audio-help-content p { margin: 8px 0 12px; color: var(--text-secondary); }
+.audio-help-content .audio-help-intro { margin-top: 0; color: var(--text-primary); }
+.audio-help-content section + section { margin-top: 24px; }
+.audio-help-content h3 { margin: 0 0 8px; font-size: 14px; font-weight: 650; color: var(--text-primary); }
 .audio-help-dialog :focus-visible { outline: 2px solid var(--focus); outline-offset: -3px; }
 @media (max-width: 600px) {
     .audio-help-backdrop { padding: 10px; }

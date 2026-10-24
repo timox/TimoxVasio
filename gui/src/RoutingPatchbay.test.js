@@ -28,6 +28,45 @@ const destinationGroups = [
     ] }
 ];
 
+test('Routing help explains ASIO and WASAPI while preserving the mounted graph and draft', async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const wasapi = { id: 'wasapi:speaker:input', bridgeId: 'speaker', label: 'Windows speaker', kind: 'wasapi-render',
+        endpoints: [{ id: 'wasapi:speaker:output:1', name: 'Speaker 1' }] };
+    const routes = [destinationGroups[0], wasapi].map((group, index) => ({ id: `route-${index}`,
+        sourceEndpointId: sourceGroups[0].endpoints[0].id, destinationEndpointId: group.endpoints[0].id }));
+    const onToggleRoute = jest.fn(), onEditRoute = jest.fn();
+    const container = document.createElement('div'); document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => root.render(<RoutingPatchbay sourceGroups={sourceGroups}
+            destinationGroups={[...destinationGroups, wasapi]} routes={routes}
+            onToggleRoute={onToggleRoute} onEditRoute={onEditRoute} />));
+        expect(container.querySelector('.patchbay-interface.physical .routing-type-badge').textContent).toBe('ASIO');
+        expect(container.querySelector('.patchbay-interface.wasapi .routing-type-badge').textContent).toBe('WASAPI');
+        expect(container.querySelector('.patchbay-interface.process .routing-type-badge').textContent).toBe('App');
+        const graph = container.querySelector('.patchbay-flow');
+        const tabs = [...container.querySelectorAll('[role="tablist"][aria-label="Routing views"] [role="tab"]')];
+        expect(tabs.map(tab => tab.textContent)).toEqual(['Graph', 'Help']);
+        await act(async () => Simulate.change(container.querySelector('.patchbay-search input'), { target: { value: 'Out 1' } }));
+        await act(async () => Simulate.click(tabs[1]));
+        const graphPanel = document.getElementById(tabs[0].getAttribute('aria-controls'));
+        const helpPanel = document.getElementById(tabs[1].getAttribute('aria-controls'));
+        expect(graphPanel.hidden).toBe(true);
+        expect(helpPanel.hidden).toBe(false);
+        expect(helpPanel.textContent).toContain('not a physical ASIO interface');
+        expect(helpPanel.textContent).toContain('existing Windows recording or playback endpoint');
+        expect(helpPanel.textContent).toContain('Cable colors can be customized');
+        await act(async () => Simulate.keyDown(tabs[1], { key: 'Home' }));
+        expect(graphPanel.hidden).toBe(false);
+        expect(helpPanel.hidden).toBe(true);
+        expect(container.querySelector('.patchbay-flow')).toBe(graph);
+        expect(container.querySelector('.patchbay-search input').value).toBe('Out 1');
+        expect(document.querySelector('.patchbay-inspector')).toBeNull();
+        expect(onToggleRoute).not.toHaveBeenCalled();
+        expect(onEditRoute).not.toHaveBeenCalled();
+    } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
 test('a process context menu opens creation for that process', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const routes = [{ id: 'first', sourceEndpointId: sourceGroups[0].endpoints[0].id,

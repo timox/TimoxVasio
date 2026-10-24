@@ -4,7 +4,9 @@ import './App.css';
 import './ProfessionalTheme.css';
 import './Workspace.css';
 import './RoutingPalette.css';
-import AudioHelpDialog from './AudioHelpDialog';
+import AudioHelpDialog, { AudioHelpContent } from './AudioHelpDialog';
+import ContextHelp from './ContextHelp';
+import SectionTabs from './SectionTabs';
 import RoutingPatchbay from './RoutingPatchbay';
 import NativeAudioDialog from './NativeAudioDialog';
 import PwarDialog from './PwarDialog';
@@ -56,6 +58,10 @@ function App() {
     const [activeView, setActiveView] = useState('configuration');
     const [setupTab, setSetupTab] = useState('asio');
     const [helpTopic, setHelpTopic] = useState(null);
+    const [analysisTab, setAnalysisTab] = useState('timeline');
+    const [performanceTab, setPerformanceTab] = useState('callback');
+    const [apiTab, setApiTab] = useState('swagger');
+    const [wasapiTab, setWasapiTab] = useState('devices');
     const [diagnostics, setDiagnostics] = useState({ level: 'info', entries: [] });
     const [diagnosticsError, setDiagnosticsError] = useState('');
     const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
@@ -935,12 +941,15 @@ function App() {
                 </div>}
             </nav>
             {activeView === 'analysis' ? <main className="main-content api-console">
-                <AnalysisTimeline performanceHistory={performanceHistory} transportHistory={transportHistory}
+                <div className="workspace-heading"><h2>Analysis</h2><ContextHelp topic={analysisTab === 'help' ? 'analysis' : 'analysis-' + analysisTab} onOpen={setHelpTopic} label="Help with this analysis" /></div>
+                <SectionTabs id="analysis" label="analysis topics" value={analysisTab} onChange={setAnalysisTab} tabs={[{"id":"timeline","label":"Timeline"},{"id":"transport","label":"Transport incidents"},{"id":"channels","label":"Channels"},{"id":"correlation","label":"Stereo correlation"},{"id":"help","label":"Help"}]} />
+                <div className="subtopic-panel" hidden={['correlation', 'help'].includes(analysisTab)}>
+                <AnalysisTimeline view={analysisTab} onHelp={setHelpTopic} performanceHistory={performanceHistory} transportHistory={transportHistory}
                     virtualClients={virtualDriver?.clients || []} routes={apiState?.routes || []}
                     configuredRoutes={confirmedRoutes}
                     engine={engine} onClear={() => { setPerformanceHistory([]); setTransportHistory([]); }} />
-                <section className="section analysis-view"><h2>L/R stereo correlation</h2>
-                    <p className="hint">Measures correlation between the two channels of an active output pair. Values range from −1 (out of phase) to +1 (in phase).</p>
+                </div><section className="section analysis-view" id="analysis-panel-correlation" role="tabpanel" aria-labelledby="analysis-tab-correlation" hidden={analysisTab !== 'correlation'}><h2>L/R stereo correlation</h2>
+                    <ContextHelp topic="analysis-correlation" onOpen={setHelpTopic} label="How to read stereo correlation" />
                     <label className="field">L/R output pair
                         <select value={selectedStereoPairId} onChange={event => setSelectedStereoPairId(event.target.value)}>
                             <option value="">Select a routed pair</option>
@@ -957,12 +966,15 @@ function App() {
                     <div className="analysis-actions"><button type="button" onClick={startCorrelation} disabled={!selectedStereoPair || engine?.state !== 'running'}>Start analysis</button>
                         <button type="button" onClick={stopCorrelation} disabled={correlation.state === 'stopped'}>Stop analysis</button></div>
                 </section>
+                <section className="section topic-help" id="analysis-panel-help" role="tabpanel" aria-labelledby="analysis-tab-help" hidden={analysisTab !== 'help'}><AudioHelpContent topic="analysis" /></section>
             </main> : activeView === 'api' ? <main className="main-content api-console">
-                <section className="section"><h2>HTTP reference</h2>
+                <div className="workspace-heading"><h2>API and Swagger</h2><ContextHelp topic={'api-' + (apiTab === 'help' ? 'console' : apiTab)} onOpen={setHelpTopic} label="Help with this API tool" /></div>
+                <SectionTabs id="api" label="api topics" value={apiTab} onChange={setApiTab} tabs={[{"id":"swagger","label":"Swagger"},{"id":"websocket","label":"WebSocket commands and events"},{"id":"console","label":"API console"},{"id":"help","label":"Help"}]} />
+                <section className="section swagger-topic" id="api-panel-swagger" role="tabpanel" aria-labelledby="api-tab-swagger" hidden={apiTab !== 'swagger'}><h2>HTTP reference</h2>
                     <p className="hint">OpenAPI specification bundled with the application. Schemas are included; no external service is loaded.</p>
                     <div className="swagger-frame"><iframe title="TimoxVasio Swagger documentation" src="swagger.html" /></div>
                 </section>
-                <section className="section"><h2>WebSocket commands and events</h2>
+                <section className="section" id="api-panel-websocket" role="tabpanel" aria-labelledby="api-tab-websocket" hidden={apiTab !== 'websocket'}><h2>WebSocket commands and events</h2>
                     <p className="hint">Local connection using the subprotocol <code>vasio.api.v1</code>.</p>
                     <dl className="websocket-reference"><dt>Commands</dt><dd>{openApiDocument.paths['/api/v1/ws'].get['x-websocket'].commands.map(name => <code key={name}>{name}</code>)}</dd>
                         <dt>Configuration</dt><dd>`configuration.apply` sets the physical driver, sample rate, buffer size, and routes.</dd>
@@ -970,7 +982,7 @@ function App() {
                         <dt>Events</dt><dd>{openApiDocument.paths['/api/v1/ws'].get['x-websocket'].events.map(name => <code key={name}>{name}</code>)}</dd></dl>
                     <pre className="json-example">{JSON.stringify({ id: 'request-id', command: 'configuration.apply', payload: { physicalDriverId: null, sampleRate: null, bufferFrames: null, routes: [] } }, null, 2)}</pre>
                 </section>
-                <section className="section api-console-panel"><h2>Console API</h2>
+                <section className="section api-console-panel" id="api-panel-console" role="tabpanel" aria-labelledby="api-tab-console" hidden={apiTab !== 'console'}><h2>Console API</h2>
                     <p className="hint">Send a documented WebSocket command or HTTP request to the local API.</p>
                     <label className="field">Request type<select value={consoleMode} onChange={event => setConsoleMode(event.target.value)}><option value="websocket">WebSocket command</option><option value="http">HTTP request</option></select></label>
                     {consoleMode === 'websocket' && <label className="field">Preset command<select value={consoleCommand} onChange={event => {
@@ -1002,11 +1014,12 @@ function App() {
                         <div className="analysis-actions"><button type="button" onClick={runConsoleRequest}>Confirm</button><button type="button" onClick={() => setConsoleConfirmation('')}>Cancel</button></div>
                     </dialog>
                 </section>
+                <section className="section topic-help" id="api-panel-help" role="tabpanel" aria-labelledby="api-tab-help" hidden={apiTab !== 'help'}><AudioHelpContent topic="api" /></section>
             </main> : activeView === 'performance' ? <main className="main-content api-console">
                 <div className="workspace-heading"><div><h2>Performance</h2><p>Live observations · {activeClockDriver}</p></div>
-                    <button className="workspace-help" type="button" onClick={() => setHelpTopic('performance')}>? <span>Reading these measurements</span></button></div>
-                <details className="performance-guide"><summary>Buffer timing illustration</summary><BufferTimingDiagram sampleRate={engine?.sampleRate} bufferFrames={engine?.bufferFrames} /></details>
-                <section className="section buffer-health" aria-label={runningSoftwareClock ? 'Software callback performance' : 'Physical callback performance'}>
+                    <button className="workspace-help" type="button" onClick={() => setHelpTopic('performance-' + (performanceTab === 'help' ? 'callback' : performanceTab))}>? <span>Reading these measurements</span></button></div>
+                <SectionTabs id="performance" label="performance topics" value={performanceTab} onChange={setPerformanceTab} tabs={[{"id":"callback","label":"Audio callback"},{"id":"applications","label":"Applications"},{"id":"transport","label":"Transport"},{"id":"stages","label":"Stage measurements"},{"id":"help","label":"Help"}]} />
+                <section className="section buffer-health" id="performance-panel-callback" role="tabpanel" aria-labelledby="performance-tab-callback" hidden={performanceTab !== 'callback'} aria-label={runningSoftwareClock ? 'Software callback performance' : 'Physical callback performance'}>
                     <h2>{runningSoftwareClock ? 'Software clock callback' : 'Physical ASIO callback'}</h2>
                     {!bufferHealth ? <p>No callback observation yet. Open an ASIO application and wait for a five-second window.</p> : <>
                         <p role="status">{bufferHealth.state === 'warning' ? 'Callback timing incidents were observed.' :
@@ -1027,7 +1040,7 @@ function App() {
                         <p className="hint">{bufferHealth.sampleRate} Hz · {bufferHealth.bufferFrames} frames · {(bufferHealth.windowDurationMs / 1000).toFixed(1)} s window. Timing incidents do not by themselves prove an audible dropout.</p>
                     </>}
                 </section>
-                <section className="section routed-app-cpu" aria-label="Routed application CPU">
+                <section className="section routed-app-cpu" id="performance-panel-applications" role="tabpanel" aria-labelledby="performance-tab-applications" hidden={performanceTab !== 'applications'} aria-label="Routed application CPU">
                     <h2>Routed application load</h2>
 
                     {routedClients.length === 0 ? <p>No routed ASIO application is active.</p> :
@@ -1053,7 +1066,7 @@ function App() {
                             </article>;
                         })}</div>}
                 </section>
-                <section className="section transport-health" aria-label="Virtual transport losses">
+                <section className="section transport-health" id="performance-panel-transport" role="tabpanel" aria-labelledby="performance-tab-transport" hidden={performanceTab !== 'transport'} aria-label="Virtual transport losses">
                     <h2>Virtual transport</h2>
                     <p className="setup-description">Cumulative incomplete or unconsumed blocks per transport.</p>
                     {routedTransportDirections.length === 0 ? <p>No routed virtual channels.</p> :
@@ -1063,7 +1076,7 @@ function App() {
                         </table></div>}
                     <p className="hint">Only directions used by active routes are shown. A dash means no meter event has arrived yet.</p>
                 </section>
-                <section className="section performance-flow" aria-label="Audio latency path">
+                <section className="section performance-flow" id="performance-panel-stages" role="tabpanel" aria-labelledby="performance-tab-stages" hidden={performanceTab !== 'stages'} aria-label="Audio latency path">
                     <h2>{runningSoftwareClock ? 'Between ASIO applications' : 'From the ASIO application to the audio output'}</h2>
                     <div className="stage-controls">
                         <label className="stage-toggle"><input type="checkbox" checked={!!measurements?.enabled}
@@ -1077,7 +1090,7 @@ function App() {
                             !hasStageSamples ? 'No stage samples' : 'Last complete 5 s window'}</span>
                     </div>
                     {measurementsError && <p className="error-panel" role="alert">{measurementsError}</p>}
-                    <details className="stage-details" open={!!measurements?.enabled}><summary>Stage measurements</summary>
+                    <div className="stage-details">
                     <ol className="transport-steps">
                         <li><strong>Application produces a block</strong><span>Its ASIO callback writes the output samples into a shared ring in TimoxVasio.</span>
                             <div className="stage-measurements">{measurementWindow?.clients.length ? measurementWindow.clients.map(client =>
@@ -1101,10 +1114,11 @@ function App() {
                                 {stageDuration('Routing', hasApplicationPath ? measurementWindow?.physical.routing : null)}
                                 {!runningSoftwareClock && stageDuration('Physical output copy', hasApplicationPath ? measurementWindow?.physical.outputCopy : null)}
                             </div></li>
-                    </ol></details>
+                    </ol></div>
 
                     <p className="setup-footnote">Application-to-speaker latency is not measured.</p>
                 </section>
+                <section className="section topic-help" id="performance-panel-help" role="tabpanel" aria-labelledby="performance-tab-help" hidden={performanceTab !== 'help'}><AudioHelpContent topic="performance" /><details className="performance-guide"><summary>Buffer timing illustration</summary><BufferTimingDiagram sampleRate={engine?.sampleRate} bufferFrames={engine?.bufferFrames} /></details></section>
             </main> : activeView === 'diagnostics' ? <main className="main-content api-console">
                 <section className="section diagnostics-view"><div className="section-heading"><div><h2>Engine logs</h2><p className="hint">Persistent file: %LOCALAPPDATA%\TimoxVasio\logs\engine.log</p></div>
                     <div className="diagnostics-actions"><label className="field">Log level<select value={diagnostics.level} onChange={event => setDiagnosticLevel(event.target.value)}><option value="info">Standard</option><option value="debug">Detailed</option></select></label>
@@ -1167,7 +1181,7 @@ function App() {
                     </div>}
 
                 {activeView === 'configuration' && <div className="workspace-heading"><div><h2>Audio setup</h2><p>Devices and master clock</p></div>
-                    <button className="workspace-help" type="button" onClick={() => setHelpTopic(setupTab)} aria-label={'Help with ' + (setupTab === 'clock' ? 'Clock' : setupTab.toUpperCase())}>? <span>Help</span></button></div>}
+                    <button className="workspace-help" type="button" onClick={() => setHelpTopic(setupTab === 'wasapi' && wasapiTab === 'status' ? 'wasapi-status' : setupTab)} aria-label={'Help with ' + (setupTab === 'clock' ? 'Clock' : setupTab.toUpperCase())}>? <span>Help</span></button></div>}
                 <div className={activeView === 'configuration' ? 'setup-workspace' : 'routing-content'}>
                 {activeView === 'configuration' && <div className="setup-tabs" role="tablist" aria-label="Audio setup categories">
                     {['asio', 'clock', 'wasapi'].map(id => <button key={id} id={`setup-tab-${id}`} type="button" role="tab"
@@ -1271,14 +1285,15 @@ function App() {
 
                 {activeView === 'configuration' && apiState?.apiVersion === '1.1' && <section className="section setup-panel" id="setup-wasapi" role="tabpanel" aria-labelledby="setup-tab-wasapi" hidden={setupTab !== 'wasapi'} aria-label="Windows audio bridges">
                     <h2>Windows audio devices (WASAPI)</h2>
-                    <p className="setup-description">Add Windows inputs and outputs to the routing graph.</p>
+                    <p className="setup-description">Add Windows inputs and outputs to the routing graph.</p><SectionTabs id="wasapi" label="Windows audio topics" value={wasapiTab} onChange={setWasapiTab} tabs={[{id:'devices',label:'Devices and bridges'},{id:'status',label:'Live status'},{id:'help',label:'Help'}]} />
+                    <div className="subtopic-panel" id="wasapi-panel-devices" role="tabpanel" aria-labelledby="wasapi-tab-devices" hidden={wasapiTab !== 'devices'}>
                     <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'add' })}>Add Windows audio bridge…</button>
                         <button type="button" onClick={() => setActiveView('channels')}>Open Routing for Windows audio</button>
                         <button type="button" disabled={bridgeInventoryBusy || !window.vasio.getWasapiDevices} onClick={refreshBridgeInventory}>Refresh Windows endpoints</button></div>
                     {apiState.wasapiInventoryError && <p role="alert">Windows endpoint discovery: {apiState.wasapiInventoryError}</p>}
                     {!(configuration?.wasapiBridges || []).length && <p>No Windows audio bridges configured.</p>}
                     {(configuration?.wasapiBridges || []).map(bridge => <article className="application-channel-card" key={bridge.id}>
-                        <h3>{bridge.id} · {bridge.kind}</h3><BridgeStatus bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} />
+                        <h3>{bridge.id} · {bridge.kind}</h3><BridgeStatus compact bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} />
                         <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'edit', bridge })}>Configure {bridge.id}</button>
                             <button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'remove', bridge })}>Remove {bridge.id}</button></div>
                     </article>)}
@@ -1291,6 +1306,13 @@ function App() {
                             setBridgeDialog({ kind: 'add', bridge: { id: `${kind}_${number}`, kind, endpointId: device.id,
                                 enabled: device.state === 1, bufferDuration100ns: 0 } });
                         }} />
+                    </div>
+                    <div className="subtopic-panel" id="wasapi-panel-status" role="tabpanel" aria-labelledby="wasapi-tab-status" hidden={wasapiTab !== 'status'}>
+                        <div className="section-heading"><h3>Stream monitoring</h3><ContextHelp topic="wasapi-status" onOpen={setHelpTopic} label="Read the stream counters" /></div>
+                        {!(configuration?.wasapiBridges || []).length && <p>No bridges configured. Add a device in Devices and bridges.</p>}
+                        {(configuration?.wasapiBridges || []).map(bridge => <article className="bridge-status-card" key={bridge.id}><h3>{bridge.id}</h3><BridgeStatus bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} onHelp={setHelpTopic} /></article>)}
+                    </div>
+                    <div className="subtopic-panel topic-help" id="wasapi-panel-help" role="tabpanel" aria-labelledby="wasapi-tab-help" hidden={wasapiTab !== 'help'}><AudioHelpContent topic="wasapi" /></div>
                 </section>}
                 {activeView === 'channels' && <section className="section routing-workspace-section">
                     <h2>Routing</h2>
@@ -1361,7 +1383,7 @@ function App() {
                 {bridgeDialog && <BridgeDialog key={`${bridgeDialog.kind}:${bridgeDialog.bridge?.id || ''}`} dialog={bridgeDialog}
                     bridges={configuration?.wasapiBridges || []} routes={configuration?.routes || []}
                     devices={apiState?.wasapiDevices || []} runtime={apiState?.wasapiBridges?.find(item => item.id === bridgeDialog.bridge?.id)}
-                    inventoryError={apiState?.wasapiInventoryError} disabled={configurationLocked || !!hardwareTransfer}
+                    inventoryError={apiState?.wasapiInventoryError} onHelp={setHelpTopic} disabled={configurationLocked || !!hardwareTransfer}
                     onClose={() => setBridgeDialog(null)} onSave={bridge => {
                         updateDraft(current => ({ ...current, wasapiBridges: [...(current.wasapiBridges || []).filter(item => item.id !== bridge.id), bridge] }));
                         setBridgeDialog(null);
@@ -1382,24 +1404,33 @@ function App() {
     );
 }
 
-function BridgeStatus({ bridge, runtime, devices }) {
+function BridgeStatus({ bridge, runtime, devices, compact = false, onHelp }) {
     const device = devices.find(item => item.id === (runtime?.effectiveInfo?.endpointId || bridge.endpointId));
     const format = runtime?.effectiveInfo?.format;
-    return <>
-        <p>Desired: {bridge.enabled === false ? 'disabled' : 'enabled'} · Stream: {runtime?.state || 'not opened'} · {device?.name || bridge.endpointId || `Default ${bridge.defaultRole}`}</p>
-        {runtime?.effectiveInfo?.endpointId && <p className="hint">Resolved endpoint: {runtime.effectiveInfo.endpointId}</p>}
-        {format && <p>{format.sampleRate} Hz · {format.channels} channels · {format.encoding} {format.validBits}/{format.containerBits} bits</p>}
+    const health = runtime?.health;
+    return <div className={compact ? 'bridge-summary' : 'bridge-live-status'}>
+        <p>{device?.name || bridge.endpointId || ('Windows default: ' + bridge.defaultRole)}</p>
+        <div className="bridge-state-line"><span>{bridge.enabled === false ? 'Audio disabled' : 'Audio enabled'}</span><span>Stream: {runtime?.state || 'not opened'}</span></div>
         {device?.error && <p role="alert">{device.error}</p>}
-        {runtime?.state === 'retrying' && <p>Retry {runtime.retryAttempt} in {runtime.retryInMs} ms</p>}
-        {runtime?.health && <p className="hint">Buffered: {runtime.health.bufferedFrames ?? '—'} graph frames · Rejected: {runtime.health.rejectedFrames ?? '—'} graph frames · Silenced: {runtime.health.silencedFrames ?? '—'} graph frames
-            {runtime.health.error ? ` · Stream error: ${runtime.health.error}` : ''}
-            {runtime.health.mmcssError ? ` · Scheduling error: ${runtime.health.mmcssError}` : ''}
-            {runtime.health.primingTimedOut ? ' · Priming timed out' : ''}
-            {runtime.health.controlBacklogUpdates != null ? ` · Control backlog observations: ${runtime.health.controlBacklogUpdates}` : ''}</p>}
-    </>;
+        {!compact && <>
+            <div className="section-heading"><h4>Live measurements</h4>{onHelp && <ContextHelp topic="wasapi-status" onOpen={onHelp} label="What do these stream counters mean?" />}</div>
+            {format && <p className="setup-description">{format.sampleRate} Hz · {format.channels} channels · {format.encoding} {format.validBits}/{format.containerBits} bits</p>}
+            {runtime?.state === 'retrying' && <p role="status">Retry {runtime.retryAttempt} in {runtime.retryInMs} ms</p>}
+            {health ? <dl className="bridge-metrics">
+                <div><dt>Frames currently queued</dt><dd>{health.bufferedFrames ?? '—'} <small>graph frames</small></dd></div>
+                <div><dt>Frames rejected</dt><dd>{health.rejectedFrames ?? '—'} <small>graph frames</small></dd></div>
+                <div><dt>Frames replaced with silence</dt><dd>{health.silencedFrames ?? '—'} <small>graph frames</small></dd></div>
+                {health.controlBacklogUpdates != null && <div><dt>Control backlog observations</dt><dd>{health.controlBacklogUpdates}</dd></div>}
+            </dl> : <p className="hint">No stream measurements available.</p>}
+            {health?.error ? <p role="alert">Stream error: {health.error}</p> : null}
+            {health?.mmcssError ? <p role="alert">Scheduling error: {health.mmcssError}</p> : null}
+            {health?.primingTimedOut && <p role="status">Priming timed out</p>}
+            {runtime?.effectiveInfo?.endpointId && <details className="bridge-technical"><summary>Device identifier</summary><code>{runtime.effectiveInfo.endpointId}</code></details>}
+        </>}
+    </div>;
 }
 
-function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryError, disabled, onClose, onSave, onRemove }) {
+function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryError, disabled, onClose, onSave, onRemove, onHelp }) {
     const [draft, setDraft] = useState(() => ({ id: '', kind: 'capture', enabled: true, bufferDuration100ns: 0, endpointId: '', ...dialog.bridge }));
     const [selection, setSelection] = useState(dialog.bridge?.defaultRole ? 'default' : 'endpoint');
     const dialogRef = useRef(null);
@@ -1439,20 +1470,22 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryErro
                 <button type="button" disabled={disabled} onClick={() => onRemove(draft.id)}>Remove bridge and its connections</button></> : <>
                 <label className="field">Bridge ID<input aria-label="Bridge ID" maxLength="128" disabled={disabled || dialog.kind !== 'add'} value={draft.id} onChange={event => set('id', event.target.value)} /></label>
                 <p className="hint">Use letters, digits, underscores or hyphens. The ID stays fixed so saved channel connections remain stable.</p>
-                <label className="field">Mode<select aria-label="Bridge kind" disabled={disabled || (dialog.kind !== 'add' && usedRoutes.length > 0)} value={draft.kind}
+                <div className="field-help-heading"><span>Audio direction</span><ContextHelp topic="wasapi-mode" onOpen={onHelp} label="Choose the audio direction" /></div>
+                <label className="field"><span className="sr-only">Mode</span><select aria-label="Bridge kind" disabled={disabled || (dialog.kind !== 'add' && usedRoutes.length > 0)} value={draft.kind}
                     onChange={event => setDraft(current => ({ ...current, kind: event.target.value, endpointId: '' }))}>
                     <option value="capture">Capture Windows input</option><option value="render">Play to Windows output</option><option value="endpointLoopback">Capture Windows output (endpoint loopback)</option>
                 </select></label>
                 {usedRoutes.length > 0 && <p className="hint">Mode is fixed while this bridge has saved connections. Disabling the bridge keeps those connections.</p>}
-                <label className="field">Endpoint selection<select aria-label="Bridge selection" disabled={disabled} value={selection} onChange={event => setSelection(event.target.value)}>
-                    <option value="endpoint">Specific endpoint</option><option value="default">Windows default role</option></select></label>
+                <div className="field-help-heading"><span>Device selection</span><ContextHelp topic="wasapi-endpoint" onOpen={onHelp} label="Fixed device or Windows default?" /></div>
+                <label className="field"><span className="sr-only">Endpoint selection</span><select aria-label="Bridge selection" disabled={disabled} value={selection} onChange={event => setSelection(event.target.value)}>
+                    <option value="endpoint">Always use this device</option><option value="default">Follow the Windows default</option></select></label>
                 {selection === 'default' ? <label className="field">Role<select aria-label="Default endpoint role" disabled={disabled} value={draft.defaultRole || 'console'} onChange={event => set('defaultRole', event.target.value)}>
                     <option value="console">Console</option><option value="multimedia">Multimedia</option><option value="communications">Communications</option></select></label> :
-                    <label className="field">Windows endpoint<select aria-label="Windows endpoint" disabled={disabled} value={draft.endpointId || ''} onChange={event => {
+                    <label className="field">Windows device<select aria-label="Windows endpoint" disabled={disabled} value={draft.endpointId || ''} onChange={event => {
                         const endpoint = choices.find(item => item.id === event.target.value);
                         setDraft(current => ({ ...current, endpointId: event.target.value, enabled: endpoint?.state === 1 ? current.enabled : false }));
                     }}>
-                        <option value="">Select an endpoint</option>
+                        <option value="">Select a Windows device</option>
                         {draft.endpointId && !selected && <option value={draft.endpointId}>{draft.endpointId} (unavailable)</option>}
                         {choices.map(item => <option key={item.id} value={item.id}>{item.name}{item.state === 1 ? '' : ' (unavailable)'}</option>)}
                     </select></label>}
@@ -1462,10 +1495,11 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryErro
                 {selection === 'endpoint' && draft.endpointId && selected?.state !== 1 && <p role={draft.enabled ? 'alert' : 'status'}>
                     {draft.enabled ? 'This endpoint is unavailable. Turn off Enabled to save it offline.' : 'Unavailable — audio disabled. You can save this endpoint offline and enable it when it becomes available.'}
                 </p>}
-                <label className="field">Requested buffer duration (ms; 0 = system default)<input aria-label="Bridge buffer duration (ms)" type="number" min="0" max="1000" step="0.0001" disabled={disabled} value={draft.bufferDuration100ns / 10000} onChange={event => set('bufferDuration100ns', Math.round(Number(event.target.value) * 10000))} /></label>
-                {runtime && <BridgeStatus bridge={dialog.bridge} runtime={runtime} devices={devices} />}
-                <p className="hint">Windows audio uses its own clock. Bridges adapt rate and add buffering. Endpoint loopback to the same Windows output is not allowed.</p>
-                {!valid && <p role="status">Choose an endpoint or default role, a unique valid ID, and a duration between 0 and 1000 ms.</p>}
+                <div className="field-help-heading"><span>Requested buffer duration</span><ContextHelp topic="wasapi-buffer" onOpen={onHelp} label="How to choose the buffer duration" /></div>
+                <label className="field"><span>Milliseconds · 0 uses the Windows default</span><input aria-label="Bridge buffer duration (ms)" type="number" min="0" max="1000" step="0.0001" disabled={disabled} value={draft.bufferDuration100ns / 10000} onChange={event => set('bufferDuration100ns', Math.round(Number(event.target.value) * 10000))} /></label>
+                {runtime && <details className="bridge-runtime-disclosure"><summary>View current stream status (read-only)</summary><BridgeStatus bridge={dialog.bridge} runtime={runtime} devices={devices} onHelp={onHelp} /></details>}
+
+                {!valid && <p role="status">Choose a device or Windows default, a unique ID, and a duration between 0 and 1000 ms.</p>}
                 <button type="button" disabled={disabled || !valid} onClick={save}>Save bridge to draft</button>
             </>}
         </div></div>, document.body);

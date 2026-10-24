@@ -1,4 +1,23 @@
 /* Workspace chrome: navigation, controls and help have distinct places. */
+.App [role="tabpanel"][hidden], .App .subtopic-panel[hidden] { display: none !important; }
+.subtopic-panel { min-width: 0; }
+.topic-help { max-width: 900px; }
+.topic-help .audio-help-body { padding: 8px 0; }
+.topic-help h2 { margin-top: 0; }
+.field-help-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; font-weight: 600; }
+.bridge-state-line { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--text-secondary); }
+.bridge-summary p { margin: 8px 0; }
+.bridge-status-card { padding: 16px 0; border-top: 1px solid var(--border-subtle); }
+.bridge-live-status h4 { margin: 12px 0; font-size: 13px; }
+.bridge-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.bridge-metrics > div { padding: 14px; background: var(--surface-inset); border: 1px solid var(--border-subtle); border-radius: 4px; }
+.bridge-metrics dt { color: var(--text-secondary); font-size: 12px; }
+.bridge-metrics dd { margin: 8px 0 0; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bridge-metrics small { font-size: 11px; font-weight: 400; }
+.bridge-technical { margin-top: 14px; font-size: 12px; overflow-wrap: anywhere; }
+.bridge-runtime-disclosure { margin: 20px 0; padding: 14px; border: 1px solid var(--border-subtle); background: var(--surface-inset); }
+.bridge-runtime-disclosure > summary { cursor: pointer; font-weight: 600; }
+.swagger-topic .swagger-frame { height: max(500px, calc(100vh - 280px)); }
 .App { --surface-page: #edf0f3; --surface-inset: #f2f5f7; --border-subtle: #ccd4db; --text-secondary: #53616d; }
 .App-header { min-height: 44px; box-sizing: border-box; padding: 9px 18px; background: #fff; }
 .brand h1 { font-size: 16px; }
