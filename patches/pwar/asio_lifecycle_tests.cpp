@@ -56,6 +56,35 @@ bool SendAudioDatagram() {
     closesocket(socket);
     return result == sizeof(packet);
 }
+bool SendInvalidDatagrams() {
+    const auto socket = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (socket == INVALID_SOCKET) return false;
+    sockaddr_in address{}; address.sin_family = AF_INET; address.sin_port = htons(8321);
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    bool sent = true;
+    const auto sendAndObserve = [&](const char* data, int bytes) {
+        if (sendto(socket, data, bytes, 0, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != bytes)
+            return false;
+        // Avoid bursting eight datagrams into the upstream 1 KB receive queue.
+        // This is an observed negative test, not a UDP delivery acknowledgement.
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        return !callbackEntered.load();
+    };
+    for (const auto frames : {0, 1, 63, 96, 129, 65535}) {
+        pwar_packet_t packet{}; packet.n_samples = static_cast<uint16_t>(frames);
+        packet.num_packets = 1; packet.seq = 10;
+        sent = sent && sendAndObserve(reinterpret_cast<const char*>(&packet), sizeof(packet));
+    }
+    // Struct-sized packets are the existing wire contract; truncated/extended
+    // datagrams must not enter the audio callback even if their header is valid.
+    char payload[sizeof(pwar_packet_t) + 1]{};
+    pwar_packet_t valid{}; valid.n_samples = 128; valid.num_packets = 1; valid.seq = 20;
+    std::memcpy(payload, &valid, sizeof(valid));
+    for (const int bytes : {static_cast<int>(sizeof(valid) - 1), static_cast<int>(sizeof(valid) + 1)})
+        sent = sent && sendAndObserve(payload, bytes);
+    closesocket(socket);
+    return sent;
+}
 
 int main() {
     // Keep upstream diagnostic datagrams on loopback during this test.
@@ -78,9 +107,12 @@ int main() {
                 for (auto* half : buffer.buffers) std::memset(half, 0, 128 * sizeof(float));
             CHECK(driver.start() == ASE_OK);
             CHECK(WaitForPort(false)); // This must exercise an actual bound listener.
+            callbackEntered = false;
+            CHECK(SendInvalidDatagrams());
             CHECK(SendOversizedDatagram());
             std::this_thread::sleep_for(std::chrono::milliseconds(40));
             CHECK(!PortAvailable()); // Recoverable datagram errors must not stop it.
+            CHECK(!callbackEntered);
             CHECK(driver.start() == ASE_InvalidMode);
             CHECK(driver.setSampleRate(44100) == ASE_InvalidMode);
             CHECK(driver.createBuffers(buffers, 2, 128, &callbacks) == ASE_InvalidMode);

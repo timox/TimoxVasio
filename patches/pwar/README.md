@@ -121,7 +121,35 @@ Validation observée le 24 octobre :
   `6F792BAF5B3380895CB8F3E65C8CD97878AA1AF3F2BA19046266E68C13ECF443`.
   Exports COM examinés avec dumpbin, sans chargement ni enregistrement de la DLL.
 
-Restent notamment le listener ASIO qui divise avant validation, les sorties
-partielles, la capture stéréo, le résultat de démarrage, la cohérence des fragments,
+Après 0002 restent notamment la validation du listener (traitée par 0003 ci-dessous),
+les sorties partielles, la capture stéréo, le résultat de démarrage, la cohérence des fragments,
 les horodatages partagés et les essais avec Linux. Ce binaire de qualification
 ne constitue pas une livraison utilisable du pont.
+
+## 0003 : validation du datagramme avant calcul
+
+Appliquer `0003-asio-validate-datagrams-before-division.patch` après 0002, avec
+`git apply --check` puis `git apply`. Le listener exige exactement la taille
+du paquet structuré existant. Il refuse un chunk inférieur à 64, supérieur à
+128, supérieur au bloc ASIO local, ou ne divisant pas exactement ce bloc.
+Ces contrôles précèdent toute division, mise à jour de latence ou mutation
+du routeur. Aucun champ ni format réseau n'est ajouté.
+
+Le test du vrai listener a reproduit une exception numérique avant correction.
+Après correction, il envoie les tailles 0, 1, 63, 96, 129 et 65535, puis des
+datagrammes tronqués et prolongés, avec une observation sans callback de 40 ms
+après chaque envoi. Le port doit rester ouvert. Le paquet valide 128 frames de
+l'essai de drainage déclenche ensuite le callback. Les envois sont espacés pour
+réduire les pertes dans la petite file UDP ; ceci ne prouve pas la livraison de
+chaque paquet et ne remplace pas une campagne de fuzzing.
+
+Application du patch vérifiée sur la copie contenant 0001+0002 ; contenu obtenu
+identique au source compilé après normalisation des fins de lignes. Revue sans
+défaut nouveau trouvé. La DLL x64 à trois patches mesure 148992 octets, timestamp
+UTC `2026-10-24T09:47:02`, SHA-256
+`2D3EFDEDBF01B716F20A61C0651310762A83511AC54DCBCFBE2E301FF2A01345`.
+L'empreinte de la section 0002 décrit uniquement l'artefact antérieur.
+
+Les canaux partiels, la capture stéréo, le retour d'erreur au démarrage et les
+essais Linux restent à traiter. Les tests présents n'établissent pas une
+compatibilité audio réseau complète ni une performance temps réel.

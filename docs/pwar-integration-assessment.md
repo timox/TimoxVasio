@@ -137,3 +137,8 @@ du destructeur reproduit sur l'amont, puis tests réels de port UDP et de callba
 retenu. Les deux patches appliqués à une extraction vierge compilent en DLL
 séparée ; le banc CTest passe 2/2. Voir le README des patches pour empreinte,
 procédure et limites. Aucun chargement COM ni essai Linux n'a été effectué.
+
+Le patch 0003 ajoute ensuite la validation du datagramme avant la division du
+listener : exception numérique reproduite, tailles invalides rejetées et paquet
+valide encore traité dans le banc loopback. Le format structuré reste inchangé.
+La matrice Windows/Linux et les canaux partiels ne sont pas encore qualifiés.
