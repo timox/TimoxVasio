@@ -7,6 +7,15 @@ Windows, ni l'autonomie de TimoxVasio.dll, ni la compatibilité réseau PWAR.
 
 ## Architecture et frontières
 
+**Racine retenue après préparation du probe SCM :**
+ProgramData\TimoxNativeAudioBroker\Runtime ; le sibling Qualification est réservé
+au probe. Ce choix remplace les chemins TimoxVasio\NativeAudio décrits dans les
+notes historiques ci-dessous, jamais provisionnés ici. Le parent TimoxVasio est
+déjà utilisé par le laboratoire avec une autre DACL ; il reste intact.
+Voir [procédure du probe](../../../native-windows-audio/broker/SERVICE-PROBE.md)
+pour les commandes et limites. Les modes inspect/dry-run sont vérifiés ; aucun
+succès SCM ou préparation privilégiée n'est encore revendiqué.
+
 - Canal local moteur/broker : AF_UNIX SOCK_STREAM, chemin local protégé, sans
   fallback réseau ni pipe implicite. Le serveur reste borné à quatre clients.
 - API graphique : HTTP/WebSocket existants, authentification à terminer.

@@ -3,6 +3,7 @@
 #include <aclapi.h>
 #include <shlobj.h>
 #include <winternl.h>
+#include <sddl.h>
 #include <array>
 #include <cwchar>
 
@@ -35,15 +36,15 @@ DWORD DirectorySecurity(HANDLE directory,bool privateDirectory) noexcept {
     if(error!=ERROR_SUCCESS)return error;
     return privateDirectory ? ValidateSocketDiscoveryDirectorySecurity(sd.value) : ValidateSocketDiscoveryAncestorSecurity(sd.value);
 }
-DWORD Directory(HANDLE parent,const wchar_t* text,HANDLE& output) noexcept {
+DWORD Directory(HANDLE parent,const wchar_t* text,HANDLE& output,PSECURITY_DESCRIPTOR security=nullptr) noexcept {
     // Only generated absolute root or previously validated individual components.
     const auto length=std::wcslen(text);
     UNICODE_STRING name{};name.Buffer=const_cast<wchar_t*>(text);
     name.Length=static_cast<USHORT>(length*sizeof(wchar_t));name.MaximumLength=name.Length;
-    OBJECT_ATTRIBUTES attributes{};InitializeObjectAttributes(&attributes,&name,OBJ_CASE_INSENSITIVE,parent,nullptr);
+    OBJECT_ATTRIBUTES attributes{};InitializeObjectAttributes(&attributes,&name,OBJ_CASE_INSENSITIVE,parent,security);
     IO_STATUS_BLOCK io{};Handle directory;
     const auto status=NtCreateFile(&directory.value,FILE_READ_ATTRIBUTES|READ_CONTROL|FILE_TRAVERSE|SYNCHRONIZE,
-        &attributes,&io,nullptr,0,FILE_SHARE_READ|FILE_SHARE_WRITE,FILE_OPEN,
+        &attributes,&io,nullptr,0,FILE_SHARE_READ|FILE_SHARE_WRITE,security?FILE_CREATE:FILE_OPEN,
         FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT|FILE_SYNCHRONOUS_IO_NONALERT,nullptr,0);
     if(status<0)return RtlNtStatusToDosError(status);
     if(!directory.value || directory.value==INVALID_HANDLE_VALUE)return ERROR_INVALID_HANDLE;
@@ -130,19 +131,57 @@ DWORD OpenSocketDiscoveryProgramData(HANDLE& output) noexcept {
     }
     output=held[count-1].value;held[count-1].value=INVALID_HANDLE_VALUE;return ERROR_SUCCESS;
 }
-DWORD OpenInstalledSocketDiscoveryRoot(HANDLE& output) noexcept {
+namespace {
+DWORD OpenPrivateRoot(const wchar_t* component,HANDLE& output) noexcept {
     if(output!=INVALID_HANDLE_VALUE)return ERROR_INVALID_PARAMETER;
     Handle programData,product,root;
     auto error=OpenSocketDiscoveryProgramData(programData.value);if(error)return error;
-    error=Directory(programData.value,L"TimoxVasio",product.value);if(error)return error;
+    error=Directory(programData.value,L"TimoxNativeAudioBroker",product.value);if(error)return error;
     error=DirectorySecurity(product.value,true);if(error)return error;
-    error=Directory(product.value,L"NativeAudio",root.value);if(error)return error;
+    error=Directory(product.value,component,root.value);if(error)return error;
     error=DirectorySecurity(root.value,true);if(error)return error;
     output=root.value;root.value=INVALID_HANDLE_VALUE;return ERROR_SUCCESS;
+}
+}
+DWORD OpenInstalledSocketDiscoveryRoot(HANDLE& output) noexcept {
+    return OpenPrivateRoot(L"Runtime",output);
+}
+DWORD OpenSocketDiscoveryQualificationRoot(HANDLE& output) noexcept {
+    return OpenPrivateRoot(L"Qualification",output);
 }
 DWORD ReadInstalledSocketDiscovery(SocketDiscovery& output) noexcept {
     Handle root;
     const auto error=OpenInstalledSocketDiscoveryRoot(root.value);
     return error==ERROR_SUCCESS ? ReadSocketDiscoveryDirectory(root.value,output) : error;
+}
+DWORD PrepareSocketDiscoveryQualificationRoot(bool apply,QualificationRootPreparation& output) noexcept {
+    if(apply) {
+        BYTE sid[SECURITY_MAX_SID_SIZE]{};DWORD size=sizeof(sid);BOOL member=FALSE;
+        if(!CreateWellKnownSid(WinBuiltinAdministratorsSid,nullptr,sid,&size)||!CheckTokenMembership(nullptr,sid,&member))return GetLastError();
+        if(!member)return ERROR_ELEVATION_REQUIRED;
+    }
+    Security security;
+    if(apply&&!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        L"O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-5-80-954356743-986487362-260697779-2273189862-4263205101)(A;;FRFX;;;AU)",
+        SDDL_REVISION_1,&security.value,nullptr))return GetLastError();
+    Handle programData,product,qualification;QualificationRootPreparation preparation;
+    auto error=OpenSocketDiscoveryProgramData(programData.value);if(error)return error;
+    error=Directory(programData.value,L"TimoxNativeAudioBroker",product.value);
+    if(error==ERROR_FILE_NOT_FOUND){
+        preparation.productMissing=true;preparation.qualificationMissing=true;
+        if(!apply){output=preparation;return ERROR_SUCCESS;}
+        error=Directory(programData.value,L"TimoxNativeAudioBroker",product.value,security.value);
+    }
+    if(error)return error;
+    error=DirectorySecurity(product.value,true);if(error)return error;
+    error=Directory(product.value,L"Qualification",qualification.value);
+    if(error==ERROR_FILE_NOT_FOUND){
+        preparation.qualificationMissing=true;
+        if(!apply){output=preparation;return ERROR_SUCCESS;}
+        error=Directory(product.value,L"Qualification",qualification.value,security.value);
+    }
+    if(error)return error;
+    error=DirectorySecurity(qualification.value,true);if(error)return error;
+    output=preparation;return ERROR_SUCCESS;
 }
 }

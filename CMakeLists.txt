@@ -25,6 +25,16 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
     add_test(NAME NativeAudioSocketDiscoveryTests COMMAND NativeAudioSocketDiscoveryTests)
     set_tests_properties(NativeAudioSocketDiscoveryTests PROPERTIES TIMEOUT 15)
     if(WIN32)
+        add_executable(NativeAudioServiceIdentityTests tests/native_audio_service_identity_tests.cpp
+            native-windows-audio/broker/service_identity_win32.cpp)
+        target_include_directories(NativeAudioServiceIdentityTests PRIVATE native-windows-audio/broker)
+        target_compile_definitions(NativeAudioServiceIdentityTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_link_libraries(NativeAudioServiceIdentityTests PRIVATE advapi32)
+        if(MSVC)
+            target_compile_options(NativeAudioServiceIdentityTests PRIVATE /W4 /WX /EHsc)
+        endif()
+        add_test(NAME NativeAudioServiceIdentityTests COMMAND NativeAudioServiceIdentityTests)
+        set_tests_properties(NativeAudioServiceIdentityTests PROPERTIES TIMEOUT 15)
         add_executable(NativeAudioSocketPublicationTests tests/native_audio_socket_publication_tests.cpp
             native-windows-audio/broker/socket_publication_win32.cpp
             native-windows-audio/broker/socket_discovery.cpp native-windows-audio/broker/socket_discovery_win32.cpp)
@@ -136,6 +146,16 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
             target_compile_options(NativeAudioWindowsBroker PRIVATE /W4 /WX /EHsc)
         endif()
         target_link_libraries(NativeAudioWindowsBroker PUBLIC NativeAudioWindowsChannel PRIVATE bcrypt advapi32)
+        add_executable(TimoxNativeAudioServiceProbe native-windows-audio/broker/service_probe_win32.cpp
+            native-windows-audio/broker/service_identity_win32.cpp)
+        target_compile_definitions(TimoxNativeAudioServiceProbe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_link_libraries(TimoxNativeAudioServiceProbe PRIVATE NativeAudioWindowsBroker)
+        if(MSVC)
+            target_compile_options(TimoxNativeAudioServiceProbe PRIVATE /W4 /WX /EHsc)
+        endif()
+        add_test(NAME NativeAudioServiceProbeHelp COMMAND TimoxNativeAudioServiceProbe --help)
+        add_test(NAME NativeAudioServiceProbeInspect COMMAND TimoxNativeAudioServiceProbe --inspect)
+        add_test(NAME NativeAudioServiceProbeDryRun COMMAND TimoxNativeAudioServiceProbe --prepare-qualification-root)
         add_executable(NativeAudioPipeIdentityTests tests/native_audio_pipe_identity_tests.cpp
             native-windows-audio/broker/pipe_identity_win32.cpp
             native-windows-audio/broker/channel_binding.cpp
