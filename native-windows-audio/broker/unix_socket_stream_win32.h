@@ -14,6 +14,8 @@ public:
     using Deadline=INativeAudioAuthenticatedChannel::Deadline;
     UnixSocketStream();
     ~UnixSocketStream() override;
+    // Object + Impl, excluding Winsock/kernel allocations and caller buffers.
+    static std::size_t FixedStorageBytes() noexcept;
     UnixSocketStream(const UnixSocketStream&)=delete;
     UnixSocketStream& operator=(const UnixSocketStream&)=delete;
     NativeChannelResult Listen(const char* path) noexcept;

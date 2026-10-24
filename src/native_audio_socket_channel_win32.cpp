@@ -109,3 +109,9 @@ std::unique_ptr<INativeAudioAuthenticatedChannel> CreateWindowsNativeAudioSocket
     const NativeAudioChannelCredentials& credentials,const char* trustedPath){
     return std::make_unique<SocketChannel>(credentials,trustedPath);
 }
+#if defined(TIMOX_NATIVE_CHANNEL_TEST_ENDPOINT)
+std::size_t WindowsNativeAudioSocketChannelRetainedBytesForTest() noexcept{
+    return sizeof(SocketChannel)+timox_broker::SchannelStream::RetainedApplicationBytes()+
+        timox_broker::UnixSocketStream::FixedStorageBytes();
+}
+#endif

@@ -10,6 +10,10 @@ class SocketServer final {
 public:
     SocketServer(BrokerDispatcher&,PCCERT_CONTEXT,std::shared_ptr<const SocketEnrollment>);
     ~SocketServer();
+    // Conservative fixed-storage envelope: host + listener + four sessions +
+    // spare accept socket + one shared enrollment. Excludes allocator/control
+    // block overhead, thread stacks, handshake tokens, OS and global broker.
+    static std::size_t FixedStorageBytes() noexcept;
     NativeChannelResult Listen(const char* trustedPath) noexcept;
     NativeChannelResult Run() noexcept;
     void RequestCancel() noexcept;

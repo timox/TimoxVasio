@@ -32,6 +32,9 @@ public:
     SocketSession(BrokerDispatcher&,std::unique_ptr<UnixSocketStream>,PCCERT_CONTEXT,
         std::shared_ptr<const SocketEnrollment>);
     ~SocketSession();
+    // Own fixed objects/buffers including TLS and socket. Excludes shared
+    // enrollment/dispatcher/backend, handshake token, stack and OS allocations.
+    static std::size_t FixedStorageBytes() noexcept;
     NativeChannelResult Run() noexcept;
     void RequestCancel() noexcept;
     // Supervisor calls periodically. Cancels a pending dispatcher operation

@@ -797,6 +797,20 @@ int main(int argc,char** argv){
         // bounds application stack scratch (EKU, framing, identities, names).
         Check(concreteBytes<=256*1024,"concrete channel memory exceeds envelope");
         std::printf("Concrete channel envelope: %zu bytes (adapter metadata + stack reserve included)\n",concreteBytes);
+        const auto socketClient=WindowsNativeAudioSocketChannelRetainedBytesForTest()+
+            SchannelStream::MaxHandshakeTokenBytes+2*timox_broker::MaxMessageBytes+1024+8192;
+        const auto socketSession=timox_broker::SocketSession::FixedStorageBytes()+
+            SchannelStream::MaxHandshakeTokenBytes+8192+1024;
+        Check(socketClient<=256*1024,"socket client application envelope exceeds 256 KiB");
+        Check(socketSession<=256*1024,"socket server session application envelope exceeds 256 KiB");
+        const auto socketServer=timox_broker::SocketServer::FixedStorageBytes()+
+            4*(SchannelStream::MaxHandshakeTokenBytes+8192+1024)+1024;
+        // Per endpoint budget, not combined client+server process RSS. Reserves
+        // cover application scratch/metadata; allocator and OS thread stacks,
+        // certificate/provider buffers and shared broker/backend are excluded.
+        Check(socketServer<=4*256*1024,"four-session socket server envelope exceeds 1 MiB");
+        std::printf("AF_UNIX envelopes: client=%zu session=%zu server-four=%zu bytes; OS/provider/global broker allocations excluded\n",
+            socketClient,socketSession,socketServer);
         TimeoutCompletionAccounting();
     }catch(const std::exception& e){std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}
     if(argc==2 && std::strcmp(argv[1],"--completion-accounting-only")==0){std::puts("Ciphertext completion accounting passed (no credentials created)");return 0;}

@@ -118,6 +118,10 @@ struct SocketSession::Impl {
 SocketSession::SocketSession(BrokerDispatcher& broker,std::unique_ptr<UnixSocketStream> socket,PCCERT_CONTEXT cert,
     std::shared_ptr<const SocketEnrollment> enrollment):impl_(std::make_unique<Impl>(broker,std::move(socket),cert,std::move(enrollment))){}
 SocketSession::~SocketSession()=default;
+std::size_t SocketSession::FixedStorageBytes() noexcept{
+    return sizeof(SocketSession)+sizeof(Impl)+SchannelStream::RetainedApplicationBytes()-sizeof(SchannelStream)+
+        UnixSocketStream::FixedStorageBytes();
+}
 NativeChannelResult SocketSession::Run() noexcept {
     if(impl_->started.exchange(true))return {Code::Failed};
     NativeChannelResult result;

@@ -77,6 +77,33 @@ Sources primaires :
 
 ### Contrat du prochain sous-lot : SocketSession sur un flux TLS
 
+**Comptabilité mémoire socket (Release x64) :** compteurs compilés dans les
+unités définissant les objets privés, sans estimation de leur sizeof depuis
+les headers opaques. UnixSocketStream compte objet+Impl. SocketSession compte
+ses objets et tableaux, le TLS (sans recompter son membre déjà dans Impl), et
+le socket détenu. SocketServer ajoute quatre sessions, listener, socket accept
+de réserve et enrollment partagé. Le client compte sa machine d'états, le TLS
+et le socket. Les compteurs n'allouent rien et n'ouvrent aucune connexion.
+
+Assertions exécutées via --completion-accounting-only, sans clé créée :
+
+| Périmètre | Enveloppe calculée | Seuil |
+|---|---:|---:|
+| Client socket + adaptateur | 175848 octets | 262144 |
+| Session serveur | 175664 octets | 262144 |
+| Serveur quatre sessions | 704280 octets | 1048576 |
+
+Les enveloppes ajoutent le token handshake accepté maximal (32768), une réserve
+scratch applicative de 8192 par côté/session, 1024 de métadonnées, et 1024 globaux
+supplémentaires pour le serveur. Les deux tableaux adaptateur et son surcoût
+borné par static_assert sont comptés côté client. Les seuils sont par extrémité,
+pas une somme client+serveur ni une limite de RSS. Sont exclus : surcoût de
+l'allocateur, allocations opaques Winsock/Schannel/certificats, piles réservées
+des threads, dispatcher/BrokerSession partagés et backend natif. Les réserves
+scratch ne sont pas une mesure du high-water mark des piles. La mémoire totale
+du service et les performances doivent encore être mesurées sur le système.
+Build /W4 /WX des bibliothèques client et serveur sans macro de test réussi.
+
 **Couverture client défensive complétée :** SocketClientBadReply utilise un
 serveur Schannel scripté sur AF_UNIX et la factory concrète avec l'adaptateur
 audio. Le témoin accepte les réponses valides. Huit altérations sont refusées :

@@ -24,4 +24,5 @@ std::unique_ptr<INativeAudioAuthenticatedChannel> CreateWindowsNativeAudioAuthen
 std::unique_ptr<INativeAudioAuthenticatedChannel> CreateWindowsNativeAudioAuthenticatedChannelForTest(
     const NativeAudioChannelCredentials&,const wchar_t* bootstrapName);
 std::size_t WindowsNativeAudioChannelRetainedBytesForTest() noexcept;
+std::size_t WindowsNativeAudioSocketChannelRetainedBytesForTest() noexcept;
 #endif

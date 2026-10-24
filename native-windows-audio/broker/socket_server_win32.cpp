@@ -85,6 +85,10 @@ struct SocketServer::Impl {
 SocketServer::SocketServer(BrokerDispatcher& broker,PCCERT_CONTEXT certificate,std::shared_ptr<const SocketEnrollment> enrollment)
     :impl_(std::make_unique<Impl>(broker,certificate,std::move(enrollment))){}
 SocketServer::~SocketServer(){impl_->Drain();}
+std::size_t SocketServer::FixedStorageBytes() noexcept{
+    return sizeof(SocketServer)+sizeof(Impl)+2*UnixSocketStream::FixedStorageBytes()-sizeof(UnixSocketStream)+
+        4*SocketSession::FixedStorageBytes()+sizeof(SocketEnrollment);
+}
 NativeChannelResult SocketServer::Listen(const char* path) noexcept {
     if(impl_->started.load()||impl_->listening)return {Code::Failed};
     if(!impl_->Active())return {Code::Cancelled};

@@ -71,6 +71,7 @@ struct UnixSocketStream::Impl {
 };
 UnixSocketStream::UnixSocketStream():impl_(std::make_unique<Impl>()){}
 UnixSocketStream::~UnixSocketStream()=default;
+std::size_t UnixSocketStream::FixedStorageBytes() noexcept{return sizeof(UnixSocketStream)+sizeof(Impl);}
 void UnixSocketStream::RequestCancel() noexcept {impl_->cancelled.store(true,std::memory_order_release);}
 void UnixSocketStream::Close() noexcept {impl_->Close();}
 NativeChannelResult UnixSocketStream::GetPeerProcessId(std::uint32_t& output) noexcept {
