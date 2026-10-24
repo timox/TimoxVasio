@@ -398,7 +398,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, .matrix-scroll:
 .api-console-panel { display: flex; flex-direction: column; gap: 14px; }
 .api-console-panel textarea { width: 100%; max-width: 100%; min-height: 100px; resize: vertical; padding: 12px; border: 1px solid #526176; border-radius: 5px; color: #e6edf5; background: #0d1522; font: 13px/1.5 Consolas, 'Cascadia Code', monospace; }
 .console-operation { color: #8eeaff; font-family: Consolas, monospace; }
-.confirmation-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border: 1px solid #a77b24; border-radius: 5px; background: #302818; color: #fff0ca; }
 .api-event-stream { max-height: 280px; overflow: auto; padding: 12px; border: 1px solid #34465c; border-radius: 5px; background: #0d1522; }
 .api-event-stream h3 { margin-top: 0; color: #8eeaff; }
 .api-event-stream pre { overflow-wrap: anywhere; white-space: pre-wrap; color: #cbd4df; }
@@ -499,6 +498,8 @@ button:disabled { opacity: 1; border-color: #455166; background: #232c3a; color:
 .swagger-panel .swagger-ui input, .swagger-panel .swagger-ui textarea, .swagger-panel .swagger-ui select { border-color: var(--border-strong); }
 *:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .confirmation-panel { width: min(560px, calc(100vw - 32px)); max-width: calc(100vw - 32px); padding: 22px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-card); color: var(--text-primary); }
+.confirmation-panel:not([open]) { display: none; }
+.confirmation-panel[open] { display: block; margin: auto; max-height: calc(100vh - 32px); overflow: auto; }
 .confirmation-panel::backdrop { background: rgb(5 9 15 / 72%); }
 .confirmation-panel h3 { margin: 0 0 10px; color: var(--accent); }
 .confirmation-panel p { color: var(--text-secondary); line-height: 1.5; }
