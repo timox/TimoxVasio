@@ -1136,6 +1136,10 @@ function App() {
             </main> : <main className="main-content api-console">
                 {engine?.lastError && <div className="error-panel">{engine.lastError.message}</div>}
                 {notice && <div className="notice" role="status">{notice}</div>}
+                {!connectionError && apiState?.apiVersion === '1.0' && <div className="notice" role="status" aria-label="Engine compatibility">
+                    Older engine connected (API 1.0). Windows audio bridges require the newer engine included with this application.
+                    {' '}Closing this window does not stop the background engine. Save your audio work, stop audio, then exit the old engine before reopening the updated application.
+                </div>}
                 {['configuration', 'channels'].includes(activeView) && dormantPhysicalRoutes.length > 0 &&
                     <p className="hint" role="status">{dormantPhysicalRoutes.length} physical connections remain saved and inactive with the software clock. They resume when a compatible physical ASIO driver is selected.</p>}
                 {['configuration', 'channels'].includes(activeView) && incompatiblePhysicalRoutes.length > 0 &&

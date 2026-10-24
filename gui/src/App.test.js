@@ -67,6 +67,18 @@ const withClockApp = async (initialState, check) => {
     }
 };
 
+test('legacy engine explains unavailable WASAPI features without restarting audio', async () => {
+    await withClockApp(state, async container => {
+        expect(container.querySelector('[aria-label="Engine compatibility"]').textContent).toContain('API 1.0');
+        expect(container.textContent).toContain('Closing this window does not stop the background engine');
+        expect(window.vasio.executeCommand).not.toHaveBeenCalled();
+        expect(window.vasio.stopAudio).not.toHaveBeenCalled();
+    });
+    await withClockApp({ ...state, apiVersion: '1.1' }, async container => {
+        expect(container.querySelector('[aria-label="Engine compatibility"]')).toBeNull();
+    });
+});
+
 test('native audio status opens only from graph menu and never sends configuration', async () => {
     const nativeAudio = { enabled: true, state: 'denied', attached: false, masterRunning: true,
         nativeFormat: { sampleRate: 48000, channels: 2, sampleType: 'pcm32' }, graphFormat: null,
