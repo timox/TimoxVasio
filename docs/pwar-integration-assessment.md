@@ -131,3 +131,9 @@ ajoutent ces validations sans changer le format des paquets. Test rouge sur
 l'amont, puis application sur une extraction vierge et test vert, incluant
 aller-retour stéréo et buffers maximaux. Le listener ASIO et sa division avant
 appel au routeur restent à corriger ; aucune DLL PWAR modifiée n'a été construite.
+
+Ensuite, le patch 0002 a corrigé l'arrêt du listener avant libération : timeout
+du destructeur reproduit sur l'amont, puis tests réels de port UDP et de callback
+retenu. Les deux patches appliqués à une extraction vierge compilent en DLL
+séparée ; le banc CTest passe 2/2. Voir le README des patches pour empreinte,
+procédure et limites. Aucun chargement COM ni essai Linux n'a été effectué.

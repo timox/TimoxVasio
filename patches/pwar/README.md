@@ -2,9 +2,10 @@
 
 Base amont : `ripxorip/PWAR`, commit
 `ed5b07c44c7635d006422d646d56368600504b3f`.
-Le patch modifie le routeur PWAR, pas TimoxVasio.dll. Il conserve les structures
-de paquets et les échantillons des échanges valides testés. Il n'est pas encore
-intégré à une DLL PWAR ni qualifié avec PipeWire sur le réseau.
+Les patches modifient PWAR, pas TimoxVasio.dll. Ils conservent les structures
+de paquets et les échantillons des échanges valides testés. Une DLL séparée est
+compilée pour qualification locale ; elle n'est ni installée ni intégrée dans
+Timox, et la liaison avec PipeWire sur le réseau n'est pas encore qualifiée.
 
 Le code amont porte le copyright 2025 Philip K. Gisslow et sa licence est fournie
 dans `GPL-3.0.txt`. Les modifications du routeur sont proposées sous cette même
@@ -68,3 +69,59 @@ Cette preuve porte sur les fonctions du routeur dans le banc local. Elle ne
 qualifie ni l'ensemble des tests amont, ni le transport UDP, le cycle de vie ASIO,
 le fonctionnement Linux/Windows ou la latence. L'objectif d'intégration complète
 reste décrit dans [l'étude PWAR](../../docs/pwar-integration-assessment.md).
+
+## 0002 : arrêt du listener avant libération
+
+Le constructeur ne lance plus la réception. `start` la lance après préparation
+des buffers ; `stop` demande l'annulation puis joint le worker avant de modifier
+l'état partagé. `disposeBuffers` attend ce drainage, et le destructeur ferme
+l'émetteur après celui-ci. Le drapeau de réception est atomique ; la réception
+vérifie l'annulation après un délai socket de 20 ms, y compris sans trafic.
+Les datagrammes trop grands et les erreurs UDP récupérables ne ferment pas le
+listener. Les mutations de buffers/fréquence pendant la lecture sont refusées.
+
+Le contrat conserve des appels de contrôle sérialisés par l'hôte. `stop` et
+`disposeBuffers` refusent l'appel depuis le callback pour éviter un self-join.
+Un callback hôte qui ne termine jamais ou un envoi réseau bloqué peut toujours
+retenir le drainage : le délai de réception n'est pas une borne universelle
+d'arrêt. Le retour d'erreur de bind/startup depuis le worker reste à ajouter.
+
+Appliquer `0002-asio-drain-listener-before-disposal.patch` après 0001 sur la
+révision amont, avec les mêmes commandes `git apply --check` puis `git apply`.
+Le banc peut construire la DLL et tester directement ses sources Windows :
+
+```powershell
+cmake -S patches/pwar -B build_pwar_qualification -DPWAR_SOURCE_DIR=C:/chemin/PWAR -DPWAR_BUILD_WINDOWS_DRIVER=ON -DPWAR_ASIO_SDK_DIR=C:/chemin/asiosdk
+cmake --build build_pwar_qualification --config Release
+ctest --test-dir build_pwar_qualification -C Release --output-on-failure
+```
+
+Le SDK ASIO existant est utilisé par chemin, sans copie ni téléchargement.
+La cible ne lance pas les commandes d'installation ou d'enregistrement du pilote.
+Le test Windows lie les vraies sources du pilote dans un exécutable : il ne
+prouve pas l'activation COM de la DLL construite. Exécuter via CTest, qui configure
+un profil de test local avec destination audio 127.0.0.1 ; les logs sont aussi
+dirigés vers loopback. Il vérifie que le port UDP 8321 est libre avant de démarrer,
+puis l'ouvre temporairement. Aucun flux matériel n'est activé.
+
+Validation observée le 24 octobre :
+
+- Amont : test bloqué à la destruction, timeout CTest à 5 secondes.
+- Première correction : la revue a détecté un arrêt sur WSAEMSGSIZE ; test rouge
+  reproduit, puis correction et test vert.
+- Deux patches appliqués sur une nouvelle extraction : build x64 réussi, puis
+  CTest **2/2**, 0,26 seconde. Avertissements amont/SDK toujours présents
+  (conversions, noms masqués et anciens exports du fichier .def).
+- Contrôles : arrêt sans trafic, port ouvert/libéré, redémarrage, datagramme
+  surdimensionné ignoré, libération retenue pendant un callback actif, destruction
+  directe d'un listener actif. Revue indépendante sans autre défaut important
+  dans ce périmètre.
+- `build_pwar_qualification/Release/PWARASIO.dll`, 148992 octets, timestamp UTC
+  `2026-10-24T09:36:11`, SHA-256
+  `6F792BAF5B3380895CB8F3E65C8CD97878AA1AF3F2BA19046266E68C13ECF443`.
+  Exports COM examinés avec dumpbin, sans chargement ni enregistrement de la DLL.
+
+Restent notamment le listener ASIO qui divise avant validation, les sorties
+partielles, la capture stéréo, le résultat de démarrage, la cohérence des fragments,
+les horodatages partagés et les essais avec Linux. Ce binaire de qualification
+ne constitue pas une livraison utilisable du pont.

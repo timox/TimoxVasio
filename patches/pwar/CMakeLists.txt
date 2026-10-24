@@ -13,3 +13,41 @@ if(MSVC)
 endif()
 add_test(NAME PwarRouterBoundsTests COMMAND PwarRouterBoundsTests)
 set_tests_properties(PwarRouterBoundsTests PROPERTIES TIMEOUT 10)
+
+option(PWAR_BUILD_WINDOWS_DRIVER "Build the separate PWAR DLL without registration or installation" OFF)
+set(PWAR_ASIO_SDK_DIR "" CACHE PATH "Existing ASIO SDK root; never downloaded or redistributed by this project")
+if(PWAR_BUILD_WINDOWS_DRIVER)
+    if(NOT WIN32 OR NOT MSVC)
+        message(FATAL_ERROR "The qualification DLL target currently requires Windows/MSVC")
+    endif()
+    if(NOT EXISTS "${PWAR_ASIO_SDK_DIR}/common/iasiodrv.h")
+        message(FATAL_ERROR "Set PWAR_ASIO_SDK_DIR to an existing ASIO SDK")
+    endif()
+    set(PWAR_DRIVER_SOURCES
+        "${PWAR_SOURCE_DIR}/windows/asio/pwarASIO.cpp"
+        "${PWAR_SOURCE_DIR}/windows/asio/pwarASIOLog.cpp"
+        "${PWAR_SOURCE_DIR}/protocol/pwar_router.c"
+        "${PWAR_SOURCE_DIR}/protocol/latency_manager.c"
+        "${PWAR_ASIO_SDK_DIR}/common/combase.cpp"
+        "${PWAR_ASIO_SDK_DIR}/common/dllentry.cpp"
+        "${PWAR_ASIO_SDK_DIR}/common/register.cpp")
+    add_library(PwarQualificationDriver SHARED ${PWAR_DRIVER_SOURCES}
+        "${PWAR_SOURCE_DIR}/windows/asio/pwarASIO.def")
+    target_include_directories(PwarQualificationDriver PRIVATE "${PWAR_ASIO_SDK_DIR}/common")
+    target_compile_features(PwarQualificationDriver PRIVATE cxx_std_17)
+    target_compile_definitions(PwarQualificationDriver PRIVATE _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
+    target_compile_options(PwarQualificationDriver PRIVATE /W4 $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+    target_link_libraries(PwarQualificationDriver PRIVATE ws2_32 avrt winmm ole32 advapi32 uuid user32)
+    set_target_properties(PwarQualificationDriver PROPERTIES OUTPUT_NAME PWARASIO)
+    add_executable(PwarAsioLifecycleTests asio_lifecycle_tests.cpp ${PWAR_DRIVER_SOURCES})
+    target_include_directories(PwarAsioLifecycleTests PRIVATE "${PWAR_ASIO_SDK_DIR}/common" "${PWAR_SOURCE_DIR}/windows/asio")
+    target_compile_features(PwarAsioLifecycleTests PRIVATE cxx_std_17)
+    target_compile_definitions(PwarAsioLifecycleTests PRIVATE _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
+    target_compile_options(PwarAsioLifecycleTests PRIVATE /W4 $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+    target_link_libraries(PwarAsioLifecycleTests PRIVATE ws2_32 avrt winmm ole32 advapi32 uuid user32)
+    add_test(NAME PwarAsioLifecycleTests COMMAND PwarAsioLifecycleTests)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pwar-test-profile")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pwar-test-profile/pwarASIO.cfg" "udp_send_ip=127.0.0.1\n")
+    set_tests_properties(PwarAsioLifecycleTests PROPERTIES TIMEOUT 10 RUN_SERIAL TRUE
+        ENVIRONMENT "USERPROFILE=${CMAKE_CURRENT_BINARY_DIR}/pwar-test-profile")
+endif()
