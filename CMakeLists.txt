@@ -29,7 +29,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
             native-windows-audio/broker/socket_discovery.cpp native-windows-audio/broker/socket_discovery_win32.cpp)
         target_include_directories(NativeAudioSocketDiscoveryWindowsTests PRIVATE native-windows-audio/broker)
         target_compile_definitions(NativeAudioSocketDiscoveryWindowsTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-        target_link_libraries(NativeAudioSocketDiscoveryWindowsTests PRIVATE advapi32)
+        target_link_libraries(NativeAudioSocketDiscoveryWindowsTests PRIVATE advapi32 ntdll)
         if(MSVC)
             target_compile_options(NativeAudioSocketDiscoveryWindowsTests PRIVATE /W4 /WX /EHsc)
         endif()
@@ -110,7 +110,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         if(MSVC)
             target_compile_options(NativeAudioWindowsChannel PRIVATE /W4 /WX /EHsc)
         endif()
-        target_link_libraries(NativeAudioWindowsChannel PRIVATE secur32 crypt32 advapi32 bcrypt ws2_32)
+        target_link_libraries(NativeAudioWindowsChannel PRIVATE secur32 crypt32 advapi32 bcrypt ws2_32 ntdll)
         add_library(NativeAudioWindowsBroker STATIC
             native-windows-audio/broker/socket_server_win32.cpp
             native-windows-audio/broker/socket_session_win32.cpp

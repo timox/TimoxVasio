@@ -119,6 +119,40 @@ test réussis. Pas de modification des ACL machine, d'installation du service,
 de preuve de lecture réussie d'une publication produite par le service ni de
 preuve inter-logons : la validation positive réelle attend ce provisioning.
 
+**Ouverture relative du fichier ajoutée ensuite :** le lecteur de répertoire
+réouvre et garde le même objet répertoire sans partage de suppression, vérifie
+son propriétaire/DACL, ouvre uniquement `discovery.bin` relativement à son
+handle par NtCreateFile, puis appelle le lecteur de fichier vérifié. Le
+répertoire exige lecture+traversée pour Authenticated Users, tandis que le
+fichier exige lecture seule ; les trois écrivains restent identiques. Aucun
+accès à la racine n'est accordé et aucun objet n'est créé par ces lecteurs.
+
+OpenSocketDiscoveryChild est une primitive sans autorisation implicite : nom
+unique borné, pas de séparateur, flux alternatif, caractères spéciaux ou alias
+avec point/espace final ; ouverture existante, partage lecture seule, type
+fichier imposé, reparse refusé après inspection du handle. Elle n'utilise pas
+OBJ_DONT_REPARSE : le nom ne comporte qu'un composant et FILE_OPEN_REPARSE_POINT
+vise ce dernier. Le comportement relatif de RootDirectory est documenté dans
+[NtCreateFile](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile).
+
+Test Windows réel : répertoire tenu ouvert puis renommé, autre répertoire créé
+à son ancien emplacement avec un contenu différent ; l'ouverture relative lit
+le fichier original, pas son remplacement. Autres assertions : contenu exact,
+écrivain concurrent refusé, noms invalides refusés, handle de sortie occupé
+préservé, répertoire utilisateur refusé. Les ACL de répertoire positives sont
+encore synthétiques ; aucun reparse hostile réel n'a été créé par ce banc.
+
+Décision pour la suite : ne pas appliquer la DACL canonique aux ancêtres système.
+Inspection locale : C:\ appartient à TrustedInstaller ; ProgramData à SYSTEM,
+avec des droits de création pour Users. Il faut établir la provenance du premier
+handle depuis la racine d'installation et vérifier séparément les droits qui
+permettent de remplacer un enfant (notamment FILE_DELETE_CHILD), au lieu de
+rejeter indistinctement toute création permise dans ProgramData. Les droits
+sont définis dans les [constantes Windows](https://learn.microsoft.com/en-us/windows/win32/fileio/file-access-rights-constants).
+L'acquisition initiale de ce handle, le provisioning et la fraîcheur demeurent
+non résolus ; ReadSocketDiscoveryDirectory ne transforme pas un répertoire
+choisi par l'utilisateur en racine de confiance. Aucun raccord moteur effectué.
+
 ### Point de décision : identité du logon
 
 L'enquête après a18815a écarte une transposition automatique du PID vers un token
