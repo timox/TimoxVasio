@@ -3,6 +3,7 @@
 #include "control_api_server.h"
 #include "vasio_client_manager.h"
 #include "engine_diagnostics.h"
+#include "engine_instance_guard.h"
 
 #include <windows.h>
 #if defined(VASIO_ENABLE_CRASH_DUMP)
@@ -82,6 +83,15 @@ int wmain(int argc, wchar_t** argv) {
     if (argc > 1) {
         std::fwprintf(stderr, L"Usage: TimoxVirtualAsioEngine.exe [--list-asio]\n");
         return 2;
+    }
+
+    EngineInstanceGuard instance;
+    if (!instance.acquired()) {
+        if (instance.error() == ERROR_ALREADY_EXISTS)
+            std::fprintf(stderr, "A TimoxVasio engine is already running; no audio device was opened.\n");
+        else
+            std::fprintf(stderr, "Cannot establish exclusive engine ownership (Windows error %lu); no audio device was opened.\n", instance.error());
+        return 3;
     }
 
     EngineDiagnostics diagnostics;
