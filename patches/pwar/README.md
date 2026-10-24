@@ -205,6 +205,34 @@ structures audio/statistiques repose sur leur taille dans le protocole amont.
 Ces contrôles n'authentifient ni l'émetteur ni la nature déclarée des données :
 un datagramme de bonne taille aux champs plausibles peut les franchir. Aucun
 magic, version ou mécanisme d'authentification nouveau n'est ajouté au protocole.
-La cohérence des fragments d'une même séquence, les horodatages partagés et la
-propagation des erreurs de démarrage restent à corriger/qualifier, ainsi que les
+La cohérence des fragments d'une même séquence et les horodatages partagés
+restent à corriger/qualifier, ainsi que les
 essais Windows/Linux et les mesures de dérive, perte et latence sur durée.
+
+## 0005 : signaler l'échec d'ouverture du listener
+
+Appliquer `0005-report-listener-startup-failure.patch` après 0004. `start()`
+attend sur le thread de contrôle le résultat de l'initialisation et du bind UDP.
+Les échecs explicites du setup sont publiés par une promise ; le worker est
+joint avant le retour `ASE_HWMalfunction`. `getErrorMessage()` indique le
+listener UDP et le port 8321. Une nouvelle tentative sur la même instance
+fonctionne après libération du port. Aucun changement du protocole réseau.
+
+Le test réserve réellement 8321 avec `SO_EXCLUSIVEADDRUSE` : avant correction,
+échec sur l'assertion du retour ASIO ; après correction, **CTest 10/10**, 1,66 s.
+La copie 0001–0004 accepte le patch et produit les mêmes sources que le build,
+après normalisation des fins de lignes. Revue sans défaut important sous
+l'hypothèse des appels de contrôle ASIO sérialisés par l'hôte.
+
+Artefact local avec cinq patches : `build_pwar_qualification/Release/PWARASIO.dll`,
+169472 octets, timestamp UTC `2026-10-24T11:34:18`, SHA-256
+`B07C7BBFAEF9FA1A5A8945EB15C54537E7475CC7EF9C0C6E216C5E197B619F6C`.
+
+L'hôte Timox vérifie déjà le retour de `driver->start()` et le contrôleur passe
+en erreur ; son message actuel est générique (`ASIO start failed`, code ASIO).
+Cette propagation a été vérifiée par lecture, pas par chargement COM de cette
+DLL. Le diagnostic détaillé PWAR n'est pas encore repris par l'hôte.
+Le test ne prouve pas les autres pannes WinSock ni une borne temporelle de
+démarrage (ordonnancement, journalisation amont). Une défaillance après bind,
+le socket d'émission et la réception réelle depuis Linux restent à qualifier.
+Aucune installation ou inscription COM n'a été effectuée.

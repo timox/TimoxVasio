@@ -105,6 +105,21 @@ int main() {
             CHECK(driver.createBuffers(buffers, 2, 128, &callbacks) == ASE_OK);
             for (auto& buffer : buffers)
                 for (auto* half : buffer.buffers) std::memset(half, 0, 128 * sizeof(float));
+            if (iteration == 0) {
+                const auto blocker = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                CHECK(blocker != INVALID_SOCKET);
+                const BOOL exclusive = TRUE;
+                CHECK(setsockopt(blocker, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+                    reinterpret_cast<const char*>(&exclusive), sizeof(exclusive)) == 0);
+                sockaddr_in address{}; address.sin_family = AF_INET; address.sin_port = htons(8321);
+                CHECK(bind(blocker, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) == 0);
+                const auto startResult = driver.start();
+                closesocket(blocker);
+                CHECK(startResult == ASE_HWMalfunction);
+                char error[124]{}; driver.getErrorMessage(error);
+                CHECK(std::strstr(error, "UDP") != nullptr);
+                CHECK(PortAvailable());
+            }
             CHECK(driver.start() == ASE_OK);
             CHECK(WaitForPort(false)); // This must exercise an actual bound listener.
             callbackEntered = false;
