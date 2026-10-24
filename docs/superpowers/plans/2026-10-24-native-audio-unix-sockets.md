@@ -77,6 +77,30 @@ Sources primaires :
 
 ### Contrat du prochain sous-lot : SocketSession sur un flux TLS
 
+**Écoute autonome du 24 octobre :** SocketServer possède un listener et quatre
+slots fixes session/thread. Run appartient à un acceptor ; RequestCancel et
+ActiveConnections sont concurrents, tous les appels doivent finir avant
+destruction. Les workers publient leur fin sous mutex, le thread est joint hors
+mutex avant de détruire la session. Une exception d'allocation/lancement passe
+par Cancel puis drainage. Listen n'efface aucun chemin ; ACL, découverte et
+retrait du chemin restent à la charge de l'hôte de confiance.
+
+Le certificat serveur est dupliqué et détenu par RAII. L'enrollment révoqué est
+détecté durant les attentes accept/quota (poll de 200 ms, sans borne de scheduling
+OS), puis toutes les sessions sont annulées et jointes. Une cinquième connexion
+peut rester dans le backlog OS ; elle n'obtient pas de cinquième worker.
+
+RED initial : header serveur absent. GREEN : test du client concret désormais
+sans accept/threads de sessions manuels, PCM, OwnedElsewhere et six réouvertures
+successives ; test quota quatre sockets muettes au handshake, révocation avec
+clients ouverts, Run terminé en moins de deux secondes et zéro session active.
+Ce test ne prouve pas l'arrêt d'un backend natif qui ignorerait RequestCancel.
+Revue indépendante : aucun défaut bloquant ; restent sans injection directe
+annulation avant Run, révocation listener inactif et échec de création de thread.
+Bibliothèque NativeAudioWindowsBroker compilée /W4 /WX sans macro de test,
+dix CTests ciblés réussis et banc TLS réel réussi ; trois clés temporaires
+supprimées et absence vérifiée. Pas d'installation SCM ni activation native.
+
 **Client concret du 24 octobre :** `src/native_audio_socket_channel_win32.cpp`
 implémente INativeAudioAuthenticatedChannel avec un seul socket/TLS et états
 Disconnected→BootstrapBound→LeasePending→DataBound→Closed. La factory reçoit

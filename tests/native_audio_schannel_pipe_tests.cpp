@@ -8,6 +8,7 @@
 #include "broker_dispatcher.h"
 #include "unix_socket_stream_win32.h"
 #include "socket_session_win32.h"
+#include "socket_server_win32.h"
 #include <filesystem>
 #include <future>
 #include <sddl.h>
@@ -467,38 +468,69 @@ void ConcreteSocketClient(Identity& serverIdentity,Identity& clientIdentity){
     const auto audio=std::make_shared<ConcreteAudioState>();
     BrokerDispatcher broker([audio]{return std::make_unique<ConcreteAudio>(audio);},policy);
     auto enrollment=std::make_shared<SocketEnrollment>(Hash(clientIdentity.cert),identity,1);
-    UnixSocketStream listener;Check(listener.Listen(path.value.c_str()).code==Code::Ok,"client fixture listen");
-    auto socket=std::make_unique<UnixSocketStream>();auto* accepted=socket.get();
-    SocketSession session(broker,std::move(socket),serverIdentity.cert,enrollment);
+    SocketServer server(broker,serverIdentity.cert,enrollment);
+    Check(server.Listen(path.value.c_str()).code==Code::Ok,"autonomous server listen");
     auto transport=CreateBrokerNativeAudioTransport(CreateWindowsNativeAudioSocketChannel(
         {clientIdentity.cert,Hash(serverIdentity.cert)},path.value.c_str()));
     Bytes render(MaxPayloadBytes);const auto capture=ConcretePacket(false);
-    NativeChannelResult served;std::thread worker([&]{served=listener.Accept(*accepted,Deadline());if(served.code==Code::Ok)served=session.Run();});
-    struct Join {UnixSocketStream& listener;SocketSession& session;INativeAudioTransport& transport;std::thread& worker;
-        ~Join(){listener.RequestCancel();session.RequestCancel();transport.RequestCancel();transport.Close();if(worker.joinable())worker.join();}} join{listener,session,*transport,worker};
+    NativeChannelResult served;std::thread worker([&]{served=server.Run();});
+    struct Join {SocketServer& server;INativeAudioTransport& transport;std::thread& worker;
+        ~Join(){server.RequestCancel();transport.RequestCancel();transport.Close();if(worker.joinable())worker.join();}} join{server,*transport,worker};
     NativeSessionInfo info;Check(transport->Open(info).code==NativeTransferCode::Ok&&info.wireGeneration==23,"concrete socket client Open");
     {
-        auto otherSocket=std::make_unique<UnixSocketStream>();auto* otherAccepted=otherSocket.get();
-        SocketSession otherSession(broker,std::move(otherSocket),serverIdentity.cert,enrollment);
         auto otherTransport=CreateBrokerNativeAudioTransport(CreateWindowsNativeAudioSocketChannel(
             {clientIdentity.cert,Hash(serverIdentity.cert)},path.value.c_str()));
-        NativeChannelResult otherServed;
-        std::thread otherWorker([&]{otherServed=listener.Accept(*otherAccepted,Deadline());if(otherServed.code==Code::Ok)otherServed=otherSession.Run();});
-        Join otherJoin{listener,otherSession,*otherTransport,otherWorker};
         NativeSessionInfo otherInfo;
         Check(otherTransport->Open(otherInfo).code==NativeTransferCode::OwnedElsewhere&&otherInfo.wireGeneration==0,"second socket owner accepted");
-        otherTransport->Close();otherWorker.join();
-        Check(otherServed.code==Code::AccessDenied,"second owner session did not retire");
+        otherTransport->Close();
     }
     Check(transport->ReadRender(4096,render.data(),static_cast<std::uint32_t>(render.size())).code==NativeTransferCode::Ok&&render==ConcretePacket(true),"concrete socket render");
     Check(transport->WriteCapture(capture.data(),static_cast<std::uint32_t>(capture.size())).code==NativeTransferCode::Full,"concrete socket Full");
     Check(transport->WriteCapture(capture.data(),static_cast<std::uint32_t>(capture.size())).code==NativeTransferCode::Ok,"concrete socket capture retry");
     std::uint64_t counters[3]{};Check(transport->ReadStatus(counters).code==NativeTransferCode::Ok&&counters[0]==12&&counters[1]==34&&counters[2]==56,"concrete socket status");
-    transport->Close();worker.join();broker.Stop();
-    Check(served.code==Code::Ok&&audio->owners==0&&audio->opens==audio->closes,"concrete socket teardown");
+    transport->Close();
+    for(unsigned n=0;n<6;++n){
+        auto replacement=CreateBrokerNativeAudioTransport(CreateWindowsNativeAudioSocketChannel(
+            {clientIdentity.cert,Hash(serverIdentity.cert)},path.value.c_str()));
+        NativeSessionInfo replacementInfo;
+        Check(replacement->Open(replacementInfo).code==NativeTransferCode::Ok,"server failed to reuse retired slot");
+        replacement->Close();
+    }
+    server.RequestCancel();worker.join();broker.Stop();
+    Check(served.code==Code::Cancelled&&server.ActiveConnections()==0&&audio->owners==0&&audio->opens==audio->closes,"concrete socket teardown");
     Check(audio->captureBytes==capture.size()&&std::equal(capture.begin(),capture.end(),audio->captured.begin()),"concrete socket capture changed");
 }
+void SocketServerQuota(Identity& serverIdentity,Identity& clientIdentity){
+    using namespace timox_broker;
+    struct Path {
+        std::string value=std::filesystem::absolute("quota-unix-"+std::to_string(GetCurrentProcessId())+".sock").string();
+        Path(){Check(!std::filesystem::exists(value),"quota socket path exists");}
+        ~Path(){std::error_code error;std::filesystem::remove(value,error);}
+    } path;
+    ChannelIdentity identity;Check(ObserveProcessIdentity(identity)==ERROR_SUCCESS,"quota identity");
+    auto enrollment=std::make_shared<SocketEnrollment>(Hash(clientIdentity.cert),identity,1);
+    BrokerDispatcher broker([]{return std::unique_ptr<INativeAudioTransport>{};},{});
+    SocketServer server(broker,serverIdentity.cert,enrollment);
+    Check(server.Listen(path.value.c_str()).code==Code::Ok,"quota listen");
+    std::promise<void> completed;auto completion=completed.get_future();NativeChannelResult served;
+    std::thread worker([&]{served=server.Run();completed.set_value();});
+    struct Join {SocketServer& server;std::thread& worker;~Join(){server.RequestCancel();if(worker.joinable())worker.join();}} join{server,worker};
+    std::array<UnixSocketStream,5> clients;
+    for(unsigned n=0;n<4;++n)Check(clients[n].Connect(path.value.c_str(),Deadline()).code==Code::Ok,"quota connect");
+    const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+    while(server.ActiveConnections()!=4&&std::chrono::steady_clock::now()<until)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    Check(server.ActiveConnections()==4,"four handshakes not admitted");
+    // A fifth socket may enter the OS backlog; it must not get a fifth worker.
+    clients[4].Connect(path.value.c_str(),std::chrono::steady_clock::now()+std::chrono::milliseconds(100));
+    Check(server.ActiveConnections()==4,"worker quota exceeded");
+    enrollment->Revoke();
+    Check(completion.wait_for(std::chrono::seconds(2))==std::future_status::ready,"revocation did not interrupt stalled handshakes");
+    worker.join();
+    Check(served.code==Code::Cancelled&&server.ActiveConnections()==0,"quota server did not drain");
+    Check(server.Listen(path.value.c_str()).code!=Code::Ok,"cancelled server reopened");
+}
 void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
+    SocketServerQuota(serverIdentity,clientIdentity);
     ConcreteSocketClient(serverIdentity,clientIdentity);
     for(unsigned fault=0;fault<=8;++fault)SocketBroker(serverIdentity,clientIdentity,fault);
     UnixTls(serverIdentity,clientIdentity,false);
