@@ -281,3 +281,28 @@ via la même fonction que l'hôte, libèrent le port puis testent l'audio sur la
 instance. **8/8 réussis**, moteur Release compilé. Le contrôleur transmet déjà son
 erreur au contrat API ; le parcours complet avec pilote enregistré et GUI reste
 à tester. Il ne s'agit pas encore d'un test du routage Timox avec PWAR.
+
+### Hôte ASIO Timox avec DLL PWAR
+
+`PwarTimoxHostTests` compile les sources de production `physical_asio_host.cpp`
+et `asio_sample_conversion.cpp`, sans modification. Seul l'adaptateur
+`AsioDriverList` est remplacé dans le banc : il présente un inventaire isolé
+et active la DLL par sa fabrique exportée. Aucune clé de registre n'est écrite.
+
+Trois cas passent : stéréo, canal droit seul, horloge sans route (buffer privé).
+Chaque cas vérifie l'ouverture, la fréquence 48000 Hz, l'échec avec réservation
+exclusive de 8321 sur toutes les interfaces, le diagnostic détaillé et une
+nouvelle tentative sur le même hôte. Deux blocs de 128 frames passent par les
+conversions et le callback de l'hôte ; le banc contrôle chaque échantillon en
+entrée puis en sortie (gain x2), ainsi que le silence des sorties absentes.
+Les compteurs confirment deux callbacks ; arrêt et fermeture libèrent le port.
+
+Compilation et **CTest 21/21**, 2,17 s. Les premiers essais du banc ont été
+corrigés pour réserver l'adresse wildcard (une réservation loopback seule ne
+garantit pas le conflit) et lire les compteurs avant l'arrêt, conformément au
+contrat existant. Aucun changement du moteur ou de la DLL n'a été nécessaire.
+
+Cette preuve couvre l'hôte ASIO réel, pas encore le graphe de routage complet,
+le contrôleur/API/GUI, la découverte par le registre ou un pair Linux.
+Le hash de la DLL à six patches ci-dessus reste celui testé. La stabilité sur
+durée et les performances au niveau de TimoxVasio ne sont pas établies.

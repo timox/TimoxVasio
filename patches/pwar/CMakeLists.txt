@@ -64,6 +64,21 @@ if(PWAR_BUILD_WINDOWS_DRIVER)
     target_compile_definitions(PwarAsioDllTests PRIVATE PWAR_TEST_DLL)
     target_link_libraries(PwarAsioDllTests PRIVATE ws2_32 ole32 uuid)
     add_dependencies(PwarAsioDllTests PwarQualificationDriver)
+    add_executable(PwarTimoxHostTests timox_host_tests.cpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../src/physical_asio_host.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../src/asio_sample_conversion.cpp")
+    target_include_directories(PwarTimoxHostTests PRIVATE "${PWAR_ASIO_SDK_DIR}/common"
+        "${PWAR_ASIO_SDK_DIR}/host/pc" "${PWAR_SOURCE_DIR}/protocol"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
+    target_compile_features(PwarTimoxHostTests PRIVATE cxx_std_17)
+    target_compile_options(PwarTimoxHostTests PRIVATE /W4 /EHsc)
+    target_link_libraries(PwarTimoxHostTests PRIVATE ws2_32 ole32 uuid)
+    add_dependencies(PwarTimoxHostTests PwarQualificationDriver)
+    foreach(mode stereo right clock)
+        add_test(NAME PwarTimoxHost_${mode} COMMAND PwarTimoxHostTests ${mode} $<TARGET_FILE:PwarQualificationDriver>)
+        set_tests_properties(PwarTimoxHost_${mode} PROPERTIES TIMEOUT 10 RUN_SERIAL TRUE
+            ENVIRONMENT "USERPROFILE=${CMAKE_CURRENT_BINARY_DIR}/pwar-test-profile")
+    endforeach()
     foreach(mode stereo reversed reverse_outputs left right capture playback clock)
         add_test(NAME PwarAsioDll_${mode} COMMAND PwarAsioDllTests ${mode} $<TARGET_FILE:PwarQualificationDriver>)
         set_tests_properties(PwarAsioDll_${mode} PROPERTIES TIMEOUT 5 RUN_SERIAL TRUE
