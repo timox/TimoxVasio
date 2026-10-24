@@ -86,6 +86,39 @@ altération de chaque octet d'en-tête, champs nuls, préservation des sorties s
 du codec, puis correction du type uint8_t des zéros de test et build/test réussis.
 Ces tests ne qualifient aucun droit Windows, provisioning ou serveur actif.
 
+**Lecture Windows sur handle ajoutée ensuite :**
+`socket_discovery_win32.h/.cpp` vérifie une politique de fichier public précise :
+propriétaire SYSTEM, Administrateurs ou SID de TimoxNativeAudioBroker ; DACL
+protégée, exactement quatre ACE allow sans flags, SYSTEM/Administrateurs/service
+en contrôle complet et Authenticated Users en lecture seule. Tout autre owner,
+entrée, masque, héritage, doublon ou DACL nulle est refusé. Ce contrat est destiné
+aux métadonnées publiques, jamais aux clés privées. Le SID du service est fixé
+dans le code, confirmé par `sc.exe showsid TimoxNativeAudioBroker` :
+S-1-5-80-954356743-986487362-260697779-2273189862-4263205101.
+LocalService générique n'est pas un propriétaire/écrivain accepté.
+
+ReadSocketDiscoveryHandle réouvre le même objet par ReOpenFile en partage
+lecture seule, contrôle type disque, absence de directory/reparse, un seul lien,
+taille exacte et sécurité, puis lit et décode. Aucun chemin n'est réouvert et
+aucune sortie n'est modifiée sur erreur. La fonction ne crée aucun fichier et
+ne change aucun droit. Contrats documentés par Microsoft :
+[ReOpenFile](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-reopenfile),
+[droits de fichiers](https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights).
+
+**Limite :** cette fonction est un lecteur d'objet, pas encore le mécanisme de
+découverte par chemin. L'hôte doit vérifier la chaîne locale des répertoires et
+la provenance de la publication avant de l'utiliser. La DACL seule ne détecte
+pas un ancien fichier de confiance replacé sous un parent non fiable ; ni l'epoch
+ni ReOpenFile ne prouvent la fraîcheur. Aucun raccord à la factory n'est fait.
+
+NativeAudioSocketDiscoveryWindowsTests vérifie des descripteurs SDDL synthétiques
+acceptés/refusés et, sur un vrai fichier du workspace, le rejet d'un écrivain
+encore ouvert (ERROR_SHARING_VIOLATION) puis celui d'un fichier appartenant à
+l'utilisateur (ERROR_ACCESS_DENIED), sans altérer la sortie. Build /W4 /WX et
+test réussis. Pas de modification des ACL machine, d'installation du service,
+de preuve de lecture réussie d'une publication produite par le service ni de
+preuve inter-logons : la validation positive réelle attend ce provisioning.
+
 ### Point de décision : identité du logon
 
 L'enquête après a18815a écarte une transposition automatique du PID vers un token

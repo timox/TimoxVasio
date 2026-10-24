@@ -25,6 +25,16 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
     add_test(NAME NativeAudioSocketDiscoveryTests COMMAND NativeAudioSocketDiscoveryTests)
     set_tests_properties(NativeAudioSocketDiscoveryTests PROPERTIES TIMEOUT 15)
     if(WIN32)
+        add_executable(NativeAudioSocketDiscoveryWindowsTests tests/native_audio_socket_discovery_win32_tests.cpp
+            native-windows-audio/broker/socket_discovery.cpp native-windows-audio/broker/socket_discovery_win32.cpp)
+        target_include_directories(NativeAudioSocketDiscoveryWindowsTests PRIVATE native-windows-audio/broker)
+        target_compile_definitions(NativeAudioSocketDiscoveryWindowsTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_link_libraries(NativeAudioSocketDiscoveryWindowsTests PRIVATE advapi32)
+        if(MSVC)
+            target_compile_options(NativeAudioSocketDiscoveryWindowsTests PRIVATE /W4 /WX /EHsc)
+        endif()
+        add_test(NAME NativeAudioSocketDiscoveryWindowsTests COMMAND NativeAudioSocketDiscoveryWindowsTests)
+        set_tests_properties(NativeAudioSocketDiscoveryWindowsTests PROPERTIES TIMEOUT 15)
         add_executable(NativeAudioUnixSocketTests tests/native_audio_unix_socket_tests.cpp
             native-windows-audio/broker/unix_socket_stream_win32.cpp)
         target_include_directories(NativeAudioUnixSocketTests PRIVATE include native-windows-audio/include native-windows-audio/broker)
@@ -92,6 +102,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         add_library(NativeAudioWindowsChannel STATIC src/native_audio_authenticated_channel_win32.cpp
             src/native_audio_socket_channel_win32.cpp native-windows-audio/broker/unix_socket_stream_win32.cpp
             native-windows-audio/broker/socket_discovery.cpp
+            native-windows-audio/broker/socket_discovery_win32.cpp
             native-windows-audio/broker/channel_binding.cpp native-windows-audio/broker/pipe_identity_win32.cpp
             native-windows-audio/broker/pipe_stream_win32.cpp native-windows-audio/broker/schannel_stream_win32.cpp)
         target_include_directories(NativeAudioWindowsChannel PUBLIC include PRIVATE native-windows-audio/include native-windows-audio/broker)
