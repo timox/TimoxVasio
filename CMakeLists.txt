@@ -82,6 +82,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
     if(WIN32)
         # Compile the production surface without the test endpoint override.
         add_library(NativeAudioWindowsChannel STATIC src/native_audio_authenticated_channel_win32.cpp
+            src/native_audio_socket_channel_win32.cpp native-windows-audio/broker/unix_socket_stream_win32.cpp
             native-windows-audio/broker/channel_binding.cpp native-windows-audio/broker/pipe_identity_win32.cpp
             native-windows-audio/broker/pipe_stream_win32.cpp native-windows-audio/broker/schannel_stream_win32.cpp)
         target_include_directories(NativeAudioWindowsChannel PUBLIC include PRIVATE native-windows-audio/include native-windows-audio/broker)
@@ -89,7 +90,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         if(MSVC)
             target_compile_options(NativeAudioWindowsChannel PRIVATE /W4 /WX /EHsc)
         endif()
-        target_link_libraries(NativeAudioWindowsChannel PRIVATE secur32 crypt32 advapi32 bcrypt)
+        target_link_libraries(NativeAudioWindowsChannel PRIVATE secur32 crypt32 advapi32 bcrypt ws2_32)
         add_executable(NativeAudioPipeIdentityTests tests/native_audio_pipe_identity_tests.cpp
             native-windows-audio/broker/pipe_identity_win32.cpp
             native-windows-audio/broker/channel_binding.cpp
@@ -115,6 +116,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         add_test(NAME NativeAudioPipeStreamTests COMMAND NativeAudioPipeStreamTests)
         set_tests_properties(NativeAudioPipeStreamTests PROPERTIES TIMEOUT 30)
         add_executable(NativeAudioSchannelPipeTests tests/native_audio_schannel_pipe_tests.cpp
+            src/native_audio_socket_channel_win32.cpp
             native-windows-audio/broker/socket_session_win32.cpp
             native-windows-audio/broker/unix_socket_stream_win32.cpp
             native-windows-audio/broker/broker_dispatcher.cpp

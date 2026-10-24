@@ -453,7 +453,53 @@ void SocketBroker(Identity& serverIdentity,Identity& clientIdentity,unsigned fau
     if(!fault)Check(result.code==Code::Ok&&audio->captureBytes==capture.size()&&std::equal(capture.begin(),capture.end(),audio->captured.begin()),"socket PCM/session failed");
     if(fault==1||fault==3)Check(audio->opens==0,"unbound socket opened native audio");
 }
+void ConcreteSocketClient(Identity& serverIdentity,Identity& clientIdentity){
+    using namespace timox_broker;
+    struct Path {
+        std::string value=std::filesystem::absolute("client-unix-"+std::to_string(GetCurrentProcessId())+".sock").string();
+        Path(){Check(!std::filesystem::exists(value),"client socket path exists");}
+        ~Path(){std::error_code error;std::filesystem::remove(value,error);}
+    } path;
+    ChannelIdentity identity;Check(ObserveProcessIdentity(identity)==ERROR_SUCCESS,"client socket identity");
+    NativePeerIdentity peer{ObservedSidText(identity.userSid),ObservedSidText(identity.logonSid),identity.authenticationId,identity.sessionId};
+    NativeSessionPolicySnapshot policy;policy.allowedUserSid=peer.userSid;policy.consoleSessionId=peer.sessionId;
+    policy.interactiveLogonCount=1;policy.unlocked=true;policy.audioIsolationQualified=true;policy.optionalConsoleIdentity=peer;
+    const auto audio=std::make_shared<ConcreteAudioState>();
+    BrokerDispatcher broker([audio]{return std::make_unique<ConcreteAudio>(audio);},policy);
+    auto enrollment=std::make_shared<SocketEnrollment>(Hash(clientIdentity.cert),identity,1);
+    UnixSocketStream listener;Check(listener.Listen(path.value.c_str()).code==Code::Ok,"client fixture listen");
+    auto socket=std::make_unique<UnixSocketStream>();auto* accepted=socket.get();
+    SocketSession session(broker,std::move(socket),serverIdentity.cert,enrollment);
+    auto transport=CreateBrokerNativeAudioTransport(CreateWindowsNativeAudioSocketChannel(
+        {clientIdentity.cert,Hash(serverIdentity.cert)},path.value.c_str()));
+    Bytes render(MaxPayloadBytes);const auto capture=ConcretePacket(false);
+    NativeChannelResult served;std::thread worker([&]{served=listener.Accept(*accepted,Deadline());if(served.code==Code::Ok)served=session.Run();});
+    struct Join {UnixSocketStream& listener;SocketSession& session;INativeAudioTransport& transport;std::thread& worker;
+        ~Join(){listener.RequestCancel();session.RequestCancel();transport.RequestCancel();transport.Close();if(worker.joinable())worker.join();}} join{listener,session,*transport,worker};
+    NativeSessionInfo info;Check(transport->Open(info).code==NativeTransferCode::Ok&&info.wireGeneration==23,"concrete socket client Open");
+    {
+        auto otherSocket=std::make_unique<UnixSocketStream>();auto* otherAccepted=otherSocket.get();
+        SocketSession otherSession(broker,std::move(otherSocket),serverIdentity.cert,enrollment);
+        auto otherTransport=CreateBrokerNativeAudioTransport(CreateWindowsNativeAudioSocketChannel(
+            {clientIdentity.cert,Hash(serverIdentity.cert)},path.value.c_str()));
+        NativeChannelResult otherServed;
+        std::thread otherWorker([&]{otherServed=listener.Accept(*otherAccepted,Deadline());if(otherServed.code==Code::Ok)otherServed=otherSession.Run();});
+        Join otherJoin{listener,otherSession,*otherTransport,otherWorker};
+        NativeSessionInfo otherInfo;
+        Check(otherTransport->Open(otherInfo).code==NativeTransferCode::OwnedElsewhere&&otherInfo.wireGeneration==0,"second socket owner accepted");
+        otherTransport->Close();otherWorker.join();
+        Check(otherServed.code==Code::AccessDenied,"second owner session did not retire");
+    }
+    Check(transport->ReadRender(4096,render.data(),static_cast<std::uint32_t>(render.size())).code==NativeTransferCode::Ok&&render==ConcretePacket(true),"concrete socket render");
+    Check(transport->WriteCapture(capture.data(),static_cast<std::uint32_t>(capture.size())).code==NativeTransferCode::Full,"concrete socket Full");
+    Check(transport->WriteCapture(capture.data(),static_cast<std::uint32_t>(capture.size())).code==NativeTransferCode::Ok,"concrete socket capture retry");
+    std::uint64_t counters[3]{};Check(transport->ReadStatus(counters).code==NativeTransferCode::Ok&&counters[0]==12&&counters[1]==34&&counters[2]==56,"concrete socket status");
+    transport->Close();worker.join();broker.Stop();
+    Check(served.code==Code::Ok&&audio->owners==0&&audio->opens==audio->closes,"concrete socket teardown");
+    Check(audio->captureBytes==capture.size()&&std::equal(capture.begin(),capture.end(),audio->captured.begin()),"concrete socket capture changed");
+}
 void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
+    ConcreteSocketClient(serverIdentity,clientIdentity);
     for(unsigned fault=0;fault<=8;++fault)SocketBroker(serverIdentity,clientIdentity,fault);
     UnixTls(serverIdentity,clientIdentity,false);
     UnixTls(serverIdentity,clientIdentity,true);

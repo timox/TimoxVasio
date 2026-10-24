@@ -77,6 +77,31 @@ Sources primaires :
 
 ### Contrat du prochain sous-lot : SocketSession sur un flux TLS
 
+**Client concret du 24 octobre :** `src/native_audio_socket_channel_win32.cpp`
+implémente INativeAudioAuthenticatedChannel avec un seul socket/TLS et états
+Disconnected→BootstrapBound→LeasePending→DataBound→Closed. La factory reçoit
+des credentials déjà provisionnés et un chemin venant de l'hôte de confiance ;
+pas de découverte ni de fallback. Le client relève son propre token, exige son
+identité exacte dans la réponse, valide chaque requête/réponse et confirme le
+bail/génération/nonce sur le même flux avant PCM. Cancel sticky, pointeurs fixes,
+erreurs terminales avec effacement de la sortie bornée. Aucun changement du
+protocole PWAR ou de TimoxVasio.dll.
+
+RED observé : factory absente ; build client/socket dans NativeAudioWindowsChannel
+sans macro test et banc TLS réussis. ConcreteSocketClient utilise l'adaptateur
+réel face au gestionnaire et au dispatcher : PCM maximal identique aller/retour,
+Full puis retry, STATUS=12/34/56, CLOSE et aucun propriétaire restant. Deuxième
+connexion TLS au même dispatcher : OwnedElsewhere, puis PCM du premier continue.
+Dix CTests ciblés et suite crypto réelle passent ; trois clés temporaires
+supprimées et absence vérifiée. Ce scénario utilise un enrollment et une politique
+synthétiques, pas un provisioner de production ni une écoute autonome à quatre
+workers. Les enveloppes mémoire calculées précédemment concernent encore le
+client pipe ; budget socket complet à mesurer.
+Revue indépendante sans défaut bloquant. Couverture à compléter explicitement
+sur ce nouveau client : serveur répondant avec binding/offre altérés et annulation
+pendant son handshake. Les tests de l'ancien client pipe et ceux des refus côté
+SocketSession ne remplacent pas ces scénarios client socket.
+
 **Implémentation du 24 octobre :** socket_session_win32.h/.cpp raccordé au
 dispatcher partagé. Enrollment immuable pin/identité/epoch avec révocation
 terminale. Le propriétaire de l'enrollment doit Revoke puis RequestCancel toutes
