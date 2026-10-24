@@ -2,6 +2,7 @@
 #include <windows.h>
 #ifdef PWAR_TEST_DLL
 #include "iasiodrv.h"
+#include "asio_error.h"
 #include "pwar_packet.h"
 #include <atomic>
 #else
@@ -137,6 +138,21 @@ int main(int argc, char** argv) {
         CHECK(driver.createBuffers(buffers.data(), bufferCount, Frames, &callbacks) == ASE_OK);
         for (long slot = 0; slot < bufferCount; ++slot)
             for (auto* half : buffers[slot].buffers) std::memset(half, 0, Frames * sizeof(float));
+#ifdef PWAR_TEST_DLL
+        // Exercise the host's error formatter with the real loaded driver.
+        const auto blocker = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        CHECK(blocker != INVALID_SOCKET);
+        CHECK(setsockopt(blocker, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+            reinterpret_cast<const char*>(&exclusive), sizeof(exclusive)) == 0);
+        sockaddr_in occupied{}; occupied.sin_family = AF_INET; occupied.sin_port = htons(8321);
+        CHECK(bind(blocker, reinterpret_cast<const sockaddr*>(&occupied), sizeof(occupied)) == 0);
+        const auto rejected = driver.start();
+        const auto diagnostic = DescribeAsioFailure(driver, "start", rejected);
+        closesocket(blocker);
+        CHECK(rejected == ASE_HWMalfunction);
+        CHECK(diagnostic.find("ASIO start failed (code ") == 0);
+        CHECK(diagnostic.find("UDP listener on port 8321") != std::string::npos);
+#endif
         CHECK(driver.start() == ASE_OK);
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
         while (PortFree() && std::chrono::steady_clock::now() < deadline)

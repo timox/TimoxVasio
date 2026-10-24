@@ -229,7 +229,7 @@ Artefact local avec cinq patches : `build_pwar_qualification/Release/PWARASIO.dl
 `B07C7BBFAEF9FA1A5A8945EB15C54537E7475CC7EF9C0C6E216C5E197B619F6C`.
 
 L'hôte Timox vérifie déjà le retour de `driver->start()` et le contrôleur passe
-en erreur ; son message actuel est générique (`ASIO start failed`, code ASIO).
+en erreur ; à cette étape son message est générique (`ASIO start failed`, code ASIO).
 Cette propagation a été vérifiée par lecture, pas par chargement COM de cette
 DLL. Le diagnostic détaillé PWAR n'est pas encore repris par l'hôte.
 Le test ne prouve pas les autres pannes WinSock ni une borne temporelle de
@@ -266,3 +266,18 @@ Le test prouve le chargement via la fabrique exportée et le chemin audio local,
 pas la découverte par le registre Windows, l'utilisation par l'hôte Timox ou
 une liaison avec PipeWire sous Linux. Ces étapes et les performances restent
 à qualifier avant distribution.
+
+### Diagnostic transmis par l'hôte Timox
+
+L'hôte conserve maintenant le texte de `getErrorMessage()` après un échec de
+`createBuffers()` ou `start()`, avant toute libération susceptible de l'effacer.
+L'opération et le code ASIO restent présents même si le pilote ne fournit aucun
+texte. Un octet sentinelle borne la lecture des 124 octets du contrat ASIO.
+Cette fonction s'exécute sur le thread de contrôle, jamais dans le callback audio.
+
+`AsioErrorTests` vérifie message vide, détail fourni et tampon rempli sans zéro
+terminal. Les huit tests de DLL réservent aussi le port 8321, lisent le diagnostic
+via la même fonction que l'hôte, libèrent le port puis testent l'audio sur la même
+instance. **8/8 réussis**, moteur Release compilé. Le contrôleur transmet déjà son
+erreur au contrat API ; le parcours complet avec pilote enregistré et GUI reste
+à tester. Il ne s'agit pas encore d'un test du routage Timox avec PWAR.
