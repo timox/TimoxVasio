@@ -1,6 +1,6 @@
 # Qualification du SID de service et de la publication
 
-`TimoxNativeAudioServiceProbe.exe` est un outil pour une VM Windows de laboratoire,
+`TimoxNativeAudioServiceProbe.exe` est un outil de qualification Windows,
 pas le broker audio de production. Aucun flux audio, listener, certificat ou clé
 n'est créé. Le mode SCM écrit des métadonnées synthétiques dans
 `ProgramData\TimoxNativeAudioBroker\Qualification\discovery.bin` ; les clients de
@@ -8,14 +8,29 @@ production consultent uniquement le sibling `Runtime`.
 
 L'hôte de développement n'a exécuté que les tests et les modes sans écriture.
 Ni la préparation `--apply` ni l'installation/exécution SCM ne sont qualifiées.
-Un snapshot de la VM permet de conserver un état initial reproductible.
+L'utilisateur a choisi de préparer les essais sur le poste Windows existant,
+sans VM. Aucune VM n'est actuellement disponible. Avant une exécution SCM,
+préparer les sauvegardes et le retrait limité aux objets créés par l'essai.
+L'inventaire ci-dessous est sans installation et ne constitue pas cet essai.
+
+```powershell
+.\native-windows-audio\scripts\inspect-host.ps1
+```
+
+Ce script produit du JSON : présence des deux services, chemins, dates, hashes
+et état Authenticode des binaires. Une erreur d'accès reste `unknown`, jamais
+interprétée comme une absence. Il n'ouvre aucun endpoint audio. Le 24 octobre,
+les deux services sont absents (1060), le SYS est présent et non signé.
+Le probe `--inspect` observe une racine absente (2), et son dry-run confirme
+`productMissingBefore=true`, `qualificationMissingBefore=true`. Ces résultats
+ne qualifient pas le compte LocalService ni les écritures du futur service.
 
 ## Artefact et lecture seule
 
 Construire la cible `TimoxNativeAudioServiceProbe` dans build_native_production.
 Comparer chemin, date et SHA-256 du fichier transféré à ceux du manifeste du
 candidat. L'exécutable x64 dépend du runtime Microsoft Visual C++ v14 x64 adapté
-au toolset utilisé ; vérifier `--help` dans la VM avant toute préparation SCM.
+au toolset utilisé ; vérifier `--help` sur la cible avant toute préparation SCM.
 Le candidat ne fournit pas d'installateur de runtime.
 
 ```powershell
@@ -34,10 +49,23 @@ La racine du broker est volontairement distincte de ProgramData\TimoxVasio,
 dont l'outil de laboratoire existant exige une autre DACL. Aucune migration ou
 modification silencieuse des droits de ce répertoire partagé n'est effectuée.
 
-## Exécution privilégiée à autoriser dans la VM
+## Exécution privilégiée à autoriser sur la cible
+
+Préparer d'abord le plan JSON avec le hash du candidat revu :
+
+```powershell
+.\native-windows-audio\scripts\plan-service-qualification.ps1 `
+  -ExpectedSha256 C5C80695F16C090BD5F1FF2A512B1243871FC635ADA744E2BBF07BAF1E98C2E0
+```
+
+Ce préparateur vérifie le hash avant d'exécuter les deux modes de lecture du
+probe, exige l'absence du service et fournit les arguments SCM, les critères
+de réussite et le retour arrière. Il ne copie ni n'installe aucun fichier,
+n'exécute aucune commande SCM d'écriture et ne modifie aucune ACL. Un rebuild
+du probe demande de revoir son nouveau hash ; ne pas contourner ce contrôle.
 
 Ces commandes ne font pas partie des tests automatiques. Elles nécessitent un
-terminal administrateur dans la VM et un exécutable vérifié placé dans un
+terminal administrateur sur la cible et un exécutable vérifié placé dans un
 répertoire protégé sous Program Files. Ne jamais remplacer un service existant
 nommé TimoxNativeAudioBroker : le probe utilise ce nom pour obtenir exactement
 le SID prévu pour le futur broker.
