@@ -327,6 +327,13 @@ if(WIN32)
         src/wasapi_device_enumerator.cpp)
     target_include_directories(WasapiDeviceEnumeratorTests PRIVATE ${INCLUDE_DIR})
     target_link_libraries(WasapiDeviceEnumeratorTests PRIVATE ole32 propsys uuid)
+    add_executable(WasapiDeviceNotificationsTests tests/wasapi_device_notifications_tests.cpp
+        src/wasapi_device_notifications.cpp)
+    target_include_directories(WasapiDeviceNotificationsTests PRIVATE ${INCLUDE_DIR})
+    target_link_libraries(WasapiDeviceNotificationsTests PRIVATE ole32 uuid)
+    if(MSVC)
+        target_compile_options(WasapiDeviceNotificationsTests PRIVATE /W4 /WX /EHsc)
+    endif()
 
     add_executable(WasapiBackendTests tests/wasapi_backend_tests.cpp
         src/wasapi_backend.cpp src/wasapi_device_enumerator.cpp)
@@ -714,6 +721,7 @@ if(WIN32)
         target_sources(${clock_consumer} PRIVATE src/software_clock_host.cpp
             src/wasapi_bridge_manager.cpp src/wasapi_bridge.cpp src/wasapi_backend.cpp
             src/wasapi_device_enumerator.cpp src/wasapi_sample_conversion.cpp src/drift_resampler.cpp
+            src/wasapi_device_notifications.cpp
             src/native_audio_manager.cpp src/native_audio_backend.cpp)
         target_include_directories(${clock_consumer} PRIVATE ${CMAKE_SOURCE_DIR}/native-windows-audio/include)
         target_compile_definitions(${clock_consumer} PRIVATE NOMINMAX)

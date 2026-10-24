@@ -315,10 +315,28 @@ void ActiveDefaultFollowsRole(const std::wstring& path) {
     controller.Stop();
 }
 }
-int main(){
+int main(int argc,char** argv){
     wchar_t temp[MAX_PATH]{};GetTempPathW(MAX_PATH,temp);
     const auto path=std::wstring(temp)+L"TimoxVasio-controller-wasapi-"+std::to_wstring(GetCurrentProcessId())+L".json";
     DeleteFileW(path.c_str());
+    if(argc>1&&std::string(argv[1])=="--inventory-probe") {
+        try {
+            VasioClientManager clients;AudioController controller(clients,path,path+L".profiles");
+            Require(controller.Start(),"inventory controller start");
+            const auto before=controller.Snapshot();
+            controller.EnumerateWasapiDevices();
+            // The first request publishes once. The observer's initial pending
+            // change must cause a SECOND publication on the idle control worker.
+            Await([&]{return controller.Snapshot().revision>=before.revision+2;},"idle worker did not refresh subscribed inventory");
+            const auto after=controller.Snapshot();
+            Require(after.wasapiInventoryError.empty(),"real inventory refresh failed");
+            Require(after.state==before.state,"inventory refresh changed audio state");
+            Require(controller.EventsSince(before.revision).size()>=2,"inventory publication journal missing");
+            controller.Stop();
+            std::cout<<"Idle worker inventory refresh: "<<after.wasapiDevices.size()<<" endpoints; state="<<after.state<<'\n';
+            DeleteFileW(path.c_str());DeleteFileW((path+L".profiles").c_str());return 0;
+        }catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
+    }
     try{DormantNativePhysicalReservations(path);NativeCapacityPreparation();Transactions(path);OfflineRestoreAndStop(path);PublicationBackoff(path);ActiveDefaultFollowsRole(path);NativeDesireKeepsMaster(path);}catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
     DeleteFileW(path.c_str());DeleteFileW((path+L".profiles").c_str());
     std::cout<<"Audio controller WASAPI tests passed\n";
