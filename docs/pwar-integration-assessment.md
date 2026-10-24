@@ -122,3 +122,12 @@ SHA-256 des octets téléchargés, avant transformation locale :
 | `protocol/pwar_packet.h` | `D0F2B839BC91579D0FF53BCEBB1D78F193A5E25E4317616682E8A89F556BBA45` |
 
 Ces empreintes identifient les sources revues, pas une DLL construite ou installée.
+
+## Premier correctif préparé le 24 octobre
+
+La lecture de `protocol/pwar_router.c` a ensuite confirmé des contrôles manquants
+sur les indices, capacités et tailles. Le [patch 0001 et son banc de tests](../patches/pwar/README.md)
+ajoutent ces validations sans changer le format des paquets. Test rouge sur
+l'amont, puis application sur une extraction vierge et test vert, incluant
+aller-retour stéréo et buffers maximaux. Le listener ASIO et sa division avant
+appel au routeur restent à corriger ; aucune DLL PWAR modifiée n'a été construite.
