@@ -58,8 +58,11 @@ public:
     // Process loopback is explicitly E_NOTIMPL. Existing open streams remain
     // intact on a second Open (AUDCLNT_E_ALREADY_INITIALIZED).
     // Resolver failures map to E_FAIL because the enumerator returns bool;
-    // subsequent native COM failures preserve their HRESULT.
+    // OpenErrorDetail preserves its reason. Subsequent COM failures keep HRESULT.
     virtual HRESULT Open(const WasapiOpenConfig& config) noexcept = 0;
+    // Setup diagnostic, read on the owning worker before Close/destruction.
+    // Empty when no additional detail is available; reset by the next Open.
+    virtual const char* OpenErrorDetail() const noexcept { return ""; }
     // Immutable effective native mix format and buffer metadata until Close.
     virtual const WasapiStreamInfo* Info() const noexcept = 0;
     virtual HRESULT Start() noexcept = 0;

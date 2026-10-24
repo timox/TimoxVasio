@@ -49,6 +49,18 @@ void Validation() {
     Require(FAILED(ValidateWasapiStreamFormat(invalid,384000)), "huge byte buffer accepted");
 }
 
+void ResolverDiagnostic() {
+    // No COM apartment on this thread: resolution fails before any device opens.
+    auto backend = CreateWasapiBackend();
+    WasapiOpenConfig config;
+    config.endpointId=L"TimoxVasio-deterministic-missing-endpoint";
+    Require(backend->Open(config)==E_FAIL, "resolver failure changed status");
+    Require(std::strlen(backend->OpenErrorDetail())>0, "resolver diagnostic discarded");
+    config.endpointId.clear();
+    Require(backend->Open(config)==E_INVALIDARG, "invalid retry accepted");
+    Require(std::strlen(backend->OpenErrorDetail())==0, "new Open retained stale diagnostic");
+}
+
 void ClosedState() {
     auto backend=CreateWasapiBackend();
     Require(backend->Start()==AUDCLNT_E_NOT_INITIALIZED, "closed Start succeeded");
@@ -143,7 +155,7 @@ void Probe() {
 
 int main(int argc,char** argv) {
     try {
-        Validation(); ClosedState();
+        Validation(); ClosedState(); ResolverDiagnostic();
         if (argc>1 && std::strcmp(argv[1],"--probe")==0) Probe();
         std::cout << "WASAPI backend deterministic tests passed\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

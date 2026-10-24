@@ -59,7 +59,9 @@ private:
     std::shared_ptr<WasapiStreamInfo> actual_;
 };
 
-HRESULT Discover(const WasapiBridge::BackendFactory& factory,const WasapiOpenConfig& config,WasapiStreamInfo& info) {
+HRESULT Discover(const WasapiBridge::BackendFactory& factory,const WasapiOpenConfig& config,WasapiStreamInfo& info,
+                 std::string& detail) {
+    detail.clear();
     HRESULT result=E_FAIL;
     std::thread worker([&] {
         const auto apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
@@ -69,6 +71,9 @@ HRESULT Discover(const WasapiBridge::BackendFactory& factory,const WasapiOpenCon
             if(!backend) result=E_POINTER;
             else {
                 result=backend->Open(config);
+                if(FAILED(result)) {
+                    if(const auto* message=backend->OpenErrorDetail())detail=message;
+                }
                 if(SUCCEEDED(result)) {
                     if(const auto* effective=backend->Info())info=*effective;
                     else result=E_UNEXPECTED;
@@ -107,8 +112,13 @@ std::shared_ptr<WasapiBridgeManager::Session> WasapiBridgeManager::Create(
     auto session=std::make_shared<Session>();session->config=config;
     if(!config.enabled)return session;
     WasapiStreamInfo effective;
-    const auto hr=Discover(factory_,config.open,effective);
-    if(FAILED(hr)) {error=Failure("WASAPI discovery failed",hr);return {};}
+    std::string detail;
+    const auto hr=Discover(factory_,config.open,effective,detail);
+    if(FAILED(hr)) {
+        error=Failure("WASAPI discovery failed",hr);
+        if(!detail.empty())error+=": "+detail;
+        return {};
+    }
     const auto valid=ValidateWasapiStreamFormat(effective.format,effective.bufferFrames);
     if(FAILED(valid) || effective.endpointId.empty() || effective.kind!=config.open.kind) {
         error=Failure("Invalid WASAPI discovery format",FAILED(valid)?valid:E_UNEXPECTED);return {};

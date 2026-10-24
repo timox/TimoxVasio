@@ -36,6 +36,7 @@ public:
         info.bufferFrames=s->bufferFrames+(s->growSecondBuffer && serial%2==0?1:0);return S_OK;
     }
     const WasapiStreamInfo* Info()const noexcept override{return &info;}
+    const char* OpenErrorDetail()const noexcept override{return "Endpoint is not active";}
     HRESULT Start()noexcept override{Check();++s->starts;return S_OK;}
     HRESULT Stop()noexcept override{Check();return S_OK;}
     void Close()noexcept override{Check();++s->closes;}
@@ -63,6 +64,12 @@ WasapiBridgeConfiguration Bridge(const char* id,WasapiStreamKind kind,const wcha
 }
 void NativeCapacityPreparation() {
     std::string error;
+    auto unavailable=std::make_shared<NativeState>();unavailable->offline=true;
+    Require(!WasapiBridgeManager::Prepare({Bridge("offline",WasapiStreamKind::Capture,L"missing")},
+        48000,256,{},[unavailable]{return std::make_unique<Backend>(unavailable);},error)
+        && error.find("Endpoint is not active")!=std::string::npos
+        && error.find("HRESULT")!=std::string::npos,
+        "discovery discarded endpoint failure detail or HRESULT");
     const auto config=Bridge("source",WasapiStreamKind::Capture,L"capture");
     auto native=std::make_shared<NativeState>();native->rate=44100;native->bufferFrames=960;
     auto factory=[native]{return std::make_unique<Backend>(native);};
@@ -113,7 +120,10 @@ void Transactions(const std::wstring& path){
     Require(native->opens==opens && routed.wasapiBridges[0].generation==generation,"route edit reopened/reset IO generation");
 
     auto invalid=config;invalid.wasapiBridges.push_back(Bridge("bad",WasapiStreamKind::Capture,L"missing"));
-    Require(!controller.ApplyConfiguration(invalid).success,"missing endpoint transaction accepted");
+    const auto rejected=controller.ApplyConfiguration(invalid);
+    Require(!rejected.success,"missing endpoint transaction accepted");
+    Require(rejected.error.find("Endpoint is not active")!=std::string::npos,
+        "configuration result discarded endpoint diagnostic");
     auto preserved=controller.Snapshot();
     Require(preserved.configurationRevision==routed.configurationRevision && preserved.state=="running" &&
             preserved.routes[0].gainDb==-6 && preserved.wasapiBridges[0].generation==generation,
