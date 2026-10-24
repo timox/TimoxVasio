@@ -1,5 +1,14 @@
 # Préparer les essais Linux depuis la GUI
 
+Paquets locaux reconstruits le 24 octobre 2026 :
+`gui/dist/Timox VASIO Control 1.2.7.exe` (portable) et
+`gui/dist/Timox VASIO Control Setup 1.2.7.exe` (installation de la GUI,
+du moteur et du pilote autonome TimoxVasio). La version reste 1.2.7 ; utiliser
+ces fichiers reconstruits, pas un ancien téléchargement portant le même nom.
+Le portable n'installe aucun pilote. PWAR reste à installer séparément avant
+les essais audio Linux ; sa DLL de qualification n'est pas incluse dans ces
+exécutables. Le routage natif Windows expérimental n'est pas encore activable.
+
 Dans **Routing**, clic droit sur le fond du graphe, puis **Configure PWAR / PipeWire…**.
 
 1. Saisir l'adresse IPv4 de Linux et son port UDP de réception (8321 par défaut).

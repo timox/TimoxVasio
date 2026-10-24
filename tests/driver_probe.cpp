@@ -49,7 +49,8 @@ static bool checkDriver(IASIO* driver, const char* expectedName) {
         }
     }
     if (driver->getBufferSize(&minimum, &maximum, &preferred, &granularity) != ASE_OK ||
-        minimum <= 0 || maximum < minimum || preferred < minimum || preferred > maximum || granularity == 0) {
+        minimum <= 0 || maximum < minimum || preferred < minimum || preferred > maximum ||
+        (minimum != maximum && granularity == 0)) {
         std::fprintf(stderr, "buffer contract failed for %s: min=%ld max=%ld preferred=%ld granularity=%ld\n",
                      name, minimum, maximum, preferred, granularity);
         return false;
@@ -115,7 +116,7 @@ static bool probeDirect(const DirectDriver& target) {
     if (passed) passed = checkDriver(driver, nullptr) && checkPhysicalClockCapabilities(driver);
     if (driver) driver->Release();
     FreeLibrary(module);
-    if (!passed) std::fprintf(stderr, "Direct COM activation failed (0x%08lx): %ls\n",
+    if (!passed) std::fprintf(stderr, "Direct driver probe failed (activation HRESULT 0x%08lx): %ls\n",
                               static_cast<unsigned long>(result), target.path.c_str());
     return passed;
 }
