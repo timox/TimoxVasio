@@ -153,6 +153,44 @@ L'acquisition initiale de ce handle, le provisioning et la fraîcheur demeurent
 non résolus ; ReadSocketDiscoveryDirectory ne transforme pas un répertoire
 choisi par l'utilisateur en racine de confiance. Aucun raccord moteur effectué.
 
+**Acquisition initiale ajoutée ensuite :** socket_discovery_root_win32 fournit
+OpenSocketDiscoveryProgramData, OpenInstalledSocketDiscoveryRoot et
+ReadInstalledSocketDiscovery. Le chemin vient de FOLDERID_ProgramData, jamais
+d'une variable d'environnement ou d'une publication. Le volume est ouvert via
+le namespace DOS global, puis chaque composant séparément relativement au
+handle précédent, sans partage de suppression. Tous les handles d'ancêtres sont
+conservés pendant la descente. Reparse points et objets non répertoires refusés.
+La première implémentation accepte uniquement un volume local HarddiskVolume
+avec NTFS et ACL persistantes ; UNC, autres systèmes de fichiers, chemins
+non canoniques, profondeur supérieure à 32 et composants trop longs échouent.
+Elle ne crée, ne répare et ne change les droits d'aucun répertoire.
+
+Les ancêtres système doivent appartenir à SYSTEM, Administrateurs ou
+TrustedInstaller. Toute ACE effective d'un autre principal permettant DELETE,
+FILE_DELETE_CHILD, WRITE_DAC, WRITE_OWNER ou des droits non reconnus est refusée.
+Les droits de lecture/traversée/création/attributs seuls sont permis ; les ACE
+inherit-only ne s'appliquent pas à l'objet inspecté et chaque enfant existant
+est contrôlé à son tour. Les ACE autres que allow sont refusées par prudence.
+Les deux répertoires privés TimoxVasio puis NativeAudio doivent satisfaire la
+DACL canonique de répertoire décrite plus haut. La fonction finale compose cette
+acquisition avec ReadSocketDiscoveryDirectory, sans repli vers un autre chemin.
+
+Observation réelle du 24 octobre : chaîne du volume à ProgramData acceptée ;
+racine installée et lecture complète retournent ERROR_FILE_NOT_FOUND (2), sans
+mutation. Fixtures synthétiques : création permise, remplacement/contrôle par
+Users refusés. Revue indépendante : aucun défaut important trouvé sous ces
+hypothèses ; un test trop permissif sur le code d'erreur du lecteur complet a
+été renforcé pour comparer avec l'erreur exacte de l'acquisition/lecture composée.
+Le succès complet depuis une publication provisionnée et les scénarios réels de
+reparse/inter-logons restent non vérifiés. Le test de remplacement du parent
+prouve seulement l'ouverture relative. La fraîcheur/enrollment, la publication
+par le service et la construction du chemin AF_UNIX restent à raccorder.
+
+Références :
+[known-folder path](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shgetknownfolderpath),
+[volume et ACL persistantes](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationbyhandlew),
+[namespaces Windows](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file).
+
 ### Point de décision : identité du logon
 
 L'enquête après a18815a écarte une transposition automatique du PID vers un token

@@ -1,4 +1,5 @@
 #include "socket_discovery_win32.h"
+#include "socket_discovery_root_win32.h"
 #include <sddl.h>
 #include <iostream>
 #include <stdexcept>
@@ -138,8 +139,47 @@ void ParentReplacement() {
     BYTE marker=0;DWORD read=0;
     Check(ReadFile(child.handle,&marker,1,&read,nullptr)&&read==1&&marker==0x35,"followed replacement parent pathname");
 }
+void Ancestors() {
+    // Ancestors may allow new children, but not replacement of trusted children.
+    Descriptor acceptable(L"O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1201bf;;;BU)(A;OICIIO;GA;;;CO)");
+    Check(ValidateSocketDiscoveryAncestorSecurity(acceptable.value)==ERROR_SUCCESS,"creation rights treated as replacement rights");
+    for(const auto& bad:{
+        std::wstring(L"O:LSD:P(A;;FR;;;BU)"),
+        std::wstring(L"O:SYD:P(A;;0x40;;;BU)"),
+        std::wstring(L"O:SYD:P(A;;SD;;;BU)"),
+        std::wstring(L"O:SYD:P(A;;WD;;;BU)"),
+        std::wstring(L"O:SYD:P(A;;WO;;;BU)"),
+        std::wstring(L"O:SYD:P(A;;GA;;;BU)"),
+        std::wstring(L"O:SYD:P(A;;0x02000000;;;BU)")}) {
+        Descriptor descriptor(bad);
+        Check(ValidateSocketDiscoveryAncestorSecurity(descriptor.value)==ERROR_ACCESS_DENIED,"ancestor permits replacement/control");
+    }
+    File programData;
+    const auto opened=OpenSocketDiscoveryProgramData(programData.handle);
+    if(opened!=ERROR_SUCCESS) throw std::runtime_error("real ProgramData chain refused: "+std::to_string(opened));
+    Check(programData.handle!=INVALID_HANDLE_VALUE,"ProgramData handle absent");
+    HANDLE occupied=programData.handle;
+    Check(OpenSocketDiscoveryProgramData(occupied)==ERROR_INVALID_PARAMETER&&occupied==programData.handle,"root open overwrote handle");
+    // Inspection only. An unprovisioned installation must fail; never create it.
+    File installed;
+    const auto result=OpenInstalledSocketDiscoveryRoot(installed.handle);
+    Check(result==ERROR_SUCCESS || result==ERROR_FILE_NOT_FOUND || result==ERROR_PATH_NOT_FOUND || result==ERROR_ACCESS_DENIED,
+        "unexpected installed-root error");
+    if(result!=ERROR_SUCCESS) Check(installed.handle==INVALID_HANDLE_VALUE,"failed root acquisition leaked output");
+    std::cout<<"Installed discovery root result: "<<result<<" (no provisioning performed)\n";
+    SocketDiscovery discovery;discovery.epoch=123;
+    const auto read=ReadInstalledSocketDiscovery(discovery);
+    SocketDiscovery composed;composed.epoch=123;
+    const auto expected=result==ERROR_SUCCESS ? ReadSocketDiscoveryDirectory(installed.handle,composed) : result;
+    Check(read==expected,"installed reader changed acquisition/read error");
+    if(read!=ERROR_SUCCESS)Check(discovery.epoch==123&&discovery.socketId==SocketDiscovery{}.socketId&&discovery.serverPin==SocketDiscovery{}.serverPin,
+        "installed discovery failure changed output");
+    else {SocketDiscoveryBuffer bytes{};Check(EncodeSocketDiscovery(discovery,bytes),"invalid installed discovery accepted");
+        Check(discovery.epoch==composed.epoch&&discovery.socketId==composed.socketId&&discovery.serverPin==composed.serverPin,"installed reader differs from held root");}
+    std::cout<<"Installed discovery read result: "<<read<<'\n';
+}
 }
 int main() {
-    try{Security();ReaderRefusals();RelativeOpen();ParentReplacement();std::cout<<"Discovery ACL, relative open, parent replacement and real file refusals: PASS\n";return 0;}
+    try{Security();ReaderRefusals();RelativeOpen();ParentReplacement();Ancestors();std::cout<<"Discovery ACL, roots, relative open, parent replacement and real file refusals: PASS\n";return 0;}
     catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }
