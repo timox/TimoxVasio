@@ -191,6 +191,49 @@ Références :
 [volume et ACL persistantes](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationbyhandlew),
 [namespaces Windows](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file).
 
+**Publication préparée ensuite :** PublishSocketDiscoveryDirectory travaille
+uniquement sous une racine déjà acquise. Elle la tient ouverte et revalide sa
+politique, refuse une publication existante non valide, puis crée un fichier
+temporaire unique sous cette racine (FILE_CREATE, nonce BCrypt). Le nouveau
+descripteur fixe explicitement le propriétaire au SID du broker, avec la DACL
+canonique. La sécurité réelle du fichier créé est contrôlée avant écriture des
+72 octets et FlushFileBuffers. Le remplacement du nom discovery.bin intervient
+ensuite par renommage relatif au handle. Le service hôte doit sérialiser les
+publications et avoir préparé le listener/certificat/enrollment ; aucun hôte de
+service ou provisioning n'est activé par cette fonction.
+
+Décision de propriété : ne pas accepter LocalService comme propriétaire et ne
+pas supposer que la propriété par défaut convient. Microsoft indique que
+SERVICE_SID_TYPE_UNRESTRICTED ajoute le SID propre au service avec SE_GROUP_OWNER,
+ce qui fournit le contrat nécessaire pour la propriété explicite. L'attribut du
+jeton réel et la création effective sous le futur service restent à qualifier.
+[SERVICE_SID_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_sid_info).
+
+Le test réel a échoué avec ERROR_INVALID_PARAMETER (87) sur le renommage
+SetFileInformationByHandle(FileRenameInfo) avec RootDirectory, même après contrôle
+de la taille du buffer. Le code utilise désormais NtSetInformationFile classe10,
+avec la structure native documentée, sans reconstituer de chemin en repli.
+Le SDK n'expose pas sa déclaration ; elle est déclarée explicitement et liée à
+ntdll, comme dépendance Windows à qualifier sur les autres versions supportées.
+[FILE_RENAME_INFORMATION](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information).
+
+NativeAudioSocketPublicationTests utilise une entrée réservée aux tests pour
+exécuter la même transaction IO avec le propriétaire utilisateur dans le
+workspace. Création, remplacement, contenu exact et suppression des temporaires
+après refus passent. Un lecteur gardant l'ancien fichier ouvert entraîne ici
+ERROR_ACCESS_DENIED (5), pas ERROR_SHARING_VIOLATION (32) ; les deux refus sont
+acceptés par le test, qui vérifie l'ancien contenu puis une reprise réussie après
+fermeture du lecteur. Le chemin public refuse ce même répertoire utilisateur
+sans modifier la publication. Le propriétaire exact du descripteur généré est
+vérifié. L'entrée de test n'est pas compilée dans NativeAudioWindowsBroker.
+
+Limites : pas de réussite sous un vrai jeton SCM, pas de panne électrique simulée
+ni de preuve de durabilité du renommage. En erreur, la suppression du temporaire
+via son propre handle est best effort ; un crash peut laisser un pub-*.tmp protégé
+qui ne sera ni consommé ni repris par son nom. L'hôte doit borner ses retries et
+ne jamais réparer des ACL pour contourner un refus. La fraîcheur et le retrait
+de l'ancienne publication restent des obligations du cycle de vie du service.
+
 ### Point de décision : identité du logon
 
 L'enquête après a18815a écarte une transposition automatique du PID vers un token

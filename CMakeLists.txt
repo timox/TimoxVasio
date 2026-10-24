@@ -25,6 +25,17 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
     add_test(NAME NativeAudioSocketDiscoveryTests COMMAND NativeAudioSocketDiscoveryTests)
     set_tests_properties(NativeAudioSocketDiscoveryTests PROPERTIES TIMEOUT 15)
     if(WIN32)
+        add_executable(NativeAudioSocketPublicationTests tests/native_audio_socket_publication_tests.cpp
+            native-windows-audio/broker/socket_publication_win32.cpp
+            native-windows-audio/broker/socket_discovery.cpp native-windows-audio/broker/socket_discovery_win32.cpp)
+        target_include_directories(NativeAudioSocketPublicationTests PRIVATE native-windows-audio/broker)
+        target_compile_definitions(NativeAudioSocketPublicationTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN TIMOX_NATIVE_DISCOVERY_TESTS)
+        target_link_libraries(NativeAudioSocketPublicationTests PRIVATE advapi32 ntdll bcrypt)
+        if(MSVC)
+            target_compile_options(NativeAudioSocketPublicationTests PRIVATE /W4 /WX /EHsc)
+        endif()
+        add_test(NAME NativeAudioSocketPublicationTests COMMAND NativeAudioSocketPublicationTests)
+        set_tests_properties(NativeAudioSocketPublicationTests PROPERTIES TIMEOUT 15)
         add_executable(NativeAudioSocketDiscoveryWindowsTests tests/native_audio_socket_discovery_win32_tests.cpp
             native-windows-audio/broker/socket_discovery_root_win32.cpp
             native-windows-audio/broker/socket_discovery.cpp native-windows-audio/broker/socket_discovery_win32.cpp)
@@ -114,6 +125,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         endif()
         target_link_libraries(NativeAudioWindowsChannel PRIVATE secur32 crypt32 advapi32 bcrypt ws2_32 ntdll shell32 ole32)
         add_library(NativeAudioWindowsBroker STATIC
+            native-windows-audio/broker/socket_publication_win32.cpp
             native-windows-audio/broker/socket_server_win32.cpp
             native-windows-audio/broker/socket_session_win32.cpp
             native-windows-audio/broker/broker_dispatcher.cpp
