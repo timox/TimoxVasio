@@ -1,5 +1,12 @@
 # Native Audio Production N4 Implementation Plan
 
+> **Transport local remplacé le 24 octobre 2026 à la demande utilisateur :**
+> AF_UNIX remplace les pipes comme cible ; voir
+> [la migration sockets](2026-10-24-native-audio-unix-sockets.md).
+> Les détails d'impersonation et de DACL de pipes ci-dessous sont historiques.
+> L'identité par logon, l'arbitrage, l'isolation et les critères de performances
+> restent requis ; leur mécanisme d'authentification socket doit être qualifié.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Ce document prépare du code et des essais ; il ne demande aucun chargement du pilote sur le poste actuel.
 
 **Goal:** Donner au moteur ordinaire un accès authentifié au backend natif, avec configuration persistante, API et GUI, sans exposer le son d'une autre session Windows.

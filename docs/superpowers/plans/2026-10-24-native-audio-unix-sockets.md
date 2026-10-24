@@ -41,6 +41,73 @@ destination seule ne réveille pas son attente.
 
 ## Suite d'implémentation
 
+### Point de décision : identité du logon
+
+L'enquête après a18815a écarte une transposition automatique du PID vers un token
+et révèle une dépendance de provisioning à résoudre avant activation :
+
+- WTSQueryUserToken exige LocalSystem et SeTcbPrivilege. Le service LocalService
+  prévu n'en dispose pas ; ne pas changer son compte silencieusement pour faire
+  passer ce contrôle.
+- LsaGetLogonSessionData exige le propriétaire de la session ou un administrateur
+  local. Ce n'est pas un collecteur universel pour LocalService.
+- Une clé CNG appartenant au SID utilisateur n'établit pas l'isolation entre
+  deux logons du même compte : une DACL visant le logon seul ne suffit pas si
+  ce compte peut la modifier par ses droits de propriétaire.
+
+Piste à qualifier, pas une autorisation déjà acquise : certificat client unique
+par logon, clé non exportable appartenant au service/SYSTEM, droit d'utilisation
+limité au SID de logon, association protégée certificat→identité complète→epoch
+établie par un composant de confiance. L'identité déclarée dans TLS est comparée
+à cette association ; le PID socket reste diagnostique. La provenance initiale
+du token, les droits réels du KSP, l'ouverture par le client sans modification de
+la DACL et les capacités de LocalService sont des prérequis à démontrer.
+
+Un succès de TLS avec une association injectée dans un banc ne valide ni ce
+provisioning ni l'isolation inter-logons. La révocation doit retirer l'association
+et annuler les connexions actives : modifier/supprimer la clé seule ne garantit
+pas l'arrêt des opérations utilisant des handles déjà ouverts. Microsoft indique
+que le KSP peut conserver les clés en cache tant que des handles restent ouverts.
+
+Sources primaires :
+[WTSQueryUserToken](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsqueryusertoken),
+[LsaGetLogonSessionData](https://learn.microsoft.com/windows/win32/api/ntsecapi/nf-ntsecapi-lsagetlogonsessiondata),
+[NCryptSetProperty](https://learn.microsoft.com/en-us/windows/win32/api/ncrypt/nf-ncrypt-ncryptsetproperty),
+[cache KSP et NCryptOpenKey](https://learn.microsoft.com/en-us/windows/win32/api/ncrypt/nf-ncrypt-ncryptopenkey).
+
+### Contrat du prochain sous-lot : SocketSession sur un flux TLS
+
+Revue indépendante du 24 octobre : poursuivre le gestionnaire avec un
+enregistrement de confiance injecté, sans annoncer une équivalence avec
+l'identité physique observée sur pipe. Ce sous-lot permet de raccorder le
+protocole et le broker pendant que le provisioning est qualifié.
+
+- Configuration serveur immuable : certificat serveur déjà provisionné,
+  empreinte client attendue, ChannelIdentity enregistrée et epoch non nul.
+  Aucun enrôlement reçu du client ni lookup par un PID non fixé.
+- Un seul flux AF_UNIX/TLS par connexion logique. Le dispatcher est partagé ;
+  le gestionnaire n'en crée jamais un second. Limite d'admission : quatre.
+- États : TLS authentifié → BindRequest/BindReply comparés à l'enregistrement
+  → SESSION → confirmation explicite du bail et de la génération → PCM.
+  Pas de nouveau pipe/socket de données ; pas d'accès PCM avant confirmation.
+- Toute sortie retire l'identifiant du dispatcher ; annulation sticky de la
+  socket et du backend, réponses en attente effacées. Révocation d'epoch retire
+  les enregistrements et ferme les flux actifs ; pas seulement leurs clés.
+- Tests réels avec enrollment explicitement synthétique : PCM duplex complet,
+  Full puis retry, deuxième propriétaire refusé, EOF après SESSION, mauvaise
+  identité déclarée, génération/bail altérés, PCM prématuré, délais et annulation.
+  Les qualifications de production restent séparées et l'activation demeure off.
+
+**Limite décisive de la revue :** TLS avec enrollment authentifie un détenteur
+de credential, pas nécessairement le processus connecté physiquement. Un relais
+transparent ne lit pas le PCM chiffré, mais n'est pas détecté par cette seule
+méthode. La promesse historique de refus de tout relais inter-logons reste non
+démontrée ; ne pas la considérer satisfaite en changeant simplement la définition.
+Une clé non exportable n'empêche pas un oracle de signature, ni à elle seule
+l'accès d'un autre logon du même compte aux processus/tokens/handles autorisés.
+Ces cas exigent une qualification OS réelle. Aucun basculement à LocalSystem,
+création de clé machine ou installation de composant privilégié dans ce sous-lot.
+
 **Observation du pair :** le SDK partagé `afunix.h` définit
 SIO_AF_UNIX_GETPEERPID, renvoyant un ULONG. GetPeerProcessId l'utilise uniquement
 sur une socket connectée et conserve la sortie lors d'un échec. Le test réel
