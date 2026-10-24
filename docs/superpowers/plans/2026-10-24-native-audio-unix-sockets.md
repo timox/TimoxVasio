@@ -41,6 +41,51 @@ destination seule ne réveille pas son attente.
 
 ## Suite d'implémentation
 
+### Découverte : format borné, confiance restant à réaliser
+
+Décision du 24 octobre : séparer le codec public de la lecture Windows protégée.
+Ne pas réutiliser directement le lecteur de reçus du laboratoire : sa DACL à
+deux entrées SYSTEM/Administrateurs n'autorise pas le futur service LocalService
+et ses clients. Le codec n'est jamais une autorité de confiance.
+
+`socket_discovery.h/.cpp` définit TNSD v1, exactement 72 octets little-endian :
+
+| Offset | Taille | Contenu |
+|---|---|---|
+| 0 | 4 | ASCII TNSD |
+| 4 | 2 | Version 1 |
+| 6 | 2 | Flags nuls |
+| 8 | 4 | Taille totale 72 |
+| 12 | 4 | Réservé nul |
+| 16 | 8 | Epoch non nulle de publication/enrollment |
+| 24 | 16 | Identifiant de socket non nul, à générer aléatoirement par l'hôte |
+| 40 | 32 | Empreinte SHA-256 non nulle du certificat serveur |
+
+Le nom dérivé est exactement 32 chiffres hexadécimaux minuscules suivis de
+`.sock`. Aucun chemin ni répertoire n'est lu dans ce fichier. L'hôte fournit
+la racine de confiance et vérifie la limite AF_UNIX complète sans troncature.
+L'epoch est une métadonnée : TNAC ne la transporte pas actuellement et elle
+ne prouve donc ni la fraîcheur du serveur ni la révocation d'un ancien serveur.
+La génération aléatoire, la publication et la lecture ne sont pas implémentées
+par ce codec. Il n'est pas encore raccordé à la factory du client.
+
+Contrat restant avant consommation d'un fichier : ouvrir et conserver les
+ancêtres contre remplacement, refuser reparse points et objets inattendus,
+vérifier propriétaire/DACL de la publication et de sa racine, refuser les
+écritures par les lecteurs, lire une version cohérente de taille exacte, puis
+seulement décoder. L'installation doit établir cette racine indépendamment
+des données publiées. Un fichier dans le profil utilisateur, même syntaxiquement
+valide, ne satisfait pas l'isolation entre logons d'un même compte. La politique
+exacte de publication/rotation et la liaison de l'epoch au serveur restent à
+résoudre avant activation ; ne pas brancher ce codec sur une lecture ordinaire.
+
+Vérification : cible NativeAudioSocketDiscoveryTests, /W4 /WX, fixture binaire
+indépendante, rejet de toutes les troncatures et d'un octet supplémentaire,
+altération de chaque octet d'en-tête, champs nuls, préservation des sorties sur
+échec, nom canonique y compris octets 0xff. Premier build échoué sur l'absence
+du codec, puis correction du type uint8_t des zéros de test et build/test réussis.
+Ces tests ne qualifient aucun droit Windows, provisioning ou serveur actif.
+
 ### Point de décision : identité du logon
 
 L'enquête après a18815a écarte une transposition automatique du PID vers un token
