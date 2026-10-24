@@ -7,7 +7,9 @@
 #include "broker_session.h"
 #include "broker_dispatcher.h"
 #include "unix_socket_stream_win32.h"
+#include "socket_session_win32.h"
 #include <filesystem>
+#include <future>
 #include <sddl.h>
 #include <atomic>
 #include <algorithm>
@@ -371,7 +373,88 @@ void UnixTls(Identity& serverIdentity,Identity& clientIdentity,bool wrongPin){
     Check(handshake.code==Code::Ok&&peerResult.code==Code::Ok&&sentResult.code==Code::Ok&&echoResult.code==Code::Ok,"AF_UNIX TLS duplex failed");
     Check(sent==received&&sent==echo,"AF_UNIX TLS payload changed");
 }
+void SocketBroker(Identity& serverIdentity,Identity& clientIdentity,unsigned fault){
+    using namespace timox_broker;
+    struct Path {
+        std::string value=std::filesystem::absolute("broker-unix-"+std::to_string(GetCurrentProcessId())+".sock").string();
+        Path(){Check(!std::filesystem::exists(value),"broker socket path exists");}
+        ~Path(){std::error_code error;std::filesystem::remove(value,error);}
+    } path;
+    ChannelIdentity identity;Check(ObserveProcessIdentity(identity)==ERROR_SUCCESS,"socket fixture identity");
+    NativePeerIdentity peer{ObservedSidText(identity.userSid),ObservedSidText(identity.logonSid),identity.authenticationId,identity.sessionId};
+    NativeSessionPolicySnapshot policy;policy.allowedUserSid=peer.userSid;policy.consoleSessionId=peer.sessionId;
+    policy.interactiveLogonCount=1;policy.unlocked=true;policy.audioIsolationQualified=true;policy.optionalConsoleIdentity=peer;
+    const auto audio=std::make_shared<ConcreteAudioState>();
+    BrokerDispatcher dispatcher([audio]{return std::make_unique<ConcreteAudio>(audio);},policy);
+    // Synthetic trusted enrollment: this is not a production OS provisioner.
+    auto enrollment=std::make_shared<SocketEnrollment>(Hash(clientIdentity.cert),identity,1);
+    UnixSocketStream listener;auto local=std::make_unique<UnixSocketStream>(),remote=std::make_unique<UnixSocketStream>();
+    Check(listener.Listen(path.value.c_str()).code==Code::Ok,"broker socket listen");
+    Check(local->Connect(path.value.c_str(),Deadline()).code==Code::Ok&&listener.Accept(*remote,Deadline()).code==Code::Ok,"broker socket connect");
+    SocketSession session(dispatcher,std::move(remote),serverIdentity.cert,enrollment);
+    SchannelStream client(std::move(local),false,clientIdentity.cert,Hash(serverIdentity.cert));
+    std::array<unsigned char,MaxMessageBytes> request{},response{};
+    const auto capture=ConcretePacket(false),render=ConcretePacket(true);
+    std::promise<void> completed;auto completion=completed.get_future();
+    NativeChannelResult result;std::thread worker([&]{result=session.Run();completed.set_value();});
+    struct Join {SocketSession& session;SchannelStream& client;std::thread& worker;
+        ~Join(){session.RequestCancel();client.Close();if(worker.joinable())worker.join();}} join{session,client,worker};
+    Check(client.Handshake(Deadline()).code==Code::Ok,"socket broker TLS");
+    ChannelBinding binding;binding.identity=identity;if(fault==1)++binding.identity.authenticationId;
+    Check(WriteBindingFrame(client,binding,Deadline()).code==Code::Ok,"socket broker bind send");
+    const auto bound=ReadBindingFrame(client,binding,Deadline());
+    std::uint64_t requestId=0,lease=0;
+    const auto put=[&](std::size_t at,std::uint64_t value,unsigned count){for(unsigned n=0;n<count;++n)request[at+n]=static_cast<unsigned char>(value>>(8*n));};
+    const auto exchange=[&](Opcode op,const void* payload,std::size_t bytes){
+        request.fill(0);put(0,Magic,4);put(4,1,2);put(6,static_cast<unsigned>(op),2);put(8,48,4);put(12,bytes,4);put(16,++requestId,8);put(24,lease,8);
+        if(bytes)std::memcpy(request.data()+48,payload,bytes);
+        Check(client.WriteAll(request.data(),48+bytes,Deadline()).code==Code::Ok,"socket broker request");
+        return ReadAudioFrame(client,response.data(),response.size(),Deadline());
+    };
+    if(fault==1)Check(bound.code!=Code::Ok,"wrong socket identity accepted");
+    else {
+        Check(bound.code==Code::Ok&&binding.type==BindingType::BindReply,"socket broker bind reply");
+        if(fault==3)Check(exchange(Opcode::ReadRender,nullptr,0).code!=Code::Ok,"PCM before SESSION accepted");
+        else {
+            Check(exchange(Opcode::Session,nullptr,0).code==Code::Ok&&frames_detail::Read(response.data(),32,4)==0,"socket SESSION");
+            lease=frames_detail::Read(response.data(),24,8);
+            if(fault!=4){
+                ChannelBinding offer;Check(ReadBindingFrame(client,offer,Deadline()).code==Code::Ok,"socket offer");
+                if(fault==5){
+                    enrollment->Revoke();session.RequestCancel();
+                    // Keep the client open: EOF cannot explain completion.
+                    Check(completion.wait_for(std::chrono::seconds(2))==std::future_status::ready,"revoked socket did not finish while client stayed open");
+                    Check(result.code==Code::Cancelled,"revoked socket result not Cancelled");
+                }
+                else if(fault==6)Check(exchange(Opcode::ReadRender,nullptr,0).code!=Code::Ok,"PCM before confirmation accepted");
+                else {
+                    offer.type=BindingType::DataBindRequest;offer.identity=identity;if(fault==2)++offer.lease;
+                    if(fault==7)offer.nonce[0]^=1;
+                    if(fault==8)++offer.generation;
+                    Check(WriteBindingFrame(client,offer,Deadline()).code==Code::Ok,"socket confirmation send");
+                    const auto confirmed=ReadBindingFrame(client,binding,Deadline());
+                    if(fault==2||fault==7||fault==8)Check(confirmed.code!=Code::Ok,"wrong socket lease/nonce/generation accepted");
+                    else {
+                        Check(confirmed.code==Code::Ok&&binding.type==BindingType::DataBindReply,"socket confirmation reply");
+                        std::array<unsigned char,16> readPayload{};readPayload[0]=23;readPayload[9]=16;
+                        Check(exchange(Opcode::ReadRender,readPayload.data(),readPayload.size()).bytes==48+render.size()&&
+                            std::equal(render.begin(),render.end(),response.begin()+48),"socket render differs");
+                        Check(exchange(Opcode::WriteCapture,capture.data(),capture.size()).code==Code::Ok&&frames_detail::Read(response.data(),32,4)==static_cast<unsigned>(Status::Full),"socket capture Full");
+                        Check(exchange(Opcode::WriteCapture,capture.data(),capture.size()).code==Code::Ok&&frames_detail::Read(response.data(),32,4)==0,"socket capture retry");
+                        Check(exchange(Opcode::Close,readPayload.data(),8).code==Code::Ok,"socket CLOSE");
+                    }
+                }
+            }
+        }
+    }
+    client.Close();worker.join();dispatcher.Stop();
+    Check(audio->owners==0&&audio->opens==audio->closes,"socket broker owner leaked");
+    if(fault)Check(result.code!=Code::Ok,"invalid socket session reported success");
+    if(!fault)Check(result.code==Code::Ok&&audio->captureBytes==capture.size()&&std::equal(capture.begin(),capture.end(),audio->captured.begin()),"socket PCM/session failed");
+    if(fault==1||fault==3)Check(audio->opens==0,"unbound socket opened native audio");
+}
 void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
+    for(unsigned fault=0;fault<=8;++fault)SocketBroker(serverIdentity,clientIdentity,fault);
     UnixTls(serverIdentity,clientIdentity,false);
     UnixTls(serverIdentity,clientIdentity,true);
     ConcreteCancellation(serverIdentity,clientIdentity);

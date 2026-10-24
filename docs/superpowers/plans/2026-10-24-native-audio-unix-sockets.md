@@ -77,6 +77,31 @@ Sources primaires :
 
 ### Contrat du prochain sous-lot : SocketSession sur un flux TLS
 
+**Implémentation du 24 octobre :** socket_session_win32.h/.cpp raccordé au
+dispatcher partagé. Enrollment immuable pin/identité/epoch avec révocation
+terminale. Le propriétaire de l'enrollment doit Revoke puis RequestCancel toutes
+ses sessions avant changement de politique ; epoch n'est pas un registre global
+et sa rotation n'est pas automatiquement orchestrée par ce gestionnaire.
+Handshake/liaison/SESSION/confirmation partagent une échéance absolue de cinq
+secondes ; chaque échange audio possède sa propre échéance. Une opération native
+bloquée dans le dispatcher requiert l'annulation du superviseur hôte.
+
+RED initial : classe absente ; build /W4 /WX puis neuf scénarios SocketBroker
+sur sockets TLS réelles réussis, dans le banc Schannel existant. PCM 4096 frames
+comparé intégralement dans les deux sens, capture Full puis retry, fermeture et
+zéro propriétaire à chaque sortie. Rejets identité/bail/génération/nonce altérés,
+PCM avant SESSION/confirmation, EOF après SESSION, révocation après l'offre.
+Revue indépendante sans défaut bloquant. Son constat sur le test de révocation
+a été traité : assertion de terminaison Cancelled sous deux secondes avec client
+encore ouvert ; omission volontaire de revoke/cancel → échec observé, remise en
+place → suite TLS verte. Nettoyage des trois clés vérifié même sur l'essai rouge.
+Dix CTests ciblés passent. Pas de preuve nouvelle inter-logons ni de performances.
+
+Le test utilise un client filaire de banc et un backend PCM simulé, pas encore
+le client moteur concret socket. Listener borné, connexion concurrente d'un
+second propriétaire sur TLS, cancellation pendant backend bloqué, comptabilité
+mémoire du nouveau gestionnaire et provisioning OS restent à terminer.
+
 Revue indépendante du 24 octobre : poursuivre le gestionnaire avec un
 enregistrement de confiance injecté, sans annoncer une équivalence avec
 l'identité physique observée sur pipe. Ce sous-lot permet de raccorder le
