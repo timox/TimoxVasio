@@ -132,7 +132,7 @@ test('API 1.1 bridges create, edit, disable and remove through context actions a
             mixFormat: null, error: 'Unsupported device format' }], wasapiInventoryError: null };
     await withClockApp(initial, async container => {
         const button = text => [...document.querySelectorAll('button')].find(item => item.textContent === text);
-        expect(container.textContent).toContain('Windows audio bridges');
+        expect(container.textContent).toContain('Windows audio devices (WASAPI)');
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
         await chooseContextAction(container.querySelector('.patchbay-flow'), 'Add Windows audio bridge…');
         const field = name => document.querySelector(`[aria-label="${name}"]`);
@@ -159,6 +159,29 @@ test('API 1.1 bridges create, edit, disable and remove through context actions a
         await act(async () => Simulate.click([...document.querySelectorAll('button')].find(item => item.textContent === 'Remove bridge and its connections')));
         await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
         expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({ wasapiBridges: [], routes: [] }));
+    });
+});
+
+test('Audio Setup saves an unavailable endpoint offline without trying to enable audio', async () => {
+    await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: [], wasapiBridges: [],
+        wasapiDevices: [{ id: 'offline-output', name: 'Output 3/4 (Interface)', flow: 'render', state: 4, mixFormat: null }] }, async container => {
+        await act(async () => Simulate.change(container.querySelector('.wasapi-inactive-toggle input'), { target: { checked: true } }));
+        await act(async () => Simulate.click(container.querySelector('[data-endpoint-id="offline-output"] button')));
+        const dialog = document.querySelector('[aria-label="Configure Windows audio bridge"]');
+        const enabled = dialog.querySelector('[aria-label="Bridge enabled"]');
+        const save = [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Save bridge to draft');
+        expect(enabled.checked).toBe(false);
+        expect(dialog.textContent).toContain('save this endpoint offline');
+        expect(save.disabled).toBe(false);
+        await act(async () => Simulate.change(enabled, { target: { checked: true } }));
+        expect(save.disabled).toBe(true);
+        expect(dialog.textContent).toContain('Turn off Enabled');
+        await act(async () => Simulate.change(enabled, { target: { checked: false } }));
+        await act(async () => Simulate.click(save));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+            wasapiBridges: [{ id: 'render_1', kind: 'render', endpointId: 'offline-output', enabled: false, bufferDuration100ns: 0 }]
+        }));
     });
 });
 

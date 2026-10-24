@@ -5,6 +5,7 @@ import './ProfessionalTheme.css';
 import RoutingPatchbay from './RoutingPatchbay';
 import NativeAudioDialog from './NativeAudioDialog';
 import PwarDialog from './PwarDialog';
+import WasapiDeviceTree from './WasapiDeviceTree';
 import QuickRouting from './QuickRouting';
 import BufferTimingDiagram from './BufferTimingDiagram';
 import AnalysisTimeline from './AnalysisTimeline';
@@ -1260,14 +1261,25 @@ function App() {
                 </div>}
 
                 {activeView === 'configuration' && apiState?.apiVersion === '1.1' && <section className="section" aria-label="Windows audio bridges">
-                    <h2>Windows audio bridges</h2>
-                    <p className="hint">Capture a Windows input, play to a Windows output, or capture an output with endpoint loopback. Right-click the Routing background to add a bridge, or its block to configure it. Apply a new bridge first to discover its channels, then add connections.</p>
-                    <div className="analysis-actions"><button type="button" onClick={() => setActiveView('channels')}>Open Routing for Windows audio</button>
+                    <h2>Windows audio devices (WASAPI)</h2>
+                    <p className="hint">Connect existing Windows inputs and outputs to Routing. Save each device, then apply the configuration. Offline devices stay saved with audio disabled until you enable them.</p>
+                    <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'add' })}>Add Windows audio bridge…</button>
+                        <button type="button" onClick={() => setActiveView('channels')}>Open Routing for Windows audio</button>
                         <button type="button" disabled={bridgeInventoryBusy || !window.vasio.getWasapiDevices} onClick={refreshBridgeInventory}>Refresh Windows endpoints</button></div>
                     {apiState.wasapiInventoryError && <p role="alert">Windows endpoint discovery: {apiState.wasapiInventoryError}</p>}
+                    <WasapiDeviceTree devices={apiState.wasapiDevices || []} disabled={configurationLocked || !!hardwareTransfer}
+                        onAdd={(device, kind) => {
+                            let number = 1;
+                            const ids = new Set((configuration?.wasapiBridges || []).map(bridge => bridge.id));
+                            while (ids.has(`${kind}_${number}`)) number++;
+                            setBridgeDialog({ kind: 'add', bridge: { id: `${kind}_${number}`, kind, endpointId: device.id,
+                                enabled: device.state === 1, bufferDuration100ns: 0 } });
+                        }} />
                     {!(configuration?.wasapiBridges || []).length && <p>No Windows audio bridges configured.</p>}
                     {(configuration?.wasapiBridges || []).map(bridge => <article className="application-channel-card" key={bridge.id}>
                         <h3>{bridge.id} · {bridge.kind}</h3><BridgeStatus bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} />
+                        <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'edit', bridge })}>Configure {bridge.id}</button>
+                            <button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'remove', bridge })}>Remove {bridge.id}</button></div>
                     </article>)}
                 </section>}
                 {activeView === 'channels' && <section className="section routing-workspace-section">
@@ -1401,7 +1413,7 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryErro
     const valid = /^[A-Za-z0-9_-]{1,128}$/.test(draft.id) &&
         (dialog.kind !== 'add' || (bridges.length < 32 && !bridges.some(item => item.id === draft.id))) &&
         Number.isInteger(draft.bufferDuration100ns) && draft.bufferDuration100ns >= 0 && draft.bufferDuration100ns <= 10000000 &&
-        (selection === 'default' || !!draft.endpointId);
+        (selection === 'default' || (!!draft.endpointId && (!draft.enabled || selected?.state === 1)));
     const save = () => {
         if (!valid || disabled) return;
         const { endpointId, defaultRole, ...common } = draft;
@@ -1423,7 +1435,10 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryErro
                     <option value="endpoint">Specific endpoint</option><option value="default">Windows default role</option></select></label>
                 {selection === 'default' ? <label className="field">Role<select aria-label="Default endpoint role" disabled={disabled} value={draft.defaultRole || 'console'} onChange={event => set('defaultRole', event.target.value)}>
                     <option value="console">Console</option><option value="multimedia">Multimedia</option><option value="communications">Communications</option></select></label> :
-                    <label className="field">Windows endpoint<select aria-label="Windows endpoint" disabled={disabled} value={draft.endpointId || ''} onChange={event => set('endpointId', event.target.value)}>
+                    <label className="field">Windows endpoint<select aria-label="Windows endpoint" disabled={disabled} value={draft.endpointId || ''} onChange={event => {
+                        const endpoint = choices.find(item => item.id === event.target.value);
+                        setDraft(current => ({ ...current, endpointId: event.target.value, enabled: endpoint?.state === 1 ? current.enabled : false }));
+                    }}>
                         <option value="">Select an endpoint</option>
                         {draft.endpointId && !selected && <option value={draft.endpointId}>{draft.endpointId} (unavailable)</option>}
                         {choices.map(item => <option key={item.id} value={item.id}>{item.name}{item.state === 1 ? '' : ' (unavailable)'}</option>)}
@@ -1431,6 +1446,9 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryErro
                 {selected?.error && <p role="alert">{selected.error}</p>}
                 {inventoryError && <p role="alert">Windows endpoint discovery: {inventoryError}</p>}
                 <label className="bridge-enabled-field"><input type="checkbox" aria-label="Bridge enabled" disabled={disabled} checked={draft.enabled} onChange={event => set('enabled', event.target.checked)} /> Enabled</label>
+                {selection === 'endpoint' && draft.endpointId && selected?.state !== 1 && <p role={draft.enabled ? 'alert' : 'status'}>
+                    {draft.enabled ? 'This endpoint is unavailable. Turn off Enabled to save it offline.' : 'Unavailable — audio disabled. You can save this endpoint offline and enable it when it becomes available.'}
+                </p>}
                 <label className="field">Requested buffer duration (ms; 0 = system default)<input aria-label="Bridge buffer duration (ms)" type="number" min="0" max="1000" step="0.0001" disabled={disabled} value={draft.bufferDuration100ns / 10000} onChange={event => set('bufferDuration100ns', Math.round(Number(event.target.value) * 10000))} /></label>
                 {runtime && <BridgeStatus bridge={dialog.bridge} runtime={runtime} devices={devices} />}
                 <p className="hint">Windows audio uses its own clock. Bridges adapt rate and add buffering. Endpoint loopback to the same Windows output is not allowed.</p>
