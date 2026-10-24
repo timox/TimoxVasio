@@ -604,7 +604,85 @@ void SocketNativeDeadline(Identity& serverIdentity,Identity& clientIdentity,unsi
     server.RequestCancel();worker.join();
     Check(server.ActiveConnections()==0,"expired native session did not retire");
 }
+struct ClientFaultPath {
+    std::string value=std::filesystem::absolute("client-fault-"+std::to_string(GetCurrentProcessId())+".sock").string();
+    ClientFaultPath(){Check(!std::filesystem::exists(value),"client fault path exists");}
+    ~ClientFaultPath(){std::error_code error;std::filesystem::remove(value,error);}
+};
+void SocketClientBadReply(Identity& serverIdentity,Identity& clientIdentity,unsigned fault){
+    using namespace timox_broker;
+    ClientFaultPath path;UnixSocketStream listener;
+    Check(listener.Listen(path.value.c_str()).code==Code::Ok,"bad reply listen");
+    auto raw=std::make_unique<UnixSocketStream>();auto* accepted=raw.get();
+    SchannelStream server(std::move(raw),true,serverIdentity.cert,Hash(clientIdentity.cert));
+    auto channel=CreateWindowsNativeAudioSocketChannel({clientIdentity.cert,Hash(serverIdentity.cert)},path.value.c_str());
+    auto* retained=channel.get();auto transport=CreateBrokerNativeAudioTransport(std::move(channel));
+    std::exception_ptr failure;
+    std::thread worker([&]{try{
+        Check(listener.Accept(*accepted,Deadline()).code==Code::Ok,"bad reply accept");
+        Check(server.Handshake(Deadline()).code==Code::Ok,"bad reply TLS");
+        ChannelBinding binding;
+        Check(ReadBindingFrame(server,binding,Deadline()).code==Code::Ok,"bad reply binding read");
+        binding.type=BindingType::BindReply;if(fault==1)++binding.identity.authenticationId;
+        Check(WriteBindingFrame(server,binding,Deadline()).code==Code::Ok,"bad reply binding send");
+        if(fault==1)return;
+        std::array<unsigned char,MaxMessageBytes> request{};
+        Check(ReadAudioFrame(server,request.data(),request.size(),Deadline()).code==Code::Ok,"bad reply SESSION read");
+        std::array<unsigned char,56> response{};std::copy_n(request.begin(),48,response.begin());
+        response[7]=0x80;response[12]=8;response[24]=17;response[48]=23;
+        if(fault==8)response[16]^=1;
+        Check(server.WriteAll(response.data(),response.size(),Deadline()).code==Code::Ok,"bad reply SESSION send");
+        if(fault==8)return;
+        ChannelBinding offer;offer.type=BindingType::DataOffer;offer.lease=17;offer.generation=23;offer.nonce[0]=42;
+        if(fault==2)++offer.lease;if(fault==3)++offer.generation;
+        Check(WriteBindingFrame(server,offer,Deadline()).code==Code::Ok,"bad reply offer send");
+        if(fault==2||fault==3)return;
+        Check(ReadBindingFrame(server,binding,Deadline()).code==Code::Ok,"bad reply confirmation read");
+        binding.type=BindingType::DataBindReply;
+        if(fault==4)binding.nonce[0]^=1;if(fault==5)++binding.lease;
+        if(fault==6)++binding.generation;if(fault==7)++binding.identity.authenticationId;
+        Check(WriteBindingFrame(server,binding,Deadline()).code==Code::Ok,"bad reply confirmation send");
+    }catch(...){failure=std::current_exception();}});
+    struct Join {UnixSocketStream& listener;SchannelStream& server;INativeAudioTransport& client;std::thread& worker;
+        ~Join(){listener.RequestCancel();server.RequestCancel();client.RequestCancel();client.Close();if(worker.joinable())worker.join();}} join{listener,server,*transport,worker};
+    NativeSessionInfo info;const auto opened=transport->Open(info);
+    worker.join();if(failure)std::rethrow_exception(failure);
+    if(!fault)Check(opened.code==NativeTransferCode::Ok&&info.wireGeneration==23,"valid scripted socket reply rejected");
+    else {
+        if(fault==8)Check(opened.code==NativeTransferCode::Failed&&opened.systemError==ERROR_INVALID_DATA,"bad requestId was not explicitly rejected");
+        else Check(opened.code==NativeTransferCode::AccessDenied,"binding mismatch was not explicitly denied");
+        Check(info.wireGeneration==0,"tampered reply published generation");
+        unsigned char extra=0;
+        Check(server.ReadSome(&extra,1,Deadline()).code==Code::Removed,"failed adapter did not close socket");
+        // A valid STATUS for the scripted lease; failure must come from the
+        // closed channel, not from an intentionally malformed request.
+        std::array<unsigned char,56> request{};request[0]='T';request[1]='V';request[2]='A';request[3]='B';
+        request[4]=1;request[6]=4;request[8]=48;request[12]=8;request[16]=2;request[24]=17;request[48]=23;
+        std::array<unsigned char,MaxMessageBytes> response{};response.fill(42);
+        const auto reused=retained->Exchange(request.data(),request.size(),response.data(),response.size(),Deadline());
+        Check(reused.code==Code::Failed&&reused.systemError==ERROR_INVALID_PARAMETER,"closed socket channel reused");
+        Check(std::all_of(response.begin(),response.end(),[](auto b){return b==0;}),"failed socket channel retained response");
+    }
+}
+void SocketClientHandshakeCancel(Identity& serverIdentity,Identity& clientIdentity){
+    using namespace timox_broker;
+    ClientFaultPath path;UnixSocketStream listener,peer;
+    Check(listener.Listen(path.value.c_str()).code==Code::Ok,"socket cancel listen");
+    auto channel=CreateWindowsNativeAudioSocketChannel({clientIdentity.cert,Hash(serverIdentity.cert)},path.value.c_str());
+    NativeChannelResult result;std::promise<void> done;auto completed=done.get_future();
+    std::thread worker([&]{result=channel->Connect(Deadline());done.set_value();});
+    struct Join {INativeAudioAuthenticatedChannel& client;std::thread& worker;~Join(){client.RequestCancel();if(worker.joinable())worker.join();}} join{*channel,worker};
+    Check(listener.Accept(peer,Deadline()).code==Code::Ok,"socket cancel accept");
+    std::array<unsigned char,4096> hello{};const auto received=peer.ReadSome(hello.data(),hello.size(),Deadline());
+    Check(received.code==Code::Ok&&received.bytes>0,"socket cancel did not reach ClientHello");
+    channel->RequestCancel();
+    Check(completed.wait_for(std::chrono::seconds(2))==std::future_status::ready,"socket handshake cancel did not finish");
+    worker.join();Check(result.code==Code::Cancelled,"socket handshake cancel status");
+    channel->Close();Check(channel->Connect(Deadline()).code==Code::Cancelled,"socket cancellation not sticky");
+}
 void Tests(Identity& serverIdentity,Identity& clientIdentity,Identity& expired){
+    for(unsigned fault=0;fault<=8;++fault)SocketClientBadReply(serverIdentity,clientIdentity,fault);
+    SocketClientHandshakeCancel(serverIdentity,clientIdentity);
     for(unsigned operation=1;operation<=3;++operation)SocketNativeDeadline(serverIdentity,clientIdentity,operation);
     SocketServerQuota(serverIdentity,clientIdentity);
     ConcreteSocketClient(serverIdentity,clientIdentity);

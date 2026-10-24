@@ -77,6 +77,26 @@ Sources primaires :
 
 ### Contrat du prochain sous-lot : SocketSession sur un flux TLS
 
+**Couverture client défensive complétée :** SocketClientBadReply utilise un
+serveur Schannel scripté sur AF_UNIX et la factory concrète avec l'adaptateur
+audio. Le témoin accepte les réponses valides. Huit altérations sont refusées :
+LUID du BindReply, bail/génération DataOffer, nonce/bail/génération/LUID du
+DataBindReply, requestId de la réponse SESSION. Open ne rend pas de génération
+valide ; réutiliser le canal échoue et efface tout le buffer de réponse.
+SocketClientHandshakeCancel reçoit des octets ClientHello avant annulation,
+garde le pair ouvert et exige completion Cancelled sous deux secondes, puis
+vérifie que Close ne réinitialise pas l'annulation. Ces cas passent sans modifier
+le code produit, comblant les limites de revue spécifiques au nouveau client.
+Build /W4 /WX et suite TLS complète réussis ; trois clés temporaires supprimées
+et absence vérifiée. Ce sont des tests de canal, pas de provisioning ni de
+latence audio. Les contrôles d'identité OS et d'isolation demeurent distincts.
+Revue des tests : assertions renforcées pour exclure un simple timeout après
+arrêt d'envoi du serveur scripté. Les liaisons altérées doivent rendre AccessDenied,
+le requestId altéré Failed/ERROR_INVALID_DATA. Le pair constate la fermeture du
+socket ; une requête STATUS valide sur le canal fermé est ensuite refusée avec
+ERROR_INVALID_PARAMETER et buffer effacé. Ne pas attribuer cette fermeture au
+seul client bas niveau : l'adaptateur appelle aussi Close en cas d'échec d'Open.
+
 **Supervision native ajoutée :** le délai du stream seul n'interrompait pas
 broker.Process bloqué dans le backend. Régression reproduite avec un Open
 simulé annulable : client TLS maintenu ouvert, Open atteint, toujours bloqué
