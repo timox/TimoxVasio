@@ -1,7 +1,13 @@
 #include <winsock2.h>
 #include <windows.h>
+#ifdef PWAR_TEST_DLL
+#include "iasiodrv.h"
+#include "pwar_packet.h"
+#include <atomic>
+#else
 #include "pwarASIO.h"
 #include "pwarASIOLog.h"
+#endif
 #include <array>
 #include <chrono>
 #include <cstring>
@@ -11,6 +17,28 @@
 
 #define CHECK(expression) do { if (!(expression)) { std::cerr << "line " << __LINE__ << ": " #expression "\n"; return 1; } } while (false)
 namespace {
+#ifdef PWAR_TEST_DLL
+struct LoadedDriver {
+    HMODULE module = nullptr;
+    IASIO* driver = nullptr;
+    bool Load(const char* path) {
+        module = LoadLibraryExA(path, nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+        if (!module) return false;
+        using GetClassObject = HRESULT (WINAPI*)(REFCLSID, REFIID, void**);
+        const auto getClassObject = reinterpret_cast<GetClassObject>(GetProcAddress(module, "DllGetClassObject"));
+        constexpr CLSID clsid{0x188135e1, 0xd565, 0x11d2, {0x85,0x4f,0,0xa0,0xc9,0x9f,0x5d,0x19}};
+        IClassFactory* factory = nullptr;
+        if (!getClassObject || FAILED(getClassObject(clsid, IID_IClassFactory, reinterpret_cast<void**>(&factory)))) return false;
+        const auto result = factory->CreateInstance(nullptr, clsid, reinterpret_cast<void**>(&driver));
+        factory->Release();
+        return SUCCEEDED(result) && driver;
+    }
+    ~LoadedDriver() {
+        if (driver) { driver->stop(); driver->disposeBuffers(); driver->Release(); }
+        if (module) FreeLibrary(module);
+    }
+};
+#endif
 constexpr long Frames = 128;
 std::array<ASIOBufferInfo, 4> buffers{};
 long bufferCount = 0;
@@ -52,10 +80,16 @@ bool PortFree() {
 }
 
 int main(int argc, char** argv) {
+#ifdef PWAR_TEST_DLL
+    CHECK(argc == 3);
+#else
     CHECK(argc == 2);
+#endif
     // CTest supplies a private USERPROFILE with the existing PWAR sender set to
     // loopback port 18321. Capture the actual outgoing datagram separately.
+#ifndef PWAR_TEST_DLL
     pwarASIOLog logging("127.0.0.1", 1338);
+#endif
     WSADATA winsock{};
     CHECK(WSAStartup(MAKEWORD(2,2), &winsock) == 0);
     CHECK(PortFree());
@@ -86,7 +120,13 @@ int main(int argc, char** argv) {
     }
     HRESULT result = S_OK;
     {
+#ifdef PWAR_TEST_DLL
+        LoadedDriver loaded;
+        CHECK(loaded.Load(argv[2]));
+        auto& driver = *loaded.driver;
+#else
         pwarASIO driver(nullptr, &result);
+#endif
         CHECK(SUCCEEDED(result) && driver.init(nullptr));
         ASIOCallbacks callbacks{Switch, Rate, Message, Time};
         ASIOBufferInfo invalid[3]{};
@@ -137,6 +177,9 @@ int main(int argc, char** argv) {
     }
     CHECK(PortFree());
     closesocket(receiver);
-    pwarASIOLog::Shutdown(); WSACleanup();
+#ifndef PWAR_TEST_DLL
+    pwarASIOLog::Shutdown();
+#endif
+    WSACleanup();
     std::cout << "PWAR real UDP channel mapping passed: " << mode << '\n';
 }

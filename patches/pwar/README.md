@@ -236,3 +236,33 @@ Le test ne prouve pas les autres pannes WinSock ni une borne temporelle de
 démarrage (ordonnancement, journalisation amont). Une défaillance après bind,
 le socket d'émission et la réception réelle depuis Linux restent à qualifier.
 Aucune installation ou inscription COM n'a été effectuée.
+
+## 0006 : journalisation réseau désactivée et essai de la DLL
+
+Appliquer `0006-disable-network-logging-by-default.patch` après 0005.
+Les méthodes de journalisation deviennent inertes par défaut : aucun socket,
+verrou, allocation ou envoi depuis ces méthodes. L'amont utilisait une adresse
+fixe `10.0.0.171:1338`, également depuis le traitement audio. Le comportement
+historique reste disponible en définissant explicitement `PWAR_ENABLE_UDP_LOGGING`
+pour un build de diagnostic ; il n'est pas qualifié pour le temps réel.
+La télémétrie de latence du protocole PWAR est inchangée.
+
+Le nouveau banc `PwarAsioDllTests` ne lie aucun code d'implémentation PWAR :
+il charge le chemin absolu `$<TARGET_FILE:PwarQualificationDriver>`, obtient
+IASIO via `DllGetClassObject` et sa fabrique, puis utilise les méthodes ASIO.
+Les huit modes de canaux partagent les assertions du banc source : deux blocs
+UDP aller-retour, échantillons d'entrée et de sortie, ordre des canaux et silence
+sur les sorties absentes. Il arrête, libère et décharge la DLL en fin de portée.
+Le profil utilisateur reste temporaire ; aucune inscription COM n'est effectuée.
+
+Compilation finale réussie avec `/EHsc` pour le banc DLL, **CTest 18/18**.
+Revue sans défaut important ; application du patch à la copie 0001–0005 comparée
+au fichier compilé après normalisation des fins de lignes.
+
+Artefact local avec six patches : `build_pwar_qualification/Release/PWARASIO.dll`,
+166912 octets, timestamp UTC `2026-10-24T12:05:29`, SHA-256
+`EAB1067A785D3AA25A241D0DD3122263558D555459879060866AA62B0D982EB2`.
+Le test prouve le chargement via la fabrique exportée et le chemin audio local,
+pas la découverte par le registre Windows, l'utilisation par l'hôte Timox ou
+une liaison avec PipeWire sous Linux. Ces étapes et les performances restent
+à qualifier avant distribution.
