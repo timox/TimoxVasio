@@ -162,6 +162,31 @@ test('API 1.1 bridges create, edit, disable and remove through context actions a
     });
 });
 
+test('Audio Setup separates ASIO, Clock and WASAPI and keeps pending clock edits between tabs', async () => {
+    await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: [], wasapiBridges: [], wasapiDevices: [] }, async container => {
+        const tabs = () => [...container.querySelectorAll('[role="tablist"][aria-label="Audio setup categories"] [role="tab"]')];
+        expect(tabs().map(tab => tab.textContent)).toEqual(['ASIO', 'Clock', 'WASAPI']);
+        expect(container.querySelector('#setup-asio').hidden).toBe(false);
+        expect(container.querySelector('#setup-clock').hidden).toBe(true);
+        await act(async () => Simulate.click(tabs()[1]));
+        expect(container.querySelector('#setup-asio').hidden).toBe(true);
+        expect(container.querySelector('#setup-clock').hidden).toBe(false);
+        expect(container.querySelector('#setup-clock').textContent).toContain('not MIDI tempo');
+        expect(container.querySelector('#setup-clock').textContent).toContain('WASAPI is not a selectable master');
+        expect(container.querySelector('#setup-clock').textContent).toContain('physical ASIO routes saved but inactive');
+        expect(container.querySelector('#setup-clock').textContent).toContain('Neither choice guarantees lower total latency');
+        expect(container.querySelector('#setup-clock').textContent).toContain('a 44.1 kHz WASAPI device with a 48 kHz graph');
+        await act(async () => Simulate.change(container.querySelector('[aria-label="Clock source"]'), { target: { value: 'software' } }));
+        await act(async () => Simulate.change(container.querySelector('[aria-label="Software sample rate"]'), { target: { value: '96000' } }));
+        await act(async () => Simulate.click(tabs()[2]));
+        expect(container.querySelector('#setup-wasapi').hidden).toBe(false);
+        await act(async () => Simulate.keyDown(tabs()[2], { key: 'ArrowLeft' }));
+        expect(container.querySelector('#setup-clock').hidden).toBe(false);
+        expect(container.querySelector('[aria-label="Software sample rate"]').value).toBe('96000');
+        expect(window.vasio.applyConfiguration).not.toHaveBeenCalled();
+    });
+});
+
 test('Audio Setup saves an unavailable endpoint offline without trying to enable audio', async () => {
     await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: [], wasapiBridges: [],
         wasapiDevices: [{ id: 'offline-output', name: 'Output 3/4 (Interface)', flow: 'render', state: 4, mixFormat: null }] }, async container => {

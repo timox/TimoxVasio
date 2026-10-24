@@ -51,6 +51,7 @@ function App() {
     const [routeVisuals, setRouteVisuals] = useState(readRouteVisuals);
     const [hardwareTransfer, setHardwareTransfer] = useState(readHardwareTransfer);
     const [activeView, setActiveView] = useState('configuration');
+    const [setupTab, setSetupTab] = useState('asio');
     const [diagnostics, setDiagnostics] = useState({ level: 'info', entries: [] });
     const [diagnosticsError, setDiagnosticsError] = useState('');
     const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
@@ -1180,9 +1181,54 @@ function App() {
                             </button>}
                     </div>}
 
-                {activeView === 'configuration' && <section className="section setup-physical">
-                    <div className="setup-heading"><div><span className="setup-kind">▣ Audio clock</span><h2>{softwareClock ? 'Software clock' : 'Physical ASIO driver'}</h2></div>
+                {activeView === 'configuration' && <div className="setup-tabs" role="tablist" aria-label="Audio setup categories">
+                    {['asio', 'clock', 'wasapi'].map(id => <button key={id} id={`setup-tab-${id}`} type="button" role="tab"
+                        aria-selected={setupTab === id} aria-controls={`setup-${id}`} tabIndex={setupTab === id ? 0 : -1}
+                        disabled={id === 'wasapi' && apiState?.apiVersion !== '1.1'}
+                        onClick={() => setSetupTab(id)} onKeyDown={event => {
+                            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                            event.preventDefault();
+                            const ids = apiState?.apiVersion === '1.1' ? ['asio', 'clock', 'wasapi'] : ['asio', 'clock'];
+                            const index = ids.indexOf(id);
+                            const next = event.key === 'Home' ? ids[0] : event.key === 'End' ? ids[ids.length - 1]
+                                : ids[(index + (event.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length];
+                            setSetupTab(next); document.getElementById(`setup-tab-${next}`)?.focus();
+                        }}>{id === 'clock' ? 'Clock' : id.toUpperCase()}</button>)}
+                </div>}
+
+                {activeView === 'configuration' && <section className="section setup-physical setup-panel" id="setup-clock" role="tabpanel" aria-labelledby="setup-tab-clock" hidden={setupTab !== 'clock'}>
+                    <div className="setup-heading"><div><span className="setup-kind">▣ Audio timing</span><h2>Clock — master audio clock</h2></div>
                         <span className={`setup-state ${physicalSettingsPending ? 'pending' : 'applied'}`}>{physicalSettingsPending ? 'Changes pending' : engine?.physicalDriverId || runningSoftwareClock ? 'Configured' : 'No driver selected'}</span></div>
+                    <div className="clock-explanation">
+                        <p>The master clock tells TimoxVasio when to process each block of audio. This is audio timing, not MIDI tempo.</p>
+                        <ul><li><strong>ASIO clock:</strong> the selected audio driver supplies the processing callbacks. Choose the driver in the ASIO tab.</li>
+                            <li><strong>Software clock:</strong> TimoxVasio schedules the blocks itself, so routing can run without a physical ASIO card. Timing depends on Windows scheduling.</li></ul>
+                        <p><strong>Sample rate</strong> is the number of audio samples per second. <strong>Block size</strong> is the number processed at once. Smaller blocks reduce the processing interval but leave less time to finish each block.</p>
+                        <p>At 48,000 Hz, 256 frames represent about 5.33 ms per block. This is not the total input-to-output latency.</p>
+                        <p>WASAPI devices keep their own clocks. Their connections adapt the audio rate and use buffers to follow this master clock. MIDI Clock is not implemented here.</p>
+                    </div>
+                    <div className="clock-strategy" aria-label="Choosing the master clock">
+                        <h3>Which clock should I choose?</h3>
+                        <dl>
+                            <dt>Using a physical ASIO interface</dt>
+                            <dd>Choose ASIO and select that interface in the ASIO tab. Its callbacks pace the graph. This is the starting point when your routing uses that card's inputs or outputs.</dd>
+                            <dt>Routing without a physical ASIO interface</dt>
+                            <dd>Choose Software for routes between applications or a setup using only WASAPI devices. Windows schedules the graph; you do not need to open a physical ASIO driver.</dd>
+                            <dt>Using several WASAPI devices</dt>
+                            <dd>Keep one master for the graph. WASAPI is not a selectable master in this version: each device's connection adapts to the ASIO or software clock. Equal sample rates do not mean the device clocks are synchronized.</dd>
+                        </dl>
+                        <p>Switching to Software keeps physical ASIO routes saved but inactive. Switch back to a compatible ASIO driver to use those hardware ports again.</p>
+                        <p><strong>Example: a 44.1 kHz WASAPI device with a 48 kHz graph.</strong> Input audio is resampled from 44.1 to 48 kHz; output audio is resampled from 48 to 44.1 kHz. The device keeps the WASAPI mix format provided by Windows. Conversion adds CPU work and delay. Matching rates removes the nominal rate difference, but independent device clocks still need drift correction.</p>
+                        <p>Neither choice guarantees lower total latency. Smaller blocks give shorter processing intervals and less time for the CPU to finish; larger blocks give more margin but add buffering. Compare the actual route in Performance and watch for overruns.</p>
+                        <details className="clock-limits"><summary>Conversion limits and practical checks</summary>
+                            <ul><li>Upsampling does not restore information missing from the original signal. Converted audio is not bit-perfect.</li>
+                                <li>More channels, devices and conversions increase CPU work. Small buffers can cause dropouts when processing or Windows scheduling is late.</li>
+                                <li>Drift correction handles small clock differences, not unbounded delays or disconnections. Configurations that exceed the audio queue capacity are rejected.</li>
+                                <li>The converter is tested at 44.1 ↔ 48 kHz. Long-running stability with your actual devices and quality at other rate ratios still require measurement.</li></ul>
+                            <p>Avoid unnecessary rate changes. Start with a rate appropriate for your main audio interface and material, then check the complete route under load.</p>
+                        </details>
+                        <p className="hint">Applying a clock change briefly interrupts audio. MIDI tempo and MIDI Clock generation are separate features for later.</p>
+                    </div>
                     <label className="field">Clock source<select aria-label="Clock source" disabled={configurationLocked || !!hardwareTransfer}
                         value={softwareClock ? 'software' : 'asio'} onChange={event => selectClockSource(event.target.value)}>
                         <option value="asio">Physical ASIO driver</option><option value="software">Software clock (no audio card required)</option>
@@ -1199,15 +1245,7 @@ function App() {
                             disabled={configurationLocked} value={configuration.bufferFrames ?? ''} onChange={event => updateConfiguration('bufferFrames', Number(event.target.value))} /></label>
                         <p className="hint">Routes between ASIO applications run without a physical audio card. Default: 48000 Hz / 256 frames.</p>
                         {invalidSoftwareFormat && <p role="alert">Use an integer rate from 8000 to 384000 Hz and quantum from 16 to 8192 frames.</p>}
-                    </> : incompatiblePhysicalRoutes.length > 0 ?
-                        <p className="hint">Choose the replacement driver in the warning above, or keep the running driver.</p> :
-                        <label className="field">Selected driver
-                            <select disabled={configurationLocked} value={configuration?.physicalDriverId || ''}
-                                onChange={event => selectPhysicalDriver(event.target.value)}>
-                                <option value="">None (engine stopped)</option>
-                                {physicalDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
-                            </select>
-                        </label>}
+                    </> : <p className="hint">ASIO master: {selectedPhysical?.name || 'No driver selected'}. <button type="button" onClick={() => setSetupTab('asio')}>Choose ASIO driver</button></p>}
                     {configuration?.physicalDriverId && <>
                         <label className="field">Physical sample rate
                             <select disabled={configurationLocked} value={configuration.sampleRate || ''} onChange={event => updateConfiguration('sampleRate', event.target.value ? Number(event.target.value) : null)}>
@@ -1225,7 +1263,16 @@ function App() {
                     </>}
                 </section>}
 
-                {activeView === 'configuration' && <section className="section setup-profiles">
+                {activeView === 'configuration' && <section className="section setup-profiles setup-panel" id="setup-asio" role="tabpanel" aria-labelledby="setup-tab-asio" hidden={setupTab !== 'asio'}>
+                    <h2>ASIO devices</h2>
+                    <p className="hint">TimoxVasio is the virtual ASIO driver selected by your applications. A physical ASIO driver can provide hardware inputs, outputs and the graph's master clock.</p>
+                    {softwareClock ? <p>Software clock selected. <button type="button" onClick={() => setSetupTab('clock')}>Configure master clock</button></p> :
+                        incompatiblePhysicalRoutes.length > 0 ? <p className="hint">Choose the replacement driver in the warning above, or keep the running driver.</p> :
+                        <label className="field">Selected driver<select aria-label="Physical ASIO driver" disabled={configurationLocked} value={configuration?.physicalDriverId || ''}
+                            onChange={event => selectPhysicalDriver(event.target.value)}><option value="">None (engine stopped)</option>
+                            {physicalDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+                        </select></label>}
+                    {!softwareClock && <p className="hint">Set sample rate and block size in <button type="button" onClick={() => setSetupTab('clock')}>Clock</button>.</p>}
                     <div className="setup-heading"><div><span className="setup-kind">◇ Capacity for applications</span><h2>Application channel profiles</h2></div>
                         <span className="setup-state applied">{confirmedProfiles.length} saved</span></div>
                     <p className="hint">Assign a channel profile to an existing process from its block in Routing. Use “Show all ports” there if it has no connections yet. The profile takes effect when the application opens ASIO again.</p>
@@ -1260,7 +1307,7 @@ function App() {
                         disabled={configurationLocked || !!hardwareTransfer}>Discard pending edits</button>}
                 </div>}
 
-                {activeView === 'configuration' && apiState?.apiVersion === '1.1' && <section className="section" aria-label="Windows audio bridges">
+                {activeView === 'configuration' && apiState?.apiVersion === '1.1' && <section className="section setup-panel" id="setup-wasapi" role="tabpanel" aria-labelledby="setup-tab-wasapi" hidden={setupTab !== 'wasapi'} aria-label="Windows audio bridges">
                     <h2>Windows audio devices (WASAPI)</h2>
                     <p className="hint">Connect existing Windows inputs and outputs to Routing. Save each device, then apply the configuration. Offline devices stay saved with audio disabled until you enable them.</p>
                     <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'add' })}>Add Windows audio bridge…</button>
