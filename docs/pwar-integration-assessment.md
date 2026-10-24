@@ -142,3 +142,11 @@ Le patch 0003 ajoute ensuite la validation du datagramme avant la division du
 listener : exception numérique reproduite, tailles invalides rejetées et paquet
 valide encore traité dans le banc loopback. Le format structuré reste inchangé.
 La matrice Windows/Linux et les canaux partiels ne sont pas encore qualifiés.
+
+Le patch 0004 traite ensuite la stéréo et les canaux partiels. Le banc exécute
+le vrai code Windows, envoie deux blocs UDP et capture les réponses sur un port
+loopback distinct : huit sélections de canaux passent, y compris ordre inversé
+et silence des sorties absentes. CTest total 10/10. Ce résultat local ne remplace
+pas les essais avec PipeWire Linux. Les contrôles de paquets restent structurels,
+sans authentification de source ou nouveau format réseau ; voir les limites
+précises dans le README des patches.

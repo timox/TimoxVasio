@@ -150,6 +150,61 @@ UTC `2026-10-24T09:47:02`, SHA-256
 `2D3EFDEDBF01B716F20A61C0651310762A83511AC54DCBCFBE2E301FF2A01345`.
 L'empreinte de la section 0002 décrit uniquement l'artefact antérieur.
 
-Les canaux partiels, la capture stéréo, le retour d'erreur au démarrage et les
-essais Linux restent à traiter. Les tests présents n'établissent pas une
+Après 0003, les canaux partiels et la capture stéréo restent à traiter (voir
+0004 ci-dessous), ainsi que le retour d'erreur au démarrage et les essais Linux.
+Les tests présents n'établissent pas une
 compatibilité audio réseau complète ni une performance temps réel.
+
+## 0004 : stéréo et sélections partielles de canaux
+
+Appliquer `0004-asio-map-stereo-and-partial-channels.patch` après 0003. Le pilote
+expose deux entrées ASIO correspondant aux deux canaux déjà présents sur le
+réseau. Les copies utilisent les numéros de canaux `inMap`/`outMap` au lieu de
+supposer que les slots ASIO sont dans l'ordre réseau. Les sorties non ouvertes
+sont mises à zéro : une seule sortie ou une configuration capture seule ne lit
+plus un pointeur de sortie absent. Les buffers ASIO sont initialisés à zéro.
+La sélection entière est validée avant allocation/indexation : canaux hors
+plage et doublons sont refusés.
+
+`udp_send_port` devient une option du fichier `pwarASIO.cfg`, entre 1 et 65535.
+Sans option valide, la destination reste 8321 ; le port de réception reste 8321.
+Le banc CTest configure `udp_send_ip=127.0.0.1` et `udp_send_port=18321` pour
+capturer les véritables datagrammes émis sur un socket distinct. Cette option
+change l'adresse de transport, pas le format PWAR. Aucun fichier de configuration
+utilisateur existant n'est modifié.
+
+Les huit cas réseau testés sont stéréo, entrées/sorties inversées, sorties seules
+inversées avec une entrée, gauche seule, droite seule, capture seule, lecture
+seule et entrée privée d'horloge. Ce dernier cas ouvre l'entrée 0, comme l'hôte
+Timox sans route ; ce n'est pas une ouverture à zéro descripteur, toujours refusée.
+Chaque cas envoie deux blocs de 128 frames avec amplitudes distinctes pour
+vérifier les deux moitiés ASIO. Le callback contrôle les échantillons d'entrée ;
+le socket du banc contrôle les échantillons et les canaux des paquets de sortie.
+Le banc distingue les messages de statistiques existants par leur taille.
+
+Avant correction : ouverture stéréo refusée, échantillons de sorties inversées
+incorrects ; essai gauche seule terminé par le timeout CTest de 5 secondes.
+Après correction : compilation de la DLL et **CTest 10/10**, 1,61 seconde.
+La revue a identifié la nécessité de distinguer les statistiques dans le test
+sur deux blocs ; le banc a été corrigé puis toute la suite relancée.
+Le patch appliqué à la copie 0001+0002+0003 produit les sources compilées
+identiques après normalisation des fins de lignes.
+
+Artefact local avec quatre patches :
+`build_pwar_qualification/Release/PWARASIO.dll`, 148992 octets,
+timestamp UTC `2026-10-24T09:57:50`, SHA-256
+`F43AAEBA17C43DF2E081837CE4C3A3D7939CD01118AC3567B2F6C642A4E42A95`.
+Les empreintes précédentes sont historiques. Aucun enregistrement COM, aucune
+installation ni qualification avec un hôte Linux n'a eu lieu.
+
+### Limites du contrôle de paquets
+
+Le listener contrôle taille et nombre d'échantillons avant les calculs. Le
+routeur contrôle les bornes des tableaux et des indices. La distinction des
+structures audio/statistiques repose sur leur taille dans le protocole amont.
+Ces contrôles n'authentifient ni l'émetteur ni la nature déclarée des données :
+un datagramme de bonne taille aux champs plausibles peut les franchir. Aucun
+magic, version ou mécanisme d'authentification nouveau n'est ajouté au protocole.
+La cohérence des fragments d'une même séquence, les horodatages partagés et la
+propagation des erreurs de démarrage restent à corriger/qualifier, ainsi que les
+essais Windows/Linux et les mesures de dérive, perte et latence sur durée.
