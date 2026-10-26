@@ -15,8 +15,8 @@ remain in scope. This proposal does not redesign their behavior.
 
 The model has two state-owning aggregates. These are data ownership boundaries,
 not a claim that every aggregate must become a C++ class or a new endpoint.
-Within the TVSD application, `TVSDClient` is a general graph participant;
-ASIO is one way to participate, not the definition of a client.
+Within the **TimoxVSSC** application, `VSSCClient` is a general graph
+participant; ASIO is one way to participate, not the definition of a client.
 
 ### `AudioConfiguration`
 
@@ -56,11 +56,12 @@ The applied and observed runtime owned by the running engine:
 - Runtime measurements, buffer health, meters, correlation, and errors, with
   their observation time and provenance where available.
 
-TVSD owns the generic `TVSDClient` identity and graph role. TimoxVasio exposes
-transport-specific runtime resources; TVSD may map those resources to its
-clients. The mapping and TVSD client IDs are not currently part of the
-TimoxVasio API. TVSD may also create a client and use a TimoxVasio WASAPI bridge
-as its transport.
+TimoxVSSC owns the generic `VSSCClient` identity and graph role. The
+TimoxVAudioEngine API exposes transport-specific runtime resources; TimoxVSSC
+may map those resources to its clients. This mapping and VSSC client IDs are
+not currently part of the engine API, whose implementation still resides in
+the TimoxVasio repository. TimoxVSSC may also create a client and use a
+TimoxVWasapi bridge as its transport.
 
 The target engine model should report which configuration revision it has
 applied. Today the API exposes one in-memory `configurationRevision`; it does
@@ -68,13 +69,13 @@ not expose a distinct applied revision, particularly when the engine is
 stopped. A mismatch should become visible as pending or unapplied configuration,
 rather than a second ambiguous configuration list.
 
-## TVSD client, transport, copy scope, device, and endpoint
+## TimoxVSSC client, transport, copy scope, device, and endpoint
 
-A **TVSD client** is any participant that TVSD admits to its graph and can
+A **VSSC client** is any participant that TimoxVSSC admits to its graph and can
 address through graph ports. The client has a transport-specific participation
-mode; its process does not need to open the ASIO driver to be a TVSD client.
-The identity and graph role belong to TVSD. The TimoxVasio API does not
-currently publish a common client type or a mapping from bridge IDs to TVSD
+mode; its process does not need to open the ASIO driver to be a VSSC client.
+The identity and graph role belong to TimoxVSSC. The engine API does not
+currently publish a common client type or a mapping from bridge IDs to VSSC
 graph IDs; it publishes ASIO attachments and WASAPI bridge runtime resources.
 
 - An **ASIO client** is direct adhesion: an application opened
@@ -84,18 +85,20 @@ graph IDs; it publishes ASIO attachments and WASAPI bridge runtime resources.
   The current API reports PID and process name, so it cannot claim durable
   identity for a process instance. Session identity is runtime-scoped unless
   creation time or executable path is added and verified.
-- A **WASAPI endpoint client** is a TVSD-managed capture or render stream opened
-  against a Windows endpoint. The endpoint is its transport binding; it is not
-  an ASIO client.
-- A **WASAPI process-copy client** is created when TVSD opens a process-copy
+- A **WASAPI endpoint client** is a TimoxVSSC-managed capture or render stream
+  opened against a Windows endpoint. The endpoint is its transport binding; it
+  is not an ASIO client.
+- A **WASAPI process-copy client** is created when TimoxVSSC opens a process-copy
   stream for a selected process tree. The process identity is the source scope;
-  the TVSD-managed stream is the graph client, and the process itself is not.
+  the TimoxVSSC-managed stream is the graph client, and the process itself is
+  not.
   This copies shared audio and creates a distinct graph stream. It does not
   establish that the application selected WASAPI, attach it to the ASIO driver,
   or redirect its original output.
 
 A process-copy definition belongs to `AudioConfiguration`; its active
-TVSD-managed stream and graph ports belong to `AudioEngine`. The same
+TimoxVSSC-managed client and graph ports map to the `AudioEngine` bridge
+session. The same
 configuration/runtime distinction applies to endpoint streams.
 
 A **Windows endpoint** is one capture or render endpoint with its own ID and
@@ -151,7 +154,7 @@ Preserve these boundaries. First extract clear API/domain value types and
 ownership from the flat `State` serializer in `src/control_api_server.cpp`;
 avoid a wholesale engine rewrite. Keep discovery, runtime sessions, and
 configuration persistence as separate services. ASIO attachment details remain
-resources of the virtual driver session. The TVSD-level client model can
+resources of the virtual driver session. The TimoxVSSC-level client model can
 represent ASIO, WASAPI endpoint, and WASAPI process-copy participants uniformly
 without pretending they share the same transport or evidence.
 
