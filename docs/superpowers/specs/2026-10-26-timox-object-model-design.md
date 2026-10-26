@@ -1,7 +1,9 @@
 # TimoxVasio object model: two state owners
 
-**Status:** proposal for review. This document records a model boundary; it does
-not change the current API or implementation.
+**Status: superseded — historical proposal.** The current design is
+[adhérents, nœuds de connexion et supervision](2026-10-26-adherents-noeuds-supervision-design.md).
+It replaces the two-aggregate framing and GUI-owned common client identity.
+The content below is retained as history, not as implementation instructions.
 
 ## Intent
 
