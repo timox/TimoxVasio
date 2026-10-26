@@ -326,7 +326,12 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .patchbay-port.source { justify-content: flex-end; }
 .patchbay-port.destination { justify-content: flex-start; }
 .patchbay-port span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.patchbay-signal-meter { display: inline-flex; flex: 0 0 128px; align-items: center; gap: 4px; overflow: visible !important; }
+.patchbay-signal-meter-track { display: block; flex: 1 1 auto; min-width: 10px; height: 5px; overflow: hidden; border-radius: 3px; background: #e1e6e9; }
+.patchbay-signal-meter-track > span { display: block; height: 100%; border-radius: inherit; background: #89949b; transition: width 650ms linear; }
+.patchbay-signal-meter.present .patchbay-signal-meter-track > span { background: #21815e; }
 .patchbay-level { flex: 0 0 auto; color: var(--text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+.patchbay-lufs { flex: 0 0 auto; color: var(--accent); font-size: 10px; font-variant-numeric: tabular-nums; }
 .patchbay-port.selected, .patchbay-port.linked { background: var(--accent-surface); color: var(--text-primary); }
 .patchbay-port.route-selected { background: #f4f7f8; color: var(--text-primary); box-shadow: inset 0 0 0 2px var(--selected-route-color); font-weight: 600; }
 .patchbay-port:disabled { opacity: 1; color: var(--text-secondary); background: var(--surface-inset); }
@@ -410,6 +415,17 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .routing-dialog { box-sizing: border-box; width: min(850px, 100%); max-height: min(85vh, 900px); overflow: auto; padding: 20px; border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; box-shadow: 0 16px 48px #14263255; }
 .routing-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .routing-dialog-heading h2 { margin: 0; }
+.native-audio-dialog { width: min(640px, 100%); }
+.native-audio-dialog p { margin: 10px 0; }
+.native-audio-dialog h3 { margin: 16px 0 8px; }
+.native-audio-dialog .native-audio-details { margin: 14px 0; }
+.native-audio-details { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 20px; }
+.native-audio-details dt { color: var(--text-secondary); }
+.native-audio-details dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+    .native-audio-details { grid-template-columns: 1fr; gap: 4px; }
+    .native-audio-details dd { margin-bottom: 8px; }
+}
 .bridge-enabled-field { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
 .bridge-enabled-field input[type='checkbox'] { width: 18px; height: 18px; flex: 0 0 auto; margin: 0; }
 .patchbay-context-menu { position: fixed; z-index: 120; display: grid; min-width: 220px; max-width: min(360px, calc(100vw - 16px)); padding: 5px; border: 1px solid var(--border-strong); border-radius: 6px; background: #fff; box-shadow: 0 10px 30px #14263255; }

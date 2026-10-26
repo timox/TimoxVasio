@@ -1,0 +1,90 @@
+cmake_minimum_required(VERSION 3.20)
+project(TimoxPwarQualification LANGUAGES C CXX)
+enable_testing()
+set(PWAR_SOURCE_DIR "" CACHE PATH "PWAR ed5b07c source tree with the companion patch applied")
+if(NOT EXISTS "${PWAR_SOURCE_DIR}/protocol/pwar_router.c")
+    message(FATAL_ERROR "Set PWAR_SOURCE_DIR to the PWAR source tree")
+endif()
+add_executable(PwarRouterBoundsTests router_bounds_tests.cpp "${PWAR_SOURCE_DIR}/protocol/pwar_router.c")
+target_include_directories(PwarRouterBoundsTests PRIVATE "${PWAR_SOURCE_DIR}/protocol")
+target_compile_features(PwarRouterBoundsTests PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(PwarRouterBoundsTests PRIVATE /W4 $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+endif()
+add_test(NAME PwarRouterBoundsTests COMMAND PwarRouterBoundsTests)
+set_tests_properties(PwarRouterBoundsTests PROPERTIES TIMEOUT 10)
+
+option(PWAR_BUILD_WINDOWS_DRIVER "Build the separate PWAR DLL without registration or installation" OFF)
+set(PWAR_ASIO_SDK_DIR "" CACHE PATH "Existing ASIO SDK root; never downloaded or redistributed by this project")
+if(PWAR_BUILD_WINDOWS_DRIVER)
+    if(NOT WIN32 OR NOT MSVC)
+        message(FATAL_ERROR "The qualification DLL target currently requires Windows/MSVC")
+    endif()
+    if(NOT EXISTS "${PWAR_ASIO_SDK_DIR}/common/iasiodrv.h")
+        message(FATAL_ERROR "Set PWAR_ASIO_SDK_DIR to an existing ASIO SDK")
+    endif()
+    set(PWAR_DRIVER_SOURCES
+        "${PWAR_SOURCE_DIR}/windows/asio/pwarASIO.cpp"
+        "${PWAR_SOURCE_DIR}/windows/asio/pwarASIOLog.cpp"
+        "${PWAR_SOURCE_DIR}/protocol/pwar_router.c"
+        "${PWAR_SOURCE_DIR}/protocol/latency_manager.c"
+        "${PWAR_ASIO_SDK_DIR}/common/combase.cpp"
+        "${PWAR_ASIO_SDK_DIR}/common/dllentry.cpp"
+        "${PWAR_ASIO_SDK_DIR}/common/register.cpp")
+    add_library(PwarQualificationDriver SHARED ${PWAR_DRIVER_SOURCES}
+        "${PWAR_SOURCE_DIR}/windows/asio/pwarASIO.def")
+    target_include_directories(PwarQualificationDriver PRIVATE "${PWAR_ASIO_SDK_DIR}/common")
+    target_compile_features(PwarQualificationDriver PRIVATE cxx_std_17)
+    target_compile_definitions(PwarQualificationDriver PRIVATE _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
+    target_compile_options(PwarQualificationDriver PRIVATE /W4 $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+    target_link_libraries(PwarQualificationDriver PRIVATE ws2_32 avrt winmm ole32 advapi32 uuid user32)
+    set_target_properties(PwarQualificationDriver PROPERTIES OUTPUT_NAME PWARASIO)
+    add_executable(PwarAsioLifecycleTests asio_lifecycle_tests.cpp ${PWAR_DRIVER_SOURCES})
+    target_include_directories(PwarAsioLifecycleTests PRIVATE "${PWAR_ASIO_SDK_DIR}/common" "${PWAR_SOURCE_DIR}/windows/asio")
+    target_compile_features(PwarAsioLifecycleTests PRIVATE cxx_std_17)
+    target_compile_definitions(PwarAsioLifecycleTests PRIVATE _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
+    target_compile_options(PwarAsioLifecycleTests PRIVATE /W4 $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+    target_link_libraries(PwarAsioLifecycleTests PRIVATE ws2_32 avrt winmm ole32 advapi32 uuid user32)
+    add_test(NAME PwarAsioLifecycleTests COMMAND PwarAsioLifecycleTests)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pwar-test-profile")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pwar-test-profile/pwarASIO.cfg" "udp_send_ip=127.0.0.1\nudp_send_port=18321\n")
+    set_tests_properties(PwarAsioLifecycleTests PROPERTIES TIMEOUT 10 RUN_SERIAL TRUE
+        ENVIRONMENT "USERPROFILE=${CMAKE_CURRENT_BINARY_DIR}/pwar-test-profile")
+    add_executable(PwarAsioChannelTests asio_channel_tests.cpp ${PWAR_DRIVER_SOURCES})
+    target_include_directories(PwarAsioChannelTests PRIVATE "${PWAR_ASIO_SDK_DIR}/common" "${PWAR_SOURCE_DIR}/windows/asio")
+    target_compile_features(PwarAsioChannelTests PRIVATE cxx_std_17)
+    target_compile_definitions(PwarAsioChannelTests PRIVATE _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
+    target_compile_options(PwarAsioChannelTests PRIVATE /W4 $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+    target_link_libraries(PwarAsioChannelTests PRIVATE ws2_32 avrt winmm ole32 advapi32 uuid user32)
+    add_executable(PwarAsioDllTests asio_channel_tests.cpp)
+    target_include_directories(PwarAsioDllTests PRIVATE "${PWAR_ASIO_SDK_DIR}/common" "${PWAR_SOURCE_DIR}/protocol"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../src")
+    target_compile_features(PwarAsioDllTests PRIVATE cxx_std_17)
+    target_compile_options(PwarAsioDllTests PRIVATE /W4 /EHsc)
+    target_compile_definitions(PwarAsioDllTests PRIVATE PWAR_TEST_DLL)
+    target_link_libraries(PwarAsioDllTests PRIVATE ws2_32 ole32 uuid)
+    add_dependencies(PwarAsioDllTests PwarQualificationDriver)
+    add_executable(PwarTimoxHostTests timox_host_tests.cpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../src/physical_asio_host.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../src/asio_sample_conversion.cpp")
+    target_include_directories(PwarTimoxHostTests PRIVATE "${PWAR_ASIO_SDK_DIR}/common"
+        "${PWAR_ASIO_SDK_DIR}/host/pc" "${PWAR_SOURCE_DIR}/protocol"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
+    target_compile_features(PwarTimoxHostTests PRIVATE cxx_std_17)
+    target_compile_options(PwarTimoxHostTests PRIVATE /W4 /EHsc)
+    target_link_libraries(PwarTimoxHostTests PRIVATE ws2_32 ole32 uuid)
+    add_dependencies(PwarTimoxHostTests PwarQualificationDriver)
+    foreach(mode stereo right clock)
+        add_test(NAME PwarTimoxHost_${mode} COMMAND PwarTimoxHostTests ${mode} $<TARGET_FILE:PwarQualificationDriver>)
+        set_tests_properties(PwarTimoxHost_${mode} PROPERTIES TIMEOUT 10 RUN_SERIAL TRUE
+            ENVIRONMENT "USERPROFILE=${CMAKE_CURRENT_BINARY_DIR}/pwar-test-profile")
+    endforeach()
+    foreach(mode stereo reversed reverse_outputs left right capture playback clock)
+        add_test(NAME PwarAsioDll_${mode} COMMAND PwarAsioDllTests ${mode} $<TARGET_FILE:PwarQualificationDriver>)
+        set_tests_properties(PwarAsioDll_${mode} PROPERTIES TIMEOUT 5 RUN_SERIAL TRUE
+            ENVIRONMENT "USERPROFILE=${CMAKE_CURRENT_BINARY_DIR}/pwar-test-profile")
+        add_test(NAME PwarAsioChannels_${mode} COMMAND PwarAsioChannelTests ${mode})
+        set_tests_properties(PwarAsioChannels_${mode} PROPERTIES TIMEOUT 5 RUN_SERIAL TRUE
+            ENVIRONMENT "USERPROFILE=${CMAKE_CURRENT_BINARY_DIR}/pwar-test-profile")
+    endforeach()
+endif()

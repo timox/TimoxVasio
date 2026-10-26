@@ -42,7 +42,7 @@ function transportDeltas(history, key) {
     });
 }
 
-export default function AnalysisTimeline({ performanceHistory, transportHistory, virtualClients, routes, configuredRoutes, engine, onClear }) {
+export default function AnalysisTimeline({ performanceHistory, transportHistory, virtualClients, routes, configuredRoutes, engine, onClear, view = 'all', onHelp }) {
     const [selectedPid, setSelectedPid] = useState('');
     const [selectedTransport, setSelectedTransport] = useState('');
     const [span, setSpan] = useState(600000);
@@ -91,9 +91,12 @@ export default function AnalysisTimeline({ performanceHistory, transportHistory,
     };
     const routed = new Set(routes.flatMap(route => [route.sourceEndpointId, route.destinationEndpointId]));
     return <>
-        <section className="section analysis-dashboard">
-            <div className="section-heading"><div><h2>Performance history</h2>
-                <p className="hint">Five-second snapshots collected while Control is open. Export the session for later analysis.</p></div></div>
+        <section className="section analysis-dashboard" hidden={!['all', 'timeline'].includes(view)}
+            id={view !== 'all' ? 'analysis-panel-timeline' : undefined} role={view !== 'all' ? 'tabpanel' : undefined}
+            aria-labelledby={view !== 'all' ? 'analysis-tab-timeline' : undefined}>
+            <div className="section-subject-heading"><h2>Performance history</h2>
+                {onHelp && <button type="button" onClick={() => onHelp('analysis-timeline')}>Reading the timeline</button>}</div>
+            <p className="hint">Five-second observations · Current Control session</p>
             <div className="analysis-toolbar">
                 <label>Period <select value={span} onChange={event => setSpan(Number(event.target.value))}>
                     <option value={600000}>Last 10 minutes</option><option value={1800000}>Last 30 minutes</option>
@@ -102,7 +105,7 @@ export default function AnalysisTimeline({ performanceHistory, transportHistory,
                 <button type="button" onClick={onClear} disabled={!performanceHistory.length && !transportHistory.length}>Clear session</button>
             </div>
             <div className="analysis-chart-grid">
-                <LineChart points={physicalPoints} title="Physical callback / block" />
+                <LineChart points={physicalPoints} title={engine?.clockSource?.kind === 'software' ? 'Software callback / block' : 'Physical callback / block'} />
                 <div className="analysis-chart-stack">
                     <label>Routed application <select value={pid || ''} onChange={event => setSelectedPid(event.target.value)}>
                         {pids.map(([clientPid, name]) => <option key={clientPid} value={clientPid}>{name} · PID {clientPid}</option>)}
@@ -111,11 +114,13 @@ export default function AnalysisTimeline({ performanceHistory, transportHistory,
                     <LineChart points={callbackPoints} title="Slowest host callback / block" color="#ad6836" />
                 </div>
             </div>
-            <p className="hint">A point above 100% means the measured callback exceeded one block. Process CPU is an average across all logical processors; it cannot identify a VST. Stage timings appear after “Measure stages” is enabled in Performance.</p>
         </section>
-        <section className="section analysis-transport">
-            <h2>Transport incidents over time</h2>
-            <p className="hint">Counters cover one application transport direction. Its channels share the same underrun and overrun counters, so these bars cannot identify a faulty channel. The first sample is a baseline.</p>
+        <section className="section analysis-transport" hidden={!['all', 'transport'].includes(view)}
+            id={view !== 'all' ? 'analysis-panel-transport' : undefined} role={view !== 'all' ? 'tabpanel' : undefined}
+            aria-labelledby={view !== 'all' ? 'analysis-tab-transport' : undefined}>
+            <div className="section-subject-heading"><h2>Transport incidents over time</h2>
+                {onHelp && <button type="button" onClick={() => onHelp('analysis-transport')}>Understanding incidents</button>}</div>
+            <p className="hint">Per application and direction · First sample is the baseline</p>
             <label>Transport <select value={key || ''} onChange={event => setSelectedTransport(event.target.value)}>
                 {transportKeys.map(item => { const [transportPid, direction] = item.split(':');
                     const name = virtualClients.find(client => client.pid === Number(transportPid))?.processName || `PID ${transportPid}`;
@@ -131,9 +136,11 @@ export default function AnalysisTimeline({ performanceHistory, transportHistory,
             <div className="incident-legend"><span>■ Underruns</span><span>■ Overruns</span>
                 <strong>{visibleDeltas.reduce((sum, item) => sum + item.underrunsDelta, 0)} / {visibleDeltas.reduce((sum, item) => sum + item.overrunsDelta, 0)} incidents in period</strong></div>
         </section>
-        <section className="section analysis-channels">
-            <h2>Channels: configured and in use</h2>
-            <p className="hint">“Configured” means a saved route targets that channel. “Open” means the application requested the ASIO channel. “Routed now” means an active route connects an open channel; it does not prove that audio is present.</p>
+        <section className="section analysis-channels" hidden={!['all', 'channels'].includes(view)}
+            id={view !== 'all' ? 'analysis-panel-channels' : undefined} role={view !== 'all' ? 'tabpanel' : undefined}
+            aria-labelledby={view !== 'all' ? 'analysis-tab-channels' : undefined}>
+            <div className="section-subject-heading"><h2>Channels: configured and in use</h2>
+                {onHelp && <button type="button" onClick={() => onHelp('analysis-channels')}>Understanding channel states</button>}</div>
             {!virtualClients.length ? <p className="hint">No ASIO application connected.</p> : virtualClients.map(client => {
                 const prefix = `virtual:TimoxVasio:${client.pid}:`;
                 const directions = [
@@ -149,7 +156,7 @@ export default function AnalysisTimeline({ performanceHistory, transportHistory,
                             <small>Channels: {active.length ? active.map(id => id.split(':').at(-1)).join(', ') : 'none'}</small></p>;
                     })}</div>;
             })}
-            <p className="hint">Engine: {engine?.state || 'unknown'} · a per-channel frequency spectrum is not collected yet. It requires sampling a selected channel block and computing an FFT outside the audio callback.</p>
+            <p className="hint">Engine: {engine?.state || 'unknown'} · Channel activity does not measure signal level.</p>
         </section>
     </>;
 }

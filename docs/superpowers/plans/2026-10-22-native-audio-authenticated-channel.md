@@ -1,5 +1,10 @@
 # Native Audio Authenticated Channel Implementation Plan
 
+> **Choix de transport remplacé le 24 octobre 2026 à la demande utilisateur :**
+> poursuivre avec AF_UNIX selon [le plan de migration](2026-10-24-native-audio-unix-sockets.md).
+> Les résultats pipe ci-dessous restent historiques ; ne pas poursuivre le
+> listener pipe comme architecture cible. Réutiliser codecs, dispatcher et tests.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Relier le transport client existant à `BrokerSession` par de vrais pipes Windows, chiffrés et authentifiés avec Schannel, sans ouvrir le pilote pendant les tests de ce lot.
@@ -65,6 +70,120 @@ Le prototype prouve TLS 1.2 ECDHE/ECDSA AES-GCM en mémoire, pas le framing pipe
 
 ## Tâche 3 — Identité Windows et client concret
 
+**Client concret du 24 octobre :** factory Windows ajoutée, endpoint bootstrap
+fixe en production, certificats déjà provisionnés et pin serveur obligatoires.
+Les deux objets pipe/TLS gardent une adresse et une durée de vie fixes pour
+RequestCancel. Connect observe le jeton du processus, authentifie TLS et compare
+BindReply ; Exchange n'autorise que SESSION sur bootstrap puis valide requête et
+réponse avec le codec audio. ConfirmLease vérifie DataOffer, réobserve l'identité,
+construit localement le nom data depuis le nonce, refait TLS et vérifie la liaison
+complète avant de fermer bootstrap. Erreur = fermeture des deux flux, aucun
+réemploi après Close ; annulation sticky. Aucun branchement au moteur effectué.
+
+Test rouge observé avant implémentation, puis parcours réel
+CreateBrokerNativeAudioTransport → Open/SESSION/ConfirmLease/STATUS/CLOSE réussi
+contre un pair TLS de test qui observe indépendamment les deux jetons pipe.
+Six altérations bootstrap/offer/data (logon, bail, génération, nonce) refusées.
+Annulation pendant Connect vérifiée après réception réelle du ClientHello,
+puis refus de réutilisation et effacement de la sortie Exchange. Les essais TLS
+utilisent trois clés temporaires : suppression et absence vérifiées après chaque
+exécution. Une exécution intermédiaire après un échec de compilation utilisait
+encore l'ancien binaire ; elle est exclue des preuves du contrôle d'annulation.
+Après ajout de l'en-tête standard manquant, rebuild et nouvelle exécution ont
+réussi avec l'affichage du bilan concret ci-dessous.
+
+Build de la bibliothèque `NativeAudioWindowsChannel` sans macro d'endpoint de
+test réussie (/W4 /WX). Huit CTests ciblés passent ; TLS réel exécuté séparément.
+Mémoire x64 : objets Channel + deux PipeStream/Impl + deux SchannelStream/Impl,
+token handshake maximal, tableaux adaptateur, 1 KiB de métadonnées adaptateur
+(static_assert) et 8 KiB de réserve de pile = **243904 octets**. La réserve couvre
+les buffers EKU/framing et les identités/noms locaux ; allocations OS/Schannel
+opaques séparées. Le futur serveur a besoin de son propre bilan.
+
+Reste : serveur BrokerSession réel, mapping certificat-vers-compte provisionné,
+révocation/transfert concurrent et PCM via le vrai canal, qualification inter-logons,
+service/provisioning et branchement moteur. Le pair scripté ne prouve pas ces points.
+Revue indépendante favorable. Couverture complémentaire requise avec le serveur :
+réponses contextuellement invalides, EOF après SESSION, annulation pendant le
+handshake data et Exchange, ainsi que retrait du bail après ces échecs.
+
+**Framing vérifié le 24 octobre :** `channel_frames.h` fournit les lectures
+bornées audio/TNAC et l'écriture TNAC directement sur SchannelStream. Aucun buffer
+audio supplémentaire ni pointeur retenu. Lecture exacte de l'en-tête, validation
+de longueur avant payload, aucun octet consommé du message suivant. Le délai
+absolu est conservé à chaque fragment. Tout échec ferme le flux ; une trame audio
+partielle est effacée et les sorties de liaison restent inchangées. La sémantique
+SESSION, l'admission et les comparaisons de bail restent à appliquer par le canal.
+
+Test rouge observé puis cible `/W4 /WX` verte ; sept CTests ciblés réussis.
+Le test Schannel réel a aussi été étendu : deux TNAC dans un record TLS, aller/
+retour et enveloppe audio maximale à travers plusieurs records, relayés par
+fragments ciphertext de 17 octets. Exécution explicite `--temporary-user-key`
+réussie : trois clés créées, supprimées et absence vérifiée, aucune confiance
+installée. Ce test de framing ne valide pas le contenu PCM ni le futur serveur.
+
+**Point mémoire identifié avant le client concret (historique, résolu ci-dessous) :** chaque SchannelStream
+retient actuellement 133120 octets de tableaux. En garder deux pendant le
+transfert dépasse déjà les 256 KiB (266240 octets), avant les buffers du canal,
+ceux de l'adaptateur ou le token SSPI temporaire. Prévoir un cycle de vie de
+buffers partagé/libéré entre bootstrap et data sans perdre les restes TLS,
+sans course avec RequestCancel et sans abandonner prématurément le bail.
+Ne pas prétendre le plafond tenu par une simple somme des buffers de framing.
+
+**Correction mémoire du 24 octobre :** les buffers de chaque flux sont désormais
+32768 octets chiffrés, 16384 en clair et 18437 en sortie. Le profil TLS 1.2 garde
+la limite de 16 KiB par record plaintext et couvre 18 KiB de ciphertext plus
+l'en-tête de cinq octets ([RFC 5246, section 6.2](https://www.rfc-editor.org/rfc/rfc5246.html#section-6.2)).
+Le plafond de handshake accepté est explicitement 32 KiB : les certificats/chaînes
+provisionnés devront tenir ce profil. Aucune réduction du contrôle de pin, EKU,
+validité ou chiffrement ; pas d'agrandissement dynamique ou de partage de scratch.
+
+Test rouge observé avec les anciens tableaux, puis GREEN : deux `sizeof(Impl)`
+et objets Schannel, un token handshake maximal, les deux buffers de l'adaptateur
+et 16 KiB de réserve donnent **250400 octets** sur la build x64 courante.
+La réserve doit encore être remplacée/vérifiée par les tailles du canal concret
+et de ses objets/scratch lors du raccord. Les allocations internes OS/Schannel,
+y compris un token surdimensionné rejeté après retour SSPI, restent opaques et
+ne sont pas présentées comme bornées par ce total applicatif.
+`NativeAudioSchannelAccountingTests` vérifie sans clé ce budget et la conservation
+des octets complétés lors d'un timeout. Essai TLS réel réussi : premier flux
+gardant deux octets plaintext en attente pendant le handshake du second, puis
+lecture intacte ; régressions de framing maximal, fragmentation, pins/EKU et
+tamper réussies. Trois clés utilisateur temporaires créées/supprimées, absence
+vérifiée. Le bail et le canal concret restent à raccorder et à qualifier.
+
+**Avancement du 24 octobre 2026 — codec et observation OS :**
+`channel_binding.h/.cpp` fournit les cinq trames TNAC v1, avec stockage fixe,
+longueurs exactes, SID binaires canoniques et comparaisons de tous les champs
+de liaison. Le logon SID doit être de forme S-1-5-5-X-Y. Bootstrap : bail,
+génération et nonce nuls ; data : tous présents. DataOffer ne contient aucune
+identité. Le protocole ne confère aucune confiance aux identités décodées.
+`pipe_identity_win32.h/.cpp` capture le jeton du client après lecture du pipe,
+revient immédiatement à l'identité serveur puis extrait SID utilisateur/logon,
+AuthenticationId et SessionId. Une impersonation préexistante est refusée sans
+la remplacer ; un échec de RevertToSelf termine le processus, conformément au
+[contrat Windows](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-reverttoself).
+
+Tests rouges observés séparément (encode absent puis observation OS absente),
+puis builds Release /W4 /WX réussis. Six CTests passent : ChannelBinding,
+PipeIdentity, PipeStream, BrokerTransport, Broker et AccessPolicy. Le codec
+couvre les cinq types, tous leurs préfixes tronqués, suffixes, champs invalides,
+SID maximal, altération de chaque octet et réutilisation de SessionId avec un
+autre LUID. Le test OS utilise un vrai pipe sous le logon courant et vérifie le
+retour d'identité et le refus d'une impersonation imbriquée. Aucune clé créée,
+aucun pilote installé ; pas de preuve inter-logons ou audio. Le chemin fatal
+d'échec de RevertToSelf n'a pas été injecté dans ce test.
+Revue indépendante statique favorable ; limite également signalée pour l'échec
+d'OpenThreadToken après impersonation, non injecté. Le code effectue le revert
+avant de renvoyer cet échec ; aucune qualification de relais inter-logons.
+
+**Ruling de séquencement :** l'API reste HTTP/WS ; une migration partielle du
+bearer serait insuffisante. Poursuivre le client concret et le serveur prévus
+ci-dessous avant activation native. Ce sous-lot ne réalise pas encore la machine
+d'états BootstrapBound/LeasePending/DataBound, la liaison aux pins TLS, la
+comparaison avec le certificat provisionné ou le transfert du bail. Ne pas
+cocher la tâche 3 complète.
+
 **Files:** créer `native-windows-audio/broker/channel_binding.h/.cpp`, `native-windows-audio/broker/pipe_identity_win32.h/.cpp`, `include/native_audio_authenticated_channel_win32.h`, `src/native_audio_authenticated_channel_win32.cpp`, `tests/native_audio_channel_binding_tests.cpp`.
 
 **Interface publique :** `CreateWindowsNativeAudioAuthenticatedChannel(const NativeAudioChannelCredentials&) -> std::unique_ptr<INativeAudioAuthenticatedChannel>`. La configuration contient uniquement le certificat client déjà provisionné, pin serveur attendu et endpoint local fixe ; la factory duplique/détient les références de certificat. Pas de création de clé, découverte non authentifiée ou confiance automatique. La définition Win32 reste dans ce header dédié.
@@ -76,6 +195,61 @@ Le prototype prouve TLS 1.2 ECDHE/ECDSA AES-GCM en mémoire, pas le framing pipe
 La DACL client n'accorde pas GENERIC_WRITE/FILE_CREATE_PIPE_INSTANCE, WRITE_DAC ni WRITE_OWNER. L'ACE data vise le SID de logon ; bootstrap vise le compte provisionné. Le premier serveur utilise FIRST_PIPE_INSTANCE et tous refusent les clients distants. [Droits des pipes](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights), [identification du client](https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-impersonatenamedpipeclient).
 
 ## Tâche 4 — Serveur duplex réutilisant BrokerSession
+
+**Dispatcher sérialisé du 24 octobre :** `broker_dispatcher.h/.cpp` possède
+BrokerSession et un worker dédié. File fixe de quatre jobs synchrones empruntant
+les buffers appelants, quatre connexions au maximum, aucune I/O socket sur ce
+worker. Une soumission Process/Disconnect par connexion, un seul appelant de
+contrôle ; tous les appelants doivent terminer avant destruction.
+
+RequestCancel révoque l'identifiant et annule le backend ; le worker puis le
+consommateur revérifient la suppression des réponses. L'hôte doit aussi annuler
+les pipes : une réponse déjà retournée ne peut pas être rappelée. Un changement
+de politique retire toutes les anciennes connexions et impose une nouvelle
+authentification. Les slots sont libérés même si l'ancien thread I/O termine
+tard ; les identifiants uniques protègent sa remplaçante contre un Disconnect
+retardé. Régression de rétention des slots observée rouge puis verte.
+
+Build Release /W4 /WX réussi ; neuf CTests ciblés réussis, dont arbitrage de deux
+propriétaires concurrents, cinquième connexion refusée, annulation/Stop/politique
+pendant Open bloqué et arrêt avec plusieurs appelants. Le banc PCM Schannel
+utilise maintenant ce dispatcher ; essai TLS réel réussi, trois clés temporaires
+créées/supprimées et absence vérifiée. Politique et backend audio synthétiques.
+Revue statique sans défaut important sous les contrats publics. Les fenêtres
+Attach terminé avant consommation et réponse préparée avant annulation restent
+sans injection déterministe dédiée. Aucun listener, service ou collecteur de
+politique OS livré dans ce sous-lot ; tâche 4 toujours incomplète.
+
+**Précision d'architecture :** le futur BrokerPipeServer utilisera ce dispatcher
+partagé, qui possède l'unique BrokerSession, au lieu d'en manipuler une référence
+directement depuis ses threads I/O.
+
+**Qualification d'intégration du 24 octobre (serveur de test seulement) :**
+le pair du test Schannel ne fabrique plus SESSION/STATUS/CLOSE. Il utilise le
+vrai BrokerSession, avec identité relevée sur le pipe et convertie par Windows
+en SID canonique. La politique `audioIsolationQualified=true` est une injection
+explicitement synthétique du banc, pas une observation de la machine.
+
+Le client Windows concret et CreateBrokerNativeAudioTransport échangent désormais
+un paquet N0 maximal de 4096 frames dans les deux sens à travers TLS et le broker.
+Octets render et capture comparés intégralement ; premier WriteCapture renvoie
+Full, puis la même séquence/les mêmes octets sont acceptés avec une nouvelle
+requête. Les compteurs et CLOSE traversent aussi BrokerSession. Test rouge PCM
+observé avec l'ancien pair scripté, puis build /W4 /WX et essai TLS réel réussis.
+Les trois clés temporaires ont été supprimées, absence vérifiée.
+
+Un garde Disconnect conserve la même connexion logique pendant le transfert et
+retire le propriétaire à chaque sortie du handler de test. Les six altérations
+de liaison et un nouveau cas EOF après SESSION réussissent ; nombre d'ouvertures
+égal au nombre de fermetures, zéro propriétaire restant après join. Cela prouve
+ce chemin séquentiel du banc, pas la révocation concurrente ou un serveur partagé
+par plusieurs clients. Les classes de production pipe_server_win32 restent à
+écrire, avec dispatcher sérialisé, connexions bornées et retraits sur échec.
+Précision : EOF après SESSION est une fermeture initiée par le serveur de test,
+détectée par le client ; ce n'est pas encore la détection serveur d'un client
+disparu. Revue indépendante : allocations des paquets déplacées avant lancement
+du thread pour qu'une exception d'allocation ne termine pas le processus avant
+join/nettoyage des clés. Aucun essai de faute d'allocation injecté.
 
 **Files:** créer `native-windows-audio/broker/pipe_server_win32.h/.cpp`, `tests/native_audio_broker_pipe_tests.cpp`. Aucun SCM dans ces fichiers.
 

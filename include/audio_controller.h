@@ -230,4 +230,6 @@ private:
     std::uint64_t nativePublishedEpoch_=0;
     std::vector<WasapiDeviceInfo> wasapiDevices_;
     std::string wasapiInventoryError_;
+    bool wasapiInventoryObserved_=false; // Worker only; subscribe after first inventory request.
+    void RefreshWasapiInventoryOnWorker();
 };

@@ -13,6 +13,36 @@
     }
   ],
   "paths": {
+    "/api/v1/pwar": {
+      "get": {
+        "operationId": "getPwarSettings",
+        "summary": "Read PWAR network settings from the engine user's pwarASIO.cfg",
+        "responses": {
+          "200": {"description": "Saved settings or defaults when the file is absent", "content": {"application/json": {"schema": {
+            "type": "object", "required": ["address", "port", "exists"],
+            "properties": {"address": {"type": "string"}, "port": {"type": "integer"}, "exists": {"type": "boolean"}}
+          }}}},
+          "500": {"$ref": "#/components/responses/ServerError"}
+        }
+      },
+      "put": {
+        "operationId": "savePwarSettings",
+        "summary": "Save PWAR network settings without starting audio",
+        "description": "Reopen the PWAR driver to activate changes. UDP destination port requires the patched PWAR driver; older upstream drivers use 8321. The Windows receive port remains 8321. Unknown configuration lines are preserved.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "additionalProperties": false, "required": ["address", "port"],
+          "properties": {"address": {"type": "string", "format": "ipv4"}, "port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+        }}}},
+        "responses": {
+          "200": {"description": "Saved; reopening the driver is required", "content": {"application/json": {"schema": {
+            "type": "object", "required": ["address", "port", "exists", "reopenRequired"],
+            "properties": {"address": {"type": "string"}, "port": {"type": "integer"}, "exists": {"const": true}, "reopenRequired": {"const": true}}
+          }}}},
+          "400": {"description": "Invalid IPv4 address, port or request shape"},
+          "500": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
     "/api/v1/wasapi-devices": {
       "get": {
         "operationId":"refreshWasapiDevices",
@@ -27,7 +57,7 @@
         "summary": "Read the confirmed engine state and complete routing configuration",
         "responses": {
           "200": {
-            "description": "Current engine state, inventory, routes, and the latest physical ASIO buffer observation window (null until observed)",
+            "description": "Current engine state, inventory, routes, read-only nativeAudio status and the latest physical ASIO buffer observation window (null until observed). nativeAudio distinguishes fixed native PCM32 stereo 48000 Hz from graphFormat (null unless running); epoch and wireGeneration are decimal strings. Native activation is not accepted by configuration.apply pending authenticated API integration.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/State" } } }
           },
           "500": { "$ref": "#/components/responses/ServerError" }

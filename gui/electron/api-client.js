@@ -103,7 +103,7 @@ class ApiClient extends EventEmitter {
 
     async httpRequest(method, path, body) {
         const routes = ['/api/v1/state', '/api/v1/drivers', '/api/v1/wasapi-devices', '/api/v1/openapi.json',
-            '/api/v1/schemas/api-v1.json', '/api/v1/diagnostics', '/api/v1/application-profiles'];
+            '/api/v1/schemas/api-v1.json', '/api/v1/diagnostics', '/api/v1/application-profiles', '/api/v1/pwar'];
         const documented = routes.includes(path) ||
             (typeof path === 'string' && /^\/api\/v1\/diagnostics\?limit=\d+$/.test(path));
         if (!['GET', 'PUT'].includes(method) || !documented)

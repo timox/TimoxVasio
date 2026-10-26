@@ -1,0 +1,47 @@
+.audio-help-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgb(24 33 43 / 42%);
+}
+.audio-help-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(680px, 100%);
+    max-height: min(780px, calc(100vh - 48px));
+    min-height: 0;
+    overflow: hidden;
+    background: var(--surface-panel);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-card);
+    box-shadow: 0 16px 48px rgb(24 33 43 / 24%);
+    font: 14px/1.6 'Segoe UI Variable Text', 'Segoe UI', Arial, sans-serif;
+}
+.audio-help-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 0 0 auto;
+    gap: 16px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.audio-help-header h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.audio-help-header button { flex-shrink: 0; }
+.audio-help-body { overflow-y: auto; overscroll-behavior: contain; padding: 20px 24px 28px; }
+.audio-help-content { max-width: 72ch; font: 14px/1.6 'Segoe UI Variable Text', 'Segoe UI', Arial, sans-serif; }
+.audio-help-content p { margin: 8px 0 12px; color: var(--text-secondary); }
+.audio-help-content .audio-help-intro { margin-top: 0; color: var(--text-primary); }
+.audio-help-content section + section { margin-top: 24px; }
+.audio-help-content h3 { margin: 0 0 8px; font-size: 14px; font-weight: 650; color: var(--text-primary); }
+.audio-help-dialog :focus-visible { outline: 2px solid var(--focus); outline-offset: -3px; }
+@media (max-width: 600px) {
+    .audio-help-backdrop { padding: 10px; }
+    .audio-help-dialog { max-height: calc(100vh - 20px); }
+    .audio-help-header { padding: 12px 16px; }
+    .audio-help-body { padding: 16px; }
+}

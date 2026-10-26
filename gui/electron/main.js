@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { launchEngine, releaseEngine } = require('./engine-process');
+const { discoverEngine } = require('./engine-discovery');
 const WebSocket = require('ws');
 const { ApiClient } = require('./api-client');
 
@@ -10,10 +11,21 @@ let engineProcess;
 let apiPort;
 let apiClient;
 let engineStopping = false;
+// Acquire before discovery: two launchers must not both observe a refused API
+// connection and start competing audio engines.
+const ownsGuiLock = app.requestSingleInstanceLock();
+if (!ownsGuiLock) app.quit();
+app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+});
 function createApiReadiness() {
     let resolve;
     let reject;
     const promise = new Promise((accept, fail) => { resolve = accept; reject = fail; });
+    // Startup can fail before the renderer has attached its IPC handlers.
+    promise.catch(() => {});
     return { promise, resolve, reject };
 }
 let apiReady = createApiReadiness();
@@ -81,24 +93,12 @@ function startEngine() {
 }
 
 async function attachToExistingEngine() {
-    const port = 52525;
-    try {
-        const response = await fetch(`http://127.0.0.1:${port}/api/v1/state`, {
-            signal: AbortSignal.timeout(800)
-        });
-        if (!response.ok) return false;
-        const state = await response.json();
-        const isTimoxVasioEngine = ['1.0', '1.1'].includes(state.apiVersion) &&
-            Array.isArray(state.virtualDrivers) &&
-            state.virtualDrivers.some(driver => driver.id === 'TimoxVasio');
-        if (!isTimoxVasioEngine) return false;
-        apiPort = port;
-        apiReady.resolve(port);
-        console.log(`Attached to existing TimoxVasio engine on 127.0.0.1:${port}`);
-        return true;
-    } catch (_) {
-        return false;
-    }
+    const port = await discoverEngine();
+    if (port === null) return false;
+    apiPort = port;
+    apiReady.resolve(port);
+    console.log(`Attached to existing TimoxVasio engine on 127.0.0.1:${port}`);
+    return true;
 }
 
 async function getApiClient() {
@@ -148,7 +148,7 @@ ipcMain.handle('api:http-request', async (_event, method, path, body) =>
 ipcMain.handle('api:configuration-apply', async (_event, configuration) =>
     (await getApiClient()).applyConfiguration(configuration));
 ipcMain.handle('engine:start', async () => {
-    const port = apiPort !== undefined ? apiPort : await startEngine();
+    const port = await apiReady.promise;
     await (await getApiClient()).sendCommand({ id: `engine-start-${Date.now()}`, command: 'engine.start' });
     return { running: true, port };
 });
@@ -158,11 +158,17 @@ ipcMain.handle('engine:stop', async () => {
     return { running: true, audioRunning: false, port: apiPort };
 });
 app.whenReady().then(async () => {
-    if (!await attachToExistingEngine()) startEngine();
+    if (!ownsGuiLock) return;
+    try {
+        if (!await attachToExistingEngine()) await startEngine();
+    } catch (error) {
+        apiReady.reject(error);
+        console.error(error.message);
+    }
     createWindow();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('activate', () => { if (!mainWindow) createWindow(); });
+app.on('activate', () => { if (ownsGuiLock && !mainWindow) createWindow(); });
 app.on('before-quit', () => {
     if (apiClient) apiClient.close();
     if (engineProcess) releaseEngine(engineProcess);

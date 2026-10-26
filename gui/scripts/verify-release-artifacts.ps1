@@ -150,6 +150,7 @@ Require-SameHash $driverPath $setupDriver 'DLL du Setup/build'
 
 # Validate the engine inside each actual deliverable, not just win-unpacked.
 $embeddedEngines = @()
+$embeddedInterfaces = @()
 for ($index = 0; $index -lt $outputs.Count; $index++) {
     $kind = if ($index -eq 0) { 'setup' } else { 'portable' }
     $embeddedDirectory = Join-Path $guiRoot "dist\release-validation-1.2.7\$kind-engine"
@@ -163,6 +164,11 @@ for ($index = 0; $index -lt $outputs.Count; $index++) {
     $embeddedEngine = Join-Path $embeddedDirectory 'TimoxVirtualAsioEngine.exe'
     Require-SameHash $enginePath $embeddedEngine "moteur du $kind/build"
     $embeddedEngines += $embeddedEngine
+    & $sevenZip.Source e $appArchive "-o$embeddedDirectory" '-y' 'resources\app.asar' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Extraction de la GUI $kind impossible." }
+    $embeddedInterface = Join-Path $embeddedDirectory 'app.asar'
+    Require-SameHash (Join-Path $guiRoot 'dist\win-unpacked\resources\app.asar') $embeddedInterface "GUI du $kind/application empaquetée"
+    $embeddedInterfaces += $embeddedInterface
 }
 
 $gitCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
@@ -177,6 +183,8 @@ $manifest = [ordered]@{
         driver = [ordered]@{ path = 'build_driver_110/Release/TimoxVasio.dll'; productVersion = '1.2.7'; lastWriteTimeUtc = (Get-Item $driverPath).LastWriteTimeUtc.ToString('o'); sha256 = $builtDriverHash }
     }
     artifacts = [ordered]@{
+        guiInSetup = [ordered]@{ path = 'dist/release-validation-1.2.7/setup-engine/app.asar'; sha256 = (Get-Hash $embeddedInterfaces[0]) }
+        guiInPortable = [ordered]@{ path = 'dist/release-validation-1.2.7/portable-engine/app.asar'; sha256 = (Get-Hash $embeddedInterfaces[1]) }
         engineInSetup = [ordered]@{ path = 'dist/release-validation-1.2.7/setup-engine/TimoxVirtualAsioEngine.exe'; sha256 = (Get-Hash $embeddedEngines[0]) }
         engineInPortable = [ordered]@{ path = 'dist/release-validation-1.2.7/portable-engine/TimoxVirtualAsioEngine.exe'; sha256 = (Get-Hash $embeddedEngines[1]) }
         enginePackaged = [ordered]@{ path = 'dist/win-unpacked/resources/backend/TimoxVirtualAsioEngine.exe'; sha256 = (Get-Hash $packagedEngine) }

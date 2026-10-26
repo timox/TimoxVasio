@@ -2,11 +2,13 @@
 #include <nlohmann/json.hpp>
 
 #include "control_api_server.h"
+#include "native_audio_api.h"
 #include "audio_controller.h"
 #include "routing_graph.h"
 #include "persistent_routes.h"
 #include "vasio_client_manager.h"
 #include "engine_diagnostics.h"
+#include "pwar_configuration_store.h"
 
 #include <windows.h>
 
@@ -23,6 +25,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <stdexcept>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -381,6 +384,7 @@ private:
 struct ControlApiServer::Impl {
     VasioClientManager& clients;
     AudioController& controller;
+    PwarConfigurationStore pwarConfiguration;
     EngineDiagnostics& diagnostics;
     std::function<void()> stopRequest;
     std::vector<PhysicalAsioDriverInfo> physicalInventory;
@@ -600,6 +604,7 @@ struct ControlApiServer::Impl {
             {"wasapiInventoryError", state.wasapiInventoryError.empty() ? Json(nullptr) : Json(state.wasapiInventoryError)},
             {"configuredWasapiBridges", wasapiConfigurationsJson(state.configuredWasapiBridges)},
             {"wasapiBridges", wasapiBridgesJson(state)},
+            {"nativeAudio", NativeAudioApiJson(state.nativeAudio)},
             {"bufferHealth", std::move(bufferHealthJson)},
             {"performanceMeasurements", {{"enabled", measurements.enabled},
                 {"sampleEveryCallbacks", 16}, {"window", std::move(measurementWindow)}}},
@@ -933,6 +938,38 @@ struct ControlApiServer::Impl {
         if (configured) return;
         configured = true;
         server.set_payload_max_length(1024 * 1024);
+        server.Get("/api/v1/pwar", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            PwarSettings settings; std::string error;
+            if (!pwarConfiguration.Load(settings, error)) {
+                response.status = 500;
+                response.set_content(Json{{"code", "PWAR_CONFIGURATION_FAILED"}, {"message", error}}.dump(), "application/json; charset=utf-8");
+                return;
+            }
+            response.set_content(Json{{"address", settings.address}, {"port", settings.port}, {"exists", settings.exists}}.dump(), "application/json; charset=utf-8");
+        });
+        server.Put("/api/v1/pwar", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            try {
+                const auto body = Json::parse(request.body);
+                if (!body.is_object() || body.size() != 2 || !body.contains("address") || !body["address"].is_string() ||
+                    !body.contains("port") || !body["port"].is_number_integer()) throw std::invalid_argument("Invalid PWAR settings");
+                const auto port = body["port"].get<std::int64_t>();
+                if (port < 1 || port > 65535) throw std::invalid_argument("Invalid PWAR port");
+                const PwarSettings settings{body["address"].get<std::string>(), static_cast<int>(port), true};
+                if (!PwarConfigurationStore::Valid(settings)) throw std::invalid_argument("Invalid PWAR address");
+                std::string error;
+                if (!pwarConfiguration.Save(settings, error)) {
+                    response.status = 500;
+                    response.set_content(Json{{"code", "PWAR_CONFIGURATION_FAILED"}, {"message", error}}.dump(), "application/json; charset=utf-8");
+                    return;
+                }
+                response.set_content(Json{{"address", settings.address}, {"port", settings.port}, {"exists", true}, {"reopenRequired", true}}.dump(), "application/json; charset=utf-8");
+            } catch (const std::exception&) {
+                response.status = 400;
+                response.set_content(Json{{"code", "INVALID_PWAR_CONFIGURATION"}, {"message", "Expected an IPv4 address and an integer port from 1 to 65535"}}.dump(), "application/json; charset=utf-8");
+            }
+        });
         server.Get("/api/v1/state", [this](const httplib::Request& request, httplib::Response& response) {
             setCors(request, response);
             response.set_content(stateJson().dump(), "application/json; charset=utf-8");
@@ -1021,6 +1058,7 @@ struct ControlApiServer::Impl {
         server.Options("/api/v1/openapi.json", optionsHandler);
         server.Options("/api/v1/schemas/api-v1.json", optionsHandler);
         server.Options("/api/v1/application-profiles", optionsHandler);
+        server.Options("/api/v1/pwar", optionsHandler);
         server.Options("/api/v1/diagnostics", optionsHandler);
         server.set_pre_request_handler([](const httplib::Request& request, httplib::Response& response) {
             const auto origin = request.get_header_value("Origin");

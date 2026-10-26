@@ -36,6 +36,7 @@ public:
         info.bufferFrames=s->bufferFrames+(s->growSecondBuffer && serial%2==0?1:0);return S_OK;
     }
     const WasapiStreamInfo* Info()const noexcept override{return &info;}
+    const char* OpenErrorDetail()const noexcept override{return "Endpoint is not active";}
     HRESULT Start()noexcept override{Check();++s->starts;return S_OK;}
     HRESULT Stop()noexcept override{Check();return S_OK;}
     void Close()noexcept override{Check();++s->closes;}
@@ -63,6 +64,12 @@ WasapiBridgeConfiguration Bridge(const char* id,WasapiStreamKind kind,const wcha
 }
 void NativeCapacityPreparation() {
     std::string error;
+    auto unavailable=std::make_shared<NativeState>();unavailable->offline=true;
+    Require(!WasapiBridgeManager::Prepare({Bridge("offline",WasapiStreamKind::Capture,L"missing")},
+        48000,256,{},[unavailable]{return std::make_unique<Backend>(unavailable);},error)
+        && error.find("Endpoint is not active")!=std::string::npos
+        && error.find("HRESULT")!=std::string::npos,
+        "discovery discarded endpoint failure detail or HRESULT");
     const auto config=Bridge("source",WasapiStreamKind::Capture,L"capture");
     auto native=std::make_shared<NativeState>();native->rate=44100;native->bufferFrames=960;
     auto factory=[native]{return std::make_unique<Backend>(native);};
@@ -113,7 +120,10 @@ void Transactions(const std::wstring& path){
     Require(native->opens==opens && routed.wasapiBridges[0].generation==generation,"route edit reopened/reset IO generation");
 
     auto invalid=config;invalid.wasapiBridges.push_back(Bridge("bad",WasapiStreamKind::Capture,L"missing"));
-    Require(!controller.ApplyConfiguration(invalid).success,"missing endpoint transaction accepted");
+    const auto rejected=controller.ApplyConfiguration(invalid);
+    Require(!rejected.success,"missing endpoint transaction accepted");
+    Require(rejected.error.find("Endpoint is not active")!=std::string::npos,
+        "configuration result discarded endpoint diagnostic");
     auto preserved=controller.Snapshot();
     Require(preserved.configurationRevision==routed.configurationRevision && preserved.state=="running" &&
             preserved.routes[0].gainDb==-6 && preserved.wasapiBridges[0].generation==generation,
@@ -315,10 +325,28 @@ void ActiveDefaultFollowsRole(const std::wstring& path) {
     controller.Stop();
 }
 }
-int main(){
+int main(int argc,char** argv){
     wchar_t temp[MAX_PATH]{};GetTempPathW(MAX_PATH,temp);
     const auto path=std::wstring(temp)+L"TimoxVasio-controller-wasapi-"+std::to_wstring(GetCurrentProcessId())+L".json";
     DeleteFileW(path.c_str());
+    if(argc>1&&std::string(argv[1])=="--inventory-probe") {
+        try {
+            VasioClientManager clients;AudioController controller(clients,path,path+L".profiles");
+            Require(controller.Start(),"inventory controller start");
+            const auto before=controller.Snapshot();
+            controller.EnumerateWasapiDevices();
+            // The first request publishes once. The observer's initial pending
+            // change must cause a SECOND publication on the idle control worker.
+            Await([&]{return controller.Snapshot().revision>=before.revision+2;},"idle worker did not refresh subscribed inventory");
+            const auto after=controller.Snapshot();
+            Require(after.wasapiInventoryError.empty(),"real inventory refresh failed");
+            Require(after.state==before.state,"inventory refresh changed audio state");
+            Require(controller.EventsSince(before.revision).size()>=2,"inventory publication journal missing");
+            controller.Stop();
+            std::cout<<"Idle worker inventory refresh: "<<after.wasapiDevices.size()<<" endpoints; state="<<after.state<<'\n';
+            DeleteFileW(path.c_str());DeleteFileW((path+L".profiles").c_str());return 0;
+        }catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
+    }
     try{DormantNativePhysicalReservations(path);NativeCapacityPreparation();Transactions(path);OfflineRestoreAndStop(path);PublicationBackoff(path);ActiveDefaultFollowsRole(path);NativeDesireKeepsMaster(path);}catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
     DeleteFileW(path.c_str());DeleteFileW((path+L".profiles").c_str());
     std::cout<<"Audio controller WASAPI tests passed\n";

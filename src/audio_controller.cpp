@@ -3,6 +3,7 @@
 #include "audio_routing_runtime.h"
 #include "physical_asio_host.h"
 #include "software_clock_host.h"
+#include "wasapi_device_notifications.h"
 #include "persistent_routes.h"
 #include "vasio_client_manager.h"
 
@@ -272,19 +273,21 @@ std::vector<PhysicalAsioDriverInfo> AudioController::EnumeratePhysicalDrivers() 
 
 std::vector<WasapiDeviceInfo> AudioController::EnumerateWasapiDevices() {
     return Invoke([this] {
-        const auto apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
-        wasapiDevices_.clear();wasapiInventoryError_.clear();
-        if(SUCCEEDED(apartment) || apartment==RPC_E_CHANGED_MODE) {
-            try { WasapiDeviceEnumerator{}.enumerate(wasapiDevices_,wasapiInventoryError_); }
-            catch(...) {
-                if(SUCCEEDED(apartment))CoUninitialize();
-                throw;
-            }
-            if(SUCCEEDED(apartment))CoUninitialize();
-        } else wasapiInventoryError_="Cannot initialize COM for WASAPI inventory";
-        SetStatus(Snapshot());
+        wasapiInventoryObserved_=true;
+        RefreshWasapiInventoryOnWorker();
         return wasapiDevices_;
     });
+}
+
+void AudioController::RefreshWasapiInventoryOnWorker() {
+    const auto apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+    struct Apartment {HRESULT result;~Apartment(){if(SUCCEEDED(result))CoUninitialize();}} release{apartment};
+    wasapiDevices_.clear();wasapiInventoryError_.clear();
+    if(SUCCEEDED(apartment) || apartment==RPC_E_CHANGED_MODE) {
+        try { WasapiDeviceEnumerator{}.enumerate(wasapiDevices_,wasapiInventoryError_); }
+        catch(...) {wasapiDevices_.clear();wasapiInventoryError_="Cannot refresh WASAPI inventory";}
+    } else wasapiInventoryError_="Cannot initialize COM for WASAPI inventory";
+    SetStatus(Snapshot());
 }
 
 void AudioController::ReconcileWasapiOnWorker() {
@@ -633,6 +636,11 @@ void AudioController::SetStatus(const AudioControllerSnapshot& snapshot) {
 }
 
 void AudioController::Run() noexcept {
+    // Keep COM alive through observer unregistration AND ASIO host destruction.
+    // The controller owns a message pump; STA also matches the ASIO host model.
+    const auto apartment=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    struct Apartment {HRESULT result;~Apartment(){if(SUCCEEDED(result))CoUninitialize();}} release{apartment};
+    WasapiDeviceNotifications deviceNotifications;
     try {
         hostWindow_ = createHostWindow();
         if (!hostWindow_) throw std::runtime_error("Unable to create ASIO message window");
@@ -641,7 +649,9 @@ void AudioController::Run() noexcept {
         if (!physicalHost_) throw std::runtime_error("Audio clock host factory returned null");
         RestoreApplicationProfilesOnWorker();
         RestoreConfigurationOnWorker();
+        const bool notificationsAvailable=SUCCEEDED(deviceNotifications.Start());
         if (startupEvent_) SetEvent(startupEvent_);
+        auto nextInventoryRefresh=std::chrono::steady_clock::time_point{};
         auto nextRouteReconcile = std::chrono::steady_clock::time_point{};
         auto nextWasapiHealth=std::chrono::steady_clock::time_point{};
         auto bufferWindowStart = std::chrono::steady_clock::time_point{};
@@ -670,6 +680,15 @@ void AudioController::Run() noexcept {
                     TranslateMessage(&message);
                     DispatchMessageW(&message);
                 }
+            }
+            const auto inventoryNow=std::chrono::steady_clock::now();
+            if(wasapiInventoryObserved_ && inventoryNow>=nextInventoryRefresh &&
+               (!notificationsAvailable || !wasapiInventoryError_.empty() || deviceNotifications.ConsumeChange())) {
+                // Consume before enumeration so an event during the scan remains
+                // pending. Coalesce storms; retry errors/registration failure at 5s.
+                RefreshWasapiInventoryOnWorker();
+                nextInventoryRefresh=std::chrono::steady_clock::now()+
+                    ((notificationsAvailable&&wasapiInventoryError_.empty()) ? std::chrono::milliseconds(500) : std::chrono::milliseconds(5000));
             }
             const auto clockError = physicalHost_ ? physicalHost_->consumeErrorCode() : 0;
             if (clockError) {

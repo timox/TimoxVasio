@@ -55,6 +55,7 @@ struct Stream {
 class WasapiBackend final : public IWasapiBackend {
 public:
     HRESULT Open(const WasapiOpenConfig& config) noexcept override {
+        openErrorDetail_.clear();
         if (stream_) return AUDCLNT_E_ALREADY_INITIALIZED;
         const HRESULT validation = ValidateConfig(config);
         if (FAILED(validation)) return validation;
@@ -63,6 +64,7 @@ public:
         catch (...) { return E_FAIL; }
     }
     const WasapiStreamInfo* Info() const noexcept override { return stream_ ? &stream_->info : nullptr; }
+    const char* OpenErrorDetail() const noexcept override { return openErrorDetail_.c_str(); }
     HRESULT Start() noexcept override {
         if (!stream_) return AUDCLNT_E_NOT_INITIALIZED;
         if (stream_->acquiredFrames) return AUDCLNT_E_OUT_OF_ORDER;
@@ -182,7 +184,10 @@ private:
         const auto flow = config.kind == WasapiStreamKind::Capture ? WasapiDataFlow::Capture : WasapiDataFlow::Render;
         WasapiDeviceEnumerator resolver;
         std::string error;
-        if (!resolver.resolve(flow, config.endpointId, config.defaultRole, candidate->info.endpointId, error)) return E_FAIL;
+        if (!resolver.resolve(flow, config.endpointId, config.defaultRole, candidate->info.endpointId, error)) {
+            openErrorDetail_ = std::move(error);
+            return E_FAIL;
+        }
         ComPtr<IMMDeviceEnumerator> enumerator;
         HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                                       IID_PPV_ARGS(enumerator.GetAddressOf()));
@@ -236,6 +241,7 @@ private:
         return S_OK;
     }
     std::unique_ptr<Stream> stream_;
+    std::string openErrorDetail_;
 };
 }
 

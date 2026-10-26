@@ -1,3 +1,25 @@
+.setup-panel[hidden] { display: none !important; }
+.wasapi-device-tree { min-width: 0; }
+.wasapi-device-tree summary { cursor: pointer; padding: 10px 12px; overflow-wrap: anywhere; }
+.wasapi-device-tree summary > span { display: inline-block; margin-left: 14px; color: var(--text-secondary); }
+.wasapi-device-branch { margin-top: 12px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface-inset); }
+.wasapi-flow-branch { margin: 0 12px 10px 18px; border-left: 2px solid var(--border-strong); }
+.wasapi-flow-branch ul { list-style: none; padding: 0 0 0 14px; margin: 0; }
+.wasapi-endpoint-branch { border-top: 1px solid var(--border-subtle); padding-bottom: 6px; }
+.wasapi-device-tree .wasapi-endpoint-name { margin-left: 0; color: var(--text-primary); font-weight: 600; }
+.wasapi-device-tree .wasapi-ready { color: var(--accent); }
+.wasapi-device-tree .wasapi-unavailable { font-style: italic; }
+.wasapi-channel-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); list-style: none; gap: 6px; padding: 8px 12px; }
+.wasapi-channel-list li { padding: 5px 8px; border: 1px solid var(--border-subtle); border-radius: 4px; }
+.wasapi-endpoint-id { font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; padding: 0 12px; }
+.wasapi-endpoint-branch > .hint, .wasapi-endpoint-branch > .analysis-actions { margin: 10px 12px; }
+.wasapi-inactive-toggle { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 650px) {
+    .wasapi-device-tree summary > span { display: block; margin: 4px 0 0 14px; }
+    .wasapi-flow-branch { margin-left: 8px; margin-right: 4px; }
+    .wasapi-flow-branch ul { padding-left: 6px; }
+}
+
 .App {
     height: 100vh;
     display: flex;
@@ -376,7 +398,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, .matrix-scroll:
 .api-console-panel { display: flex; flex-direction: column; gap: 14px; }
 .api-console-panel textarea { width: 100%; max-width: 100%; min-height: 100px; resize: vertical; padding: 12px; border: 1px solid #526176; border-radius: 5px; color: #e6edf5; background: #0d1522; font: 13px/1.5 Consolas, 'Cascadia Code', monospace; }
 .console-operation { color: #8eeaff; font-family: Consolas, monospace; }
-.confirmation-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border: 1px solid #a77b24; border-radius: 5px; background: #302818; color: #fff0ca; }
 .api-event-stream { max-height: 280px; overflow: auto; padding: 12px; border: 1px solid #34465c; border-radius: 5px; background: #0d1522; }
 .api-event-stream h3 { margin-top: 0; color: #8eeaff; }
 .api-event-stream pre { overflow-wrap: anywhere; white-space: pre-wrap; color: #cbd4df; }
@@ -477,6 +498,8 @@ button:disabled { opacity: 1; border-color: #455166; background: #232c3a; color:
 .swagger-panel .swagger-ui input, .swagger-panel .swagger-ui textarea, .swagger-panel .swagger-ui select { border-color: var(--border-strong); }
 *:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .confirmation-panel { width: min(560px, calc(100vw - 32px)); max-width: calc(100vw - 32px); padding: 22px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-card); color: var(--text-primary); }
+.confirmation-panel:not([open]) { display: none; }
+.confirmation-panel[open] { display: block; margin: auto; max-height: calc(100vh - 32px); overflow: auto; }
 .confirmation-panel::backdrop { background: rgb(5 9 15 / 72%); }
 .confirmation-panel h3 { margin: 0 0 10px; color: var(--accent); }
 .confirmation-panel p { color: var(--text-secondary); line-height: 1.5; }

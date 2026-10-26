@@ -1,5 +1,12 @@
 # Native Audio Production N4 Implementation Plan
 
+> **Transport local remplacé le 24 octobre 2026 à la demande utilisateur :**
+> AF_UNIX remplace les pipes comme cible ; voir
+> [la migration sockets](2026-10-24-native-audio-unix-sockets.md).
+> Les détails d'impersonation et de DACL de pipes ci-dessous sont historiques.
+> L'identité par logon, l'arbitrage, l'isolation et les critères de performances
+> restent requis ; leur mécanisme d'authentification socket doit être qualifié.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Ce document prépare du code et des essais ; il ne demande aucun chargement du pilote sur le poste actuel.
 
 **Goal:** Donner au moteur ordinaire un accès authentifié au backend natif, avec configuration persistante, API et GUI, sans exposer le son d'une autre session Windows.
@@ -189,6 +196,20 @@ La migration doit couvrir le filtre central `set_pre_request_handler` de `src/co
 
 ### Lot 6 — GUI unifiée et qualification du parcours
 
+**Sous-lot de statut en lecture seule (23 octobre 2026) :** `NativeAudioDialog`
+est accessible depuis le menu contextuel du fond du graphe. Il distingue les
+états d'admission, l'absence de périphérique et la déconnexion, sépare format
+natif et graphe actif, et affiche les compteurs avec leurs unités. Aucun appel
+d'activation ni détail contextuel ajouté à la navigation. Focus modal, Escape
+et retour du focus couverts. La revue a détecté le retour prématuré d'un ancien
+état Running pendant la reconnexion : correction par génération de connexion,
+avec régression couvrant aussi une deuxième déconnexion pendant la requête.
+Les trois suites App, RoutingPatchbay et NativeAudioDialog passent : 71 tests.
+Contrôle visuel sur fixture locale simulée à 1280×900 et 390×844 ; captures dans
+`output/playwright/native-audio-desktop.png` et `native-audio-mobile.png`.
+Ce sous-lot ne valide ni activation, ni ports routables natifs, ni audio réel.
+Le lot 6 complet reste à réaliser après raccord de l'API authentifiée.
+
 **Files:** modifier `gui/src/App.js`, `gui/src/RoutingPatchbay.js`, `gui/src/api-contract.js`, leurs tests et `gui/src/api-contract.test.cjs` ; créer `gui/src/NativeAudioDialog.js` et `gui/src/NativeAudioDialog.test.js` si une modale dédiée évite d'alourdir les composants existants.
 
 **Interfaces:** consomme uniquement le snapshot et la mutation du lot 5 via le client API Electron. Une paire de ports native est un objet distinct du pilote ASIO et des bridges WASAPI physiques.
@@ -199,6 +220,36 @@ La migration doit couvrir le filtre central `set_pre_request_handler` de `src/co
 - [ ] Exécuter `npm --prefix gui run react-test -- --watchAll=false --runInBand --testPathPattern="NativeAudioDialog|RoutingPatchbay|App.test"`, puis tests API/contrôleur concernés ; revue GUI et sécurité indépendante, commit `feat(gui): expose native audio lifecycle in routing dialogs`.
 
 ## Gates, inconnues et suite exécutable
+
+### Avancement du 23 octobre : projection native en lecture seule
+
+Décision de séquencement : rendre l'état déjà détenu par le contrôleur lisible
+avant la migration d'authentification, sans ajouter de mutation native. Le
+backend de production reste sans factory réelle ; aucune ouverture directe
+du pilote n'est ajoutée. Le lot 5 complet reste non réalisé.
+
+- `src/native_audio_api.h` projette le snapshot manager/worker dans `nativeAudio`
+  de `/api/v1/state`. `running` exige manager attaché et worker Running ; les
+  erreurs d'admission restent distinctes, et les observations historiques ne
+  transforment pas un backend désactivé en flux actif.
+- Format natif fixe distinct du format graphe ; ce dernier est null hors
+  fonctionnement. Epoch/génération restent des chaînes décimales 64 bits.
+  Compteurs natifs/graphe documentés avec leurs unités, aucune latence déduite.
+- Schéma JSON et OpenAPI mis à jour, champ optionnel pour compatibilité des
+  anciens snapshots 1.1. `configuration.apply` refuse toujours nativeAudio :
+  test WebSocket réel du refus, sans mutation ni nouvelle voie d'activation.
+- Test HTTP rouge observé avant implémentation. Builds Release du moteur,
+  WasapiBridgeApiTests et AudioControllerNativeTests réussis. Exécutables de
+  tests code 0 ; quatre snapshots HTTP réels validés par le schéma ; tests
+  contrat GUI 7/7. Tests du contrôleur sur maître/transport simulés, pas sur VM.
+- Revue indépendante favorable ; assertions ajoutées pour wireGeneration
+  UINT64_MAX et erreurs lastResult sans worker. Suite native repassée, code 0.
+- Moteur reconstruit dans `build_codex_110/Release/TimoxVirtualAsioEngine.exe`,
+  1232896 octets, UTC 2026-10-23 16:50:47, SHA-256
+  `3490580A39BE3BAE61804C4509B3CF3674142D25153ACA422FB3DF65D8AAB614`.
+  Pas de lancement du moteur produit ni de repackaging Electron.
+- Restant : API/clients authentifiés, broker/service et binding de logon,
+  activation transactionnelle exposée après ces protections, GUI et essais VM.
 
 Les lots 1 (politique), 2 (fake/IPC), 4 (contrôleur injecté), 5 et 6 sont développables sans charger le pilote. Le lot 3 peut produire scripts et tests de transaction sans installer. Chaque lot suit rouge → vert → revue → commit intermédiaire ; le propriétaire du travail coordonne les commits/push pour éviter les sources concurrentes.
 

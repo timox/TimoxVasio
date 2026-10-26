@@ -225,6 +225,35 @@
       },
       "additionalProperties": false
     },
+    "nativeAudio": {
+      "type": "object",
+      "required": ["enabled", "state", "masterRunning", "attached", "epoch", "wireGeneration", "nativeFormat", "graphFormat", "retryAttempt", "retryInMs", "systemError", "health"],
+      "properties": {
+        "enabled": {"type":"boolean"},
+        "state": {"enum":["disabled","starting","running","unavailable","denied","ownedElsewhere","removed","failed"]},
+        "masterRunning": {"type":"boolean"}, "attached": {"type":"boolean"},
+        "epoch": {"type":"string","pattern":"^[0-9]+$"},
+        "wireGeneration": {"type":"string","pattern":"^[0-9]+$"},
+        "nativeFormat": {"type":"object","required":["sampleRate","channels","sampleType"],"properties":{"sampleRate":{"const":48000},"channels":{"const":2},"sampleType":{"const":"pcm32"}},"additionalProperties":false},
+        "graphFormat": {"oneOf":[{"type":"null"},{"type":"object","required":["sampleRate","channels","maxQuantum"],"properties":{"sampleRate":{"type":"integer","minimum":1},"channels":{"const":2},"maxQuantum":{"type":"integer","minimum":1}},"additionalProperties":false}]},
+        "retryAttempt": {"type":"integer","minimum":0}, "retryInMs": {"type":"integer","minimum":0},
+        "systemError": {"type":"integer","minimum":0},
+        "health": {
+          "type":"object",
+          "required":["renderNativeFrames","captureNativeFrames","captureSilencedNativeFrames","captureSilencedGraphFrames","skippedDeadlines","discardedPacingFrames","controlBacklogUpdates","discontinuities","kernelRenderDroppedNativeFrames","kernelCaptureDroppedNativeFrames","kernelCaptureSilencedNativeFrames"],
+          "properties": {
+            "renderNativeFrames":{"type":"integer","minimum":0}, "captureNativeFrames":{"type":"integer","minimum":0},
+            "captureSilencedNativeFrames":{"type":"integer","minimum":0}, "captureSilencedGraphFrames":{"type":"integer","minimum":0},
+            "skippedDeadlines":{"type":"integer","minimum":0}, "discardedPacingFrames":{"type":"integer","minimum":0},
+            "controlBacklogUpdates":{"type":"integer","minimum":0}, "discontinuities":{"type":"integer","minimum":0},
+            "kernelRenderDroppedNativeFrames":{"type":"integer","minimum":0}, "kernelCaptureDroppedNativeFrames":{"type":"integer","minimum":0},
+            "kernelCaptureSilencedNativeFrames":{"type":"integer","minimum":0}
+          },
+          "additionalProperties":false
+        }
+      },
+      "additionalProperties":false
+    },
     "state": {
       "type": "object",
       "required": ["apiVersion", "engine", "physicalDrivers", "virtualDrivers", "routes", "configuredRoutes", "stereoPairs", "bufferHealth", "performanceMeasurements"],
@@ -238,6 +267,7 @@
         "wasapiInventoryError": {"type":["string","null"]},
         "configuredWasapiBridges": {"$ref":"#/definitions/wasapiBridgeConfigurations"},
         "wasapiBridges": {"type":"array","items":{"$ref":"#/definitions/wasapiBridge"}},
+        "nativeAudio": {"$ref":"#/definitions/nativeAudio"},
         "routes": { "type": "array", "items": { "$ref": "#/definitions/route" } },
         "configuredRoutes": { "type": "array", "description": "All saved routes, including application routes waiting for a client with an active channel.", "items": { "$ref": "#/definitions/route" } },
         "bufferHealth": { "oneOf": [{ "$ref": "#/definitions/bufferHealth" }, { "type": "null" }] },

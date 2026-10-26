@@ -1,6 +1,21 @@
-# Contrat des paquets du futur pilote Windows audio
+# Audio natif Windows : pilote, transport et contrat PCM
 
-Ce dossier implémente **N0 : validation portable du format des paquets PCM** du [lot pilote natif](../docs/superpowers/specs/2026-10-22-native-windows-audio-driver.md). Il ne crée aucun endpoint Windows et ne contient ni pilote noyau, ni IOCTL, ni broker. Il reste indépendant du build moteur/ASIO.
+Ce dossier regroupe le contrat PCM, le prototype de pilote PortCls/WaveRT et les composants du broker du [lot pilote natif](../docs/superpowers/specs/2026-10-22-native-windows-audio-driver.md). Le pilote natif reste distinct de `TimoxVasio.dll`, qui conserve son fonctionnement ASIO autonome. Les endpoints natifs ne sont pas encore disponibles dans l'installation utilisateur : compilation et tests de composants ne prouvent ni le chargement du pilote, ni un échange audio réel.
+
+## État des composants
+
+| Composant | Sources et procédure | Limite actuelle |
+|---|---|---|
+| Pilote noyau et contrôle IOCTL | [driver/README.md](driver/README.md), [BUILDING.md](BUILDING.md) | Prototype compilé, catalogue non signé ; chargement et échanges WaveRT à qualifier |
+| Paquets, géométrie, sessions et files bornées | `include/`, `tests/`, CMake autonome ci-dessous | Tests en espace utilisateur, sans exécution noyau |
+| Transport direct de laboratoire | `../src/native_audio_transport_win32.cpp` | Accès privé au pilote ; ne constitue pas le canal utilisateur de production |
+| Broker, sessions, AF_UNIX et Schannel | `broker/`, tests `../tests/native_audio_*` | Composants présents ; provisioning, identité de logon et service déployé à qualifier |
+| Probe du compte de service et de la publication | [broker/SERVICE-PROBE.md](broker/SERVICE-PROBE.md) | Outil de qualification distinct du broker audio ; exécution SCM pas encore qualifiée |
+| Raccord au graphe, contrôleur et API | `../src/native_audio_backend.cpp`, `../src/native_audio_manager.cpp`, `../src/audio_controller.cpp` | Activation publique désactivée ; ne pas confondre les ponts WASAPI existants avec ces endpoints virtuels |
+
+La suite et les conditions d'activation sont décrites dans le [plan de production](../docs/superpowers/plans/2026-10-22-native-audio-production.md). Il reste notamment à établir l'isolation audio entre logons, l'authentification de l'API et de ses clients, le service déployé, l'installation/retrait du pilote et les performances audio réelles. La GUI affiche actuellement l'état natif, sans rendre ces conditions facultatives.
+
+## Validation des paquets
 
 `include/native_audio_protocol.h` fournit le vocabulaire compatible C ; `include/native_audio_packet_validation.h` fournit le validateur C++17 sans dépendance Windows. Celui-ci décode des octets potentiellement non alignés, vérifie les bornes et renvoie les métadonnées acceptées, ou une erreur avec métadonnées nulles. Il n'alloue pas, ne verrouille pas, ne fait aucune syscall et ne parcourt pas le payload.
 
@@ -34,7 +49,7 @@ La génération sera attribuée à l'ouverture par le propriétaire de session e
 
 Le buffer doit déjà être lisible et immuable pendant l'appel, par exemple un system buffer issu d'un futur IOCTL `METHOD_BUFFERED`. La taille fournie est la taille réellement disponible. Ce code ne vérifie pas une adresse utilisateur arbitraire et ne protège pas d'une modification concurrente : ne jamais l'appeler directement sur une zone utilisateur partagée sans protocole de copie/snapshot validé. Le validateur ne retourne pas de pointeur payload ; le consommateur peut utiliser l'offset 64 seulement après succès, avant la libération du même buffer.
 
-Les futurs IOCTL doivent vérifier ACL, droits, longueurs d'entrée/sortie et durée de vie des requêtes avant d'appeler ce code. Les valeurs opcode ici ne sont **pas** des codes IOCTL Windows. GET_CAPABILITIES/OPEN/CLOSE, annulation, mapping, files bornées, alimentation des buffers WaveRT et accès multi-session restent à implémenter. Le validateur n'est pas intégré au callback du graphe et n'a pas encore été compilé avec le WDK.
+Les IOCTL doivent vérifier ACL, droits, longueurs d'entrée/sortie et durée de vie des requêtes avant d'appeler ce code. Les valeurs opcode ici ne sont **pas** des codes IOCTL Windows. Le contrôle privé N2 implémente désormais les capacités, l'ouverture/fermeture de session, les transferts et les files bornées ; voir [son contrat et ses limites](driver/README.md#contrôle-privé-n2). Son intégration WaveRT est compilée avec le WDK mais attend les essais noyau réels. Le validateur seul ne prouve ni l'isolation multi-session, ni la sûreté du transport complet.
 
 ## Tests autonomes
 

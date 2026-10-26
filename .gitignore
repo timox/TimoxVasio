@@ -1,5 +1,6 @@
 # Build outputs
 /build*/
+/build*.zip
 /x64/
 /.vs/
 /ASIOHost/
@@ -18,6 +19,7 @@
 *.pid.json
 *.log
 /.playwright-cli/
+/.playwright-mcp/
 /output/playwright/
 
 # Local Mixxx source/build used for compatibility investigation

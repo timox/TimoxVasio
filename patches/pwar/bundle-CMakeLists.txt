@@ -1,0 +1,19 @@
+cmake_minimum_required(VERSION 3.20)
+project(PwarQualificationBundle LANGUAGES C CXX)
+if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "Use Windows MSVC x64 for this qualification driver")
+endif()
+set(PWAR "${CMAKE_CURRENT_SOURCE_DIR}/PWAR")
+set(SDK "${CMAKE_CURRENT_SOURCE_DIR}/asiosdk/common")
+add_library(PWARASIO SHARED
+    "${PWAR}/windows/asio/pwarASIO.cpp"
+    "${PWAR}/windows/asio/pwarASIOLog.cpp"
+    "${PWAR}/windows/asio/pwarASIO.def"
+    "${PWAR}/protocol/pwar_router.c"
+    "${PWAR}/protocol/latency_manager.c"
+    "${SDK}/combase.cpp" "${SDK}/dllentry.cpp" "${SDK}/register.cpp")
+target_include_directories(PWARASIO PRIVATE "${SDK}")
+target_compile_features(PWARASIO PRIVATE cxx_std_17)
+target_compile_definitions(PWARASIO PRIVATE _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
+target_compile_options(PWARASIO PRIVATE /W4 $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+target_link_libraries(PWARASIO PRIVATE ws2_32 avrt winmm ole32 advapi32 uuid user32)

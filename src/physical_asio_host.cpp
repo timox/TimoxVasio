@@ -1,4 +1,5 @@
 #include "physical_asio_host.h"
+#include "asio_error.h"
 #include "asio_sample_conversion.h"
 
 #include <windows.h>
@@ -568,7 +569,7 @@ bool PhysicalAsioHost::start(std::uint32_t bufferFrames,
     const ASIOError createResult = session.driver->createBuffers(session.buffers.data(),
         static_cast<long>(session.buffers.size()), static_cast<long>(bufferFrames), &session.callbacks);
     if (createResult != ASE_OK) {
-        error = "ASIO createBuffers failed (code " + std::to_string(createResult) + ")";
+        error = DescribeAsioFailure(*session.driver, "createBuffers", createResult);
         gActiveSession.store(nullptr, std::memory_order_release);
         gRateChanged = nullptr;
         return false;
@@ -586,7 +587,7 @@ bool PhysicalAsioHost::start(std::uint32_t bufferFrames,
     }
     const ASIOError startResult = session.driver->start();
     if (startResult != ASE_OK) {
-        error = "ASIO start failed (code " + std::to_string(startResult) + ")";
+        error = DescribeAsioFailure(*session.driver, "start", startResult);
         session.driver->disposeBuffers();
         session.buffersCreated = false;
         gActiveSession.store(nullptr, std::memory_order_release);

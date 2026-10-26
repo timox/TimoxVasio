@@ -67,13 +67,119 @@ const withClockApp = async (initialState, check) => {
     }
 };
 
+test('subject tabs isolate API and analysis while keeping the console draft', async () => {
+    await withClockApp(state, async container => {
+        const section = async name => act(async () => Simulate.click([...container.querySelectorAll('.view-tabs > button')].find(button => button.textContent === name)));
+        await section('API and Swagger');
+        expect(container.querySelector('#api-panel-swagger').hidden).toBe(false);
+        expect(container.querySelector('#api-panel-console').hidden).toBe(true);
+        await act(async () => Simulate.click(container.querySelector('#api-tab-console')));
+        await act(async () => Simulate.change(container.querySelector('.api-console-panel textarea'), { target: { value: '{"id":"kept"}' } }));
+        await act(async () => Simulate.click(container.querySelector('#api-tab-websocket')));
+        expect(container.querySelector('#api-panel-console').hidden).toBe(true);
+        await act(async () => Simulate.click(container.querySelector('#api-tab-console')));
+        expect(container.querySelector('.api-console-panel textarea').value).toBe('{"id":"kept"}');
+        expect(window.vasio.executeCommand).not.toHaveBeenCalled();
+        await section('Analysis');
+        expect(container.querySelector('#analysis-panel-timeline').hidden).toBe(false);
+        expect(container.querySelector('#analysis-panel-correlation').hidden).toBe(true);
+        await act(async () => Simulate.click(container.querySelector('#analysis-tab-correlation')));
+        expect(container.querySelector('#analysis-panel-correlation').hidden).toBe(false);
+        expect(container.querySelector('.analysis-dashboard').hidden).toBe(true);
+    });
+});
+
+test('WASAPI field help preserves the bridge draft and live counters stay outside device setup', async () => {
+    const bridge = { id: 'mic', kind: 'capture', endpointId: 'input-1', enabled: false, bufferDuration100ns: 0 };
+    await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: [bridge], wasapiDevices: [],
+        wasapiBridges: [{ id: 'mic', state: 'stopped', health: { bufferedFrames: 12, rejectedFrames: 4, silencedFrames: 8 } }] }, async container => {
+        await act(async () => Simulate.click(container.querySelector('#setup-tab-wasapi')));
+        expect(container.querySelector('#wasapi-panel-devices').textContent).not.toContain('Frames currently queued');
+        await act(async () => Simulate.click(container.querySelector('#wasapi-tab-status')));
+        expect(container.querySelector('#wasapi-panel-status').hidden).toBe(false);
+        expect(container.querySelector('.bridge-metrics').textContent).toContain('Frames currently queued12');
+        await act(async () => Simulate.click(container.querySelector('#wasapi-tab-devices')));
+        await act(async () => Simulate.click([...container.querySelectorAll('button')].find(button => button.textContent === 'Configure mic')));
+        const dialog = document.querySelector('[aria-label="Configure Windows audio bridge"]');
+        const help = dialog.querySelector('[aria-label="Choose the audio direction"]');
+        help.focus();
+        await act(async () => Simulate.click(help));
+        expect(document.querySelector('.audio-help-dialog')).not.toBeNull();
+        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        expect(document.querySelector('.audio-help-dialog')).toBeNull();
+        expect(document.querySelector('[aria-label="Configure Windows audio bridge"]')).toBe(dialog);
+        expect(dialog.querySelector('[aria-label="Bridge ID"]').value).toBe('mic');
+        expect(document.activeElement).toBe(help);
+        expect(window.vasio.applyConfiguration).not.toHaveBeenCalled();
+    });
+});
+
+test('legacy engine explains unavailable WASAPI features without restarting audio', async () => {
+    await withClockApp(state, async container => {
+        expect(container.querySelector('[aria-label="Engine compatibility"]').textContent).toContain('API 1.0');
+        expect(container.textContent).toContain('Closing this window does not stop the background engine');
+        expect(window.vasio.executeCommand).not.toHaveBeenCalled();
+        expect(window.vasio.stopAudio).not.toHaveBeenCalled();
+    });
+    await withClockApp({ ...state, apiVersion: '1.1' }, async container => {
+        expect(container.querySelector('[aria-label="Engine compatibility"]')).toBeNull();
+    });
+});
+
+test('native audio status opens only from graph menu and never sends configuration', async () => {
+    const nativeAudio = { enabled: true, state: 'denied', attached: false, masterRunning: true,
+        nativeFormat: { sampleRate: 48000, channels: 2, sampleType: 'pcm32' }, graphFormat: null,
+        systemError: 5, retryInMs: 0, health: {} };
+    await withClockApp({ ...state, apiVersion: '1.1', nativeAudio }, async container => {
+        expect(document.querySelector('[aria-label="Native Windows audio"]')).toBeNull();
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await chooseContextAction(container.querySelector('.patchbay-flow'), 'Native Windows audio status…');
+        const dialog = document.querySelector('[role="dialog"][aria-label="Native Windows audio"]');
+        expect(dialog).not.toBeNull();
+        expect(dialog.textContent).toContain('Access denied');
+        expect(dialog.textContent).toContain('48000 Hz');
+        expect(dialog.textContent).toContain('Windows error: 5');
+        expect(dialog.querySelectorAll('input,select')).toHaveLength(0);
+        expect(window.vasio.applyConfiguration).not.toHaveBeenCalled();
+        expect(window.vasio.executeCommand).not.toHaveBeenCalled();
+        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        expect(document.querySelector('[aria-label="Native Windows audio"]')).toBeNull();
+    });
+});
+
+test('native status waits for a fresh snapshot after reconnection', async () => {
+    const initial = { ...state, nativeAudio: { state: 'running', enabled: true,
+        nativeFormat: { sampleRate: 48000, channels: 2 }, graphFormat: { sampleRate: 44100, channels: 2, maxQuantum: 128 } } };
+    await withClockApp(initial, async container => {
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await chooseContextAction(container.querySelector('.patchbay-flow'), 'Native Windows audio status…');
+        const dialog = () => document.querySelector('[aria-label="Native Windows audio"]');
+        expect(dialog().textContent).toContain('44100 Hz');
+        await act(async () => window.vasio.onDisconnect.mock.calls[0][0]());
+        expect(dialog().textContent).toContain('Connection lost');
+        let resolveState;
+        window.vasio.getState.mockImplementation(() => new Promise(resolve => { resolveState = resolve; }));
+        await act(async () => window.electronAPI.onEngineConnection.mock.calls[0][0]({ connected: true }));
+        expect(dialog().textContent).toContain('Connection lost');
+        expect(dialog().textContent).not.toContain('44100 Hz');
+        await act(async () => window.vasio.onDisconnect.mock.calls[0][0]());
+        await act(async () => { resolveState(initial); await Promise.resolve(); });
+        expect(dialog().textContent).toContain('Connection lost');
+        expect(dialog().textContent).not.toContain('44100 Hz');
+        await act(async () => window.electronAPI.onEngineConnection.mock.calls[0][0]({ connected: true }));
+        await act(async () => { resolveState({ ...initial, nativeAudio: { ...initial.nativeAudio, state: 'unavailable', graphFormat: null } }); await Promise.resolve(); });
+        expect(dialog().textContent).toContain('Unavailable');
+        expect(dialog().textContent).not.toContain('44100 Hz');
+    });
+});
+
 test('API 1.1 bridges create, edit, disable and remove through context actions and preserve routes', async () => {
     const initial = { ...state, apiVersion: '1.1', configurationRevision: 7, configuredWasapiBridges: [],
         wasapiBridges: [], wasapiDevices: [{ id: 'mic-device', name: 'Desk microphone', flow: 'capture', state: 1,
             mixFormat: null, error: 'Unsupported device format' }], wasapiInventoryError: null };
     await withClockApp(initial, async container => {
         const button = text => [...document.querySelectorAll('button')].find(item => item.textContent === text);
-        expect(container.textContent).toContain('Windows audio bridges');
+        expect(container.textContent).toContain('Windows audio devices (WASAPI)');
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
         await chooseContextAction(container.querySelector('.patchbay-flow'), 'Add Windows audio bridge…');
         const field = name => document.querySelector(`[aria-label="${name}"]`);
@@ -100,6 +206,55 @@ test('API 1.1 bridges create, edit, disable and remove through context actions a
         await act(async () => Simulate.click([...document.querySelectorAll('button')].find(item => item.textContent === 'Remove bridge and its connections')));
         await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
         expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({ wasapiBridges: [], routes: [] }));
+    });
+});
+
+test('Audio Setup separates ASIO, Clock and WASAPI and keeps pending clock edits between tabs', async () => {
+    await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: [], wasapiBridges: [], wasapiDevices: [] }, async container => {
+        const tabs = () => [...container.querySelectorAll('[role="tablist"][aria-label="Audio setup categories"] [role="tab"]')];
+        expect(tabs().map(tab => tab.textContent)).toEqual(['ASIO', 'Clock', 'WASAPI']);
+        expect(container.querySelector('#setup-asio').hidden).toBe(false);
+        expect(container.querySelector('#setup-clock').hidden).toBe(true);
+        await act(async () => Simulate.click(tabs()[1]));
+        expect(container.querySelector('#setup-asio').hidden).toBe(true);
+        expect(container.querySelector('#setup-clock').hidden).toBe(false);
+        expect(container.querySelector('#setup-clock').textContent).not.toContain('Which clock should I choose');
+        await act(async () => Simulate.click(container.querySelector('[aria-label="Help with Clock"]')));
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('not MIDI tempo');
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('WASAPI is not a selectable master');
+        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        expect(document.querySelector('.audio-help-dialog')).toBeNull();
+        await act(async () => Simulate.change(container.querySelector('[aria-label="Clock source"]'), { target: { value: 'software' } }));
+        await act(async () => Simulate.change(container.querySelector('[aria-label="Software sample rate"]'), { target: { value: '96000' } }));
+        await act(async () => Simulate.click(tabs()[2]));
+        expect(container.querySelector('#setup-wasapi').hidden).toBe(false);
+        await act(async () => Simulate.keyDown(tabs()[2], { key: 'ArrowLeft' }));
+        expect(container.querySelector('#setup-clock').hidden).toBe(false);
+        expect(container.querySelector('[aria-label="Software sample rate"]').value).toBe('96000');
+        expect(window.vasio.applyConfiguration).not.toHaveBeenCalled();
+    });
+});
+
+test('Audio Setup saves an unavailable endpoint offline without trying to enable audio', async () => {
+    await withClockApp({ ...state, apiVersion: '1.1', configuredWasapiBridges: [], wasapiBridges: [],
+        wasapiDevices: [{ id: 'offline-output', name: 'Output 3/4 (Interface)', flow: 'render', state: 4, mixFormat: null }] }, async container => {
+        await act(async () => Simulate.change(container.querySelector('.wasapi-inactive-toggle input'), { target: { checked: true } }));
+        await act(async () => Simulate.click(container.querySelector('[data-endpoint-id="offline-output"] button')));
+        const dialog = document.querySelector('[aria-label="Configure Windows audio bridge"]');
+        const enabled = dialog.querySelector('[aria-label="Bridge enabled"]');
+        const save = [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Save bridge to draft');
+        expect(enabled.checked).toBe(false);
+        expect(dialog.textContent).toContain('save this endpoint offline');
+        expect(save.disabled).toBe(false);
+        await act(async () => Simulate.change(enabled, { target: { checked: true } }));
+        expect(save.disabled).toBe(true);
+        expect(dialog.textContent).toContain('Turn off Enabled');
+        await act(async () => Simulate.change(enabled, { target: { checked: false } }));
+        await act(async () => Simulate.click(save));
+        await act(async () => Simulate.click(container.querySelector('.apply-configuration')));
+        expect(window.vasio.applyConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+            wasapiBridges: [{ id: 'render_1', kind: 'render', endpointId: 'offline-output', enabled: false, bufferDuration100ns: 0 }]
+        }));
     });
 });
 
@@ -216,6 +371,19 @@ test('editing a durable route preserves its app ID alongside an existing PID rou
     });
 });
 
+test('PWAR settings open from the graph menu without changing audio configuration', async () => {
+    await withClockApp(state, async container => {
+        window.vasio.httpRequest = jest.fn().mockResolvedValue({ status: 200,
+            body: { address: '192.168.66.2', port: 8321, exists: false } });
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
+        await chooseContextAction(container.querySelector('.patchbay-flow'), 'Configure PWAR / PipeWire…');
+        expect(document.querySelector('[aria-label="PWAR / PipeWire"]')).not.toBeNull();
+        expect(window.vasio.httpRequest).toHaveBeenCalledWith('GET', '/api/v1/pwar', undefined);
+        expect(window.vasio.applyConfiguration).not.toHaveBeenCalled();
+        expect(window.vasio.executeCommand).not.toHaveBeenCalled();
+    });
+});
+
 test('software clock stages explicit format and applies without a physical driver', async () => {
     await withClockApp(state, async container => {
         const source = container.querySelector('[aria-label="Clock source"]');
@@ -262,7 +430,7 @@ test('running software clock exposes reset and stop and excludes hardware from r
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
         expect(container.querySelector('[data-port-id="physical:interface-1:output:1"]')).toBeNull();
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[3]));
-        expect(container.querySelector('.clock-source').textContent).not.toContain('selected card');
+        expect(container.querySelector('.workspace-heading').textContent).toContain('Software');
         expect(container.querySelector('.buffer-health h2').textContent).toBe('Software clock callback');
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[5]));
         expect(container.querySelector('.engine-stop')).not.toBeNull();
@@ -546,8 +714,8 @@ test('performance view distinguishes measured ASIO buffer pressure from missing 
         await act(async () => { root.render(<App />); await Promise.resolve(); });
         await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
             .find(button => button.textContent === 'Performance')));
-        expect(container.querySelector('main > section:first-child')).toBe(container.querySelector('.buffer-concepts'));
-        expect(container.querySelector('main > section:nth-child(2)')).toBe(container.querySelector('.buffer-health'));
+        expect(container.querySelector('.performance-guide').open).toBe(false);
+        expect(container.querySelector('main > section')).toBe(container.querySelector('.buffer-health'));
         expect(container.querySelector('.buffer-concepts')?.textContent).toContain('512 frames ÷ 44,100 frames/s = 11.61 ms');
         expect(container.querySelector('.buffer-concepts')?.textContent).toContain('A and B take turns at each callback');
         expect(container.querySelector('.performance-metrics')?.textContent).toContain('Slowest callback');
@@ -557,8 +725,8 @@ test('performance view distinguishes measured ASIO buffer pressure from missing 
         expect(container.querySelector('.buffer-health')?.textContent).toContain('Callback timing incidents were observed.');
         expect(container.querySelector('.buffer-health')?.textContent).toContain('44100 Hz');
         expect(container.querySelector('.performance-metrics')?.textContent).toContain('Processing overruns6');
-        expect(container.querySelector('.buffer-health')?.textContent).toContain('7 starts were unusually late');
-        expect(container.querySelector('.buffer-health')?.textContent).toContain('The slowest callback took 12.50 ms, exceeding the 11.61 ms available per block');
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('Delayed starts7');
+        expect(container.querySelector('.performance-metrics')?.textContent).toContain('Over time0.89 ms');
     } finally {
         await act(async () => root.unmount());
         container.remove(); delete window.vasio; delete window.electronAPI;
@@ -596,16 +764,12 @@ test('performance view explains physical buffer measurements without suggesting 
         expect(container.querySelector('.buffer-health')).toBeNull();
         await act(async () => Simulate.click([...container.querySelectorAll('.view-tabs button')]
             .find(button => button.textContent === 'Performance')));
-        const clockDiagram = container.querySelector('.clock-source');
-        expect(clockDiagram?.textContent).toContain('Interface réelle');
-        expect(clockDiagram?.textContent).toContain('TimoxVasio');
-        expect(clockDiagram?.textContent).toContain('drift');
-        expect(clockDiagram?.textContent).toContain('jitter');
+        expect(container.querySelector('.workspace-heading').textContent).toContain('Interface réelle');
+        expect(container.querySelector('.performance-guide').open).toBe(false);
         expect(container.querySelector('.performance-flow')?.textContent).toContain('ASIO application');
         expect(container.querySelector('.performance-flow')?.textContent).toContain('Physical ASIO driver');
         expect(container.querySelector('.performance-flow')?.textContent).toContain('shared ring');
         expect(container.querySelector('.performance-flow')?.textContent).toContain('next physical callback');
-        expect(container.querySelector('.performance-flow')?.textContent).toContain('SuperCollider');
         expect(container.querySelector('.performance-flow')?.textContent).toContain('not measured');
         expect(container.querySelector('.transport-health')?.textContent).toContain('AudioApp.exe output');
         expect(container.querySelector('.routed-app-cpu')?.textContent).toContain('AudioApp.exe');
@@ -616,11 +780,14 @@ test('performance view explains physical buffer measurements without suggesting 
         await act(async () => onEvent({ event: 'audio.meter', payload: { endpointId: 'virtual:TimoxVasio:42:output:1', peakDbfs: -12, underruns: 2, overruns: 1 } }));
         expect(container.querySelector('.transport-table')?.textContent).toContain('AudioApp.exe output21');
         expect(container.querySelector('.buffer-timeline')?.getAttribute('aria-label')).toContain('2.50 ms of processing within a 21.33 ms block');
-        const explanation = container.querySelector('.buffer-health .buffer-explanation')?.textContent;
-        expect(explanation).toContain('235 callbacks were observed over 5.0 seconds');
-        expect(explanation).toContain('None started unusually late or took longer than the 21.33 ms available per block');
-        expect(explanation).toContain('The slowest callback took 2.50 ms, leaving 18.83 ms');
-        expect(explanation).not.toMatch(/try|recommended|optimal/i);
+        expect(container.querySelector('.buffer-health').textContent).toContain('5.0 s window');
+        await act(async () => Simulate.click(container.querySelector('.workspace-help')));
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('Callback timing');
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('application-to-speaker latency');
+        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        await act(async () => Simulate.click(container.querySelector('#performance-tab-applications')));
+        await act(async () => Simulate.click(container.querySelector('.workspace-help')));
+        expect(document.querySelector('.audio-help-dialog').textContent).toContain('all logical processors');
     } finally {
         await act(async () => root.unmount());
         container.remove(); delete window.vasio; delete window.electronAPI;
