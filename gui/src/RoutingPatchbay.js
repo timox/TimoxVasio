@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import RoutingHelp, { RoutingTypeBadge } from './RoutingHelp';
 import { createPortal } from 'react-dom';
-import { ReactFlow, Background, Handle, Position, useNodesState, useReactFlow } from '@xyflow/react';
+import { ReactFlow, Background, Handle, Position, useNodesState, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { DEFAULT_ROUTE_COLOR, routeVisualKey } from './route-visuals';
 import { transferProcessConnections } from './process-connection-transfer';
@@ -11,6 +11,7 @@ const permitted = (sourceKind, destinationKind) =>
     sourceKind === 'physical-input' ? ['virtual-input', 'wasapi-render'].includes(destinationKind) :
         ['virtual-output', 'wasapi-capture'].includes(sourceKind) && ['physical-output', 'virtual-input', 'wasapi-render'].includes(destinationKind);
 const emptyProfiles = [];
+const meterPeakDbfs = meter => meter?.displayPeakDbfs ?? meter?.peakDbfs;
 
 const withSearch = (groups, search) => {
     const query = search.trim().toLocaleLowerCase();
@@ -21,6 +22,21 @@ const withSearch = (groups, search) => {
 
 const PatchbayFlowNode = ({ data }) => data.render();
 const flowNodeTypes = { patchbay: PatchbayFlowNode };
+const PatchbayHandleLayoutUpdater = ({ modelNodes }) => {
+    const updateNodeInternals = useUpdateNodeInternals();
+    const updateNodeInternalsRef = useRef(updateNodeInternals);
+    updateNodeInternalsRef.current = updateNodeInternals;
+    const nodeIdsRef = useRef([]);
+    nodeIdsRef.current = modelNodes.map(node => node.id);
+    const handleLayoutKey = modelNodes.map(node => `${node.id}:${node.data.handleLayoutKey}`).join('|');
+    React.useEffect(() => {
+        const frame = window.requestAnimationFrame(() => {
+            nodeIdsRef.current.forEach(id => updateNodeInternalsRef.current(id));
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [handleLayoutKey]);
+    return null;
+};
 const PatchbayZoom = ({ visibleKey, onAutoArrange, empty }) => {
     const { zoomIn, zoomOut, fitView } = useReactFlow();
     const previousKey = useRef(visibleKey);
@@ -69,6 +85,7 @@ const PatchbayCanvas = ({ modelNodes, edges, layoutEdges, visibleKey, layoutRese
         onPaneContextMenu={event => { event.preventDefault(); onPaneContextMenu(event); }}
         onNodeContextMenu={(event, node) => { event.preventDefault(); onNodeContextMenu(event, node.id); }}
         onEdgeContextMenu={(event, edge) => { event.preventDefault(); onEdgeContextMenu(event, edge.id); }}>
+        <PatchbayHandleLayoutUpdater modelNodes={modelNodes} />
         <Background color="#dbe5ea" gap={20} />
         <PatchbayZoom visibleKey={visibleKey ? `${visibleKey}:${layoutResetVersion}` : ''} empty={!nodes.length}
             onAutoArrange={() => {
@@ -365,6 +382,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
         {groups.length > 1 && <small>{group.id.startsWith('profile:') ? 'Channel profile' :
             group.id.startsWith('saved:') ? 'Configured ports' : 'Open ports'}</small>}
         <ul>{group.endpoints.map(endpoint => {
+            const handleType = group.badgeType === 'wasapiApp' ? 'wasapiApp' : group.kind;
             const connected = side === 'destination' && allLinkedDestinations.has(endpoint.id);
             const invalid = side === 'destination' && selectedSourceId &&
                 (!permitted(selectedKind, group.kind) || !isConnectionAllowed(selectedSourceId, endpoint.id));
@@ -378,11 +396,25 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                     onClick={() => { if (side === 'source') selectSource(endpoint.id);
                         else connect(endpoint.id, group.kind); }}>
                     {side === 'destination' && <Handle type="target" id={endpoint.id} position={Position.Left}
-                        isConnectable={!disabled} className={`patchbay-flow-handle ${group.kind}`} />}
+                        isConnectable={!disabled} className={`patchbay-flow-handle ${handleType}`} />}
                     <span>{shortPortName(endpoint)}</span>
-                    {meters[endpoint.id]?.peakDbfs != null && <small className="patchbay-level" title="Measured peak">{meters[endpoint.id].peakDbfs.toFixed(0)} dBFS</small>}
+                    {meters[endpoint.id]?.peakDbfs != null && (() => {
+                        const meter = meters[endpoint.id];
+                        const peak = meterPeakDbfs(meter);
+                        const levelPercent = Math.max(0, Math.min(100, (peak + 90) / 90 * 100));
+                        const signalPresent = peak > -90;
+                        const lufs = meter.shortTermLufs;
+                        return <span className={`patchbay-signal-meter${signalPresent ? ' present' : ''}`}
+                            title={`Niveau de crête affiché : ${peak.toFixed(1)} dBFS. LUFS court terme : ${typeof lufs === 'number' ? `${lufs.toFixed(1)} LUFS` : 'mesure en cours (fenêtre de 3 s)'}.`}>
+                            <span className="patchbay-signal-meter-track" aria-hidden="true">
+                                <span style={{ width: `${levelPercent}%` }} />
+                            </span>
+                            <small className="patchbay-level">{peak.toFixed(0)} dBFS</small>
+                            <small className="patchbay-lufs">{typeof lufs === 'number' ? `${lufs.toFixed(0)} LUFS` : '… LUFS'}</small>
+                        </span>;
+                    })()}
                     {side === 'source' && <Handle type="source" id={endpoint.id} position={Position.Right}
-                        isConnectable={!disabled} className={`patchbay-flow-handle ${group.kind}`} />}
+                        isConnectable={!disabled} className={`patchbay-flow-handle ${handleType}`} />}
                 </button>
             </li>;
         })}</ul>
@@ -455,9 +487,11 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
         columnY[column] += (collapsed ? 66 : 82 + portCount * 35) + 36;
         const legacyGroup = node.outputs[0] || node.inputs[0];
         const layout = nodeLayout[node.key] || nodeLayout[layoutKey(legacyGroup, node.outputs.length ? 'source' : 'destination')] || {};
+        const handleLayoutKey = [...node.inputs, ...node.outputs].map(group =>
+            `${group.id}[${group.endpoints.map(endpoint => endpoint.id).join(',')}]`).join('|');
         return { id: node.key, type: 'patchbay', position: { x: layout.x ?? base.x + (layout.dx || 0),
             y: layout.y ?? base.y + (layout.dy || 0) }, data: { render: () => renderNode(node),
-                layoutColumn: column, layoutHeight: collapsed ? 66 : 82 + portCount * 35 },
+                layoutColumn: column, layoutHeight: collapsed ? 66 : 82 + portCount * 35, handleLayoutKey },
             draggable: true, selectable: false };
     });
     const visibleNodeKeys = new Set(flowNodes.map(node => node.id));
@@ -471,15 +505,18 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
         if (!visibleNodeKeys.has(source) || !visibleNodeKeys.has(target)) return null;
         const state = routeState(route);
         const selected = route.id === selectedRouteId;
+        const sourceLevel = meterPeakDbfs(meters[route.sourceEndpointId]);
+        const routeLevel = sourceLevel + (route.gainDb ?? 0);
+        const signalFlowing = state === 'active' && !route.mute && routeLevel > -90;
         return { id: route.id, source, target, sourceHandle: route.sourceEndpointId,
             targetHandle: route.destinationEndpointId, type: 'default', interactionWidth: 28,
-            reconnectable: !disabled, selected,
+            reconnectable: !disabled, selected, animated: signalFlowing,
             className: `connection ${state}${route.mute ? ' muted' : ''}${selected ? ' selected' : selectedRouteId ? ' subdued' : ''}`,
             style: { stroke: routeVisuals[routeVisualKey(route)]?.color || DEFAULT_ROUTE_COLOR,
                 strokeWidth: selected ? 4 : state === 'active' ? 2.8 : 2.2,
                 strokeDasharray: route.mute ? '2 5' : state === 'pending' ? '7 4' : undefined },
             label: route.gainDb > 0 ? '▲' : undefined,
-            ariaLabel: describeRoute(route) };
+            ariaLabel: `${describeRoute(route)}${signalFlowing ? ' · signal flowing' : ''}` };
     }).filter(Boolean);
     // A collapsed block hides handles/cables, but remains connected for layout.
     const layoutEdges = routes.map(route => {

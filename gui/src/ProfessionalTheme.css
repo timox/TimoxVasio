@@ -326,7 +326,12 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .patchbay-port.source { justify-content: flex-end; }
 .patchbay-port.destination { justify-content: flex-start; }
 .patchbay-port span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.patchbay-signal-meter { display: inline-flex; flex: 0 0 128px; align-items: center; gap: 4px; overflow: visible !important; }
+.patchbay-signal-meter-track { display: block; flex: 1 1 auto; min-width: 10px; height: 5px; overflow: hidden; border-radius: 3px; background: #e1e6e9; }
+.patchbay-signal-meter-track > span { display: block; height: 100%; border-radius: inherit; background: #89949b; transition: width 650ms linear; }
+.patchbay-signal-meter.present .patchbay-signal-meter-track > span { background: #21815e; }
 .patchbay-level { flex: 0 0 auto; color: var(--text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+.patchbay-lufs { flex: 0 0 auto; color: var(--accent); font-size: 10px; font-variant-numeric: tabular-nums; }
 .patchbay-port.selected, .patchbay-port.linked { background: var(--accent-surface); color: var(--text-primary); }
 .patchbay-port.route-selected { background: #f4f7f8; color: var(--text-primary); box-shadow: inset 0 0 0 2px var(--selected-route-color); font-weight: 600; }
 .patchbay-port:disabled { opacity: 1; color: var(--text-secondary); background: var(--surface-inset); }

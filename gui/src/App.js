@@ -237,8 +237,15 @@ function App() {
                 setApiState(current => current && ({ ...current, wasapiBridges: message.payload.wasapiBridges }));
             if (message.event === 'engine.error') setNotice(message.payload.message);
             if (message.event === 'audio.meter') {
-                metersRef.current[message.payload.endpointId] = message.payload;
-                setMeters(current => ({ ...current, [message.payload.endpointId]: message.payload }));
+                const now = Date.now();
+                const previous = metersRef.current[message.payload.endpointId];
+                const elapsedMs = previous ? now - previous.receivedAt : 0;
+                const heldPeak = previous?.displayPeakDbfs ?? previous?.peakDbfs ?? -120;
+                const releasedPeak = Math.max(-120, heldPeak - elapsedMs * 0.012);
+                const meter = { ...message.payload, receivedAt: now,
+                    displayPeakDbfs: Math.max(message.payload.peakDbfs ?? -120, releasedPeak) };
+                metersRef.current[message.payload.endpointId] = meter;
+                setMeters(current => ({ ...current, [message.payload.endpointId]: meter }));
             }
             if (message.event === 'audio.stereoPairs.changed')
                 setApiState(current => current && ({ ...current, stereoPairs: message.payload.stereoPairs }));
