@@ -15,6 +15,8 @@ remain in scope. This proposal does not redesign their behavior.
 
 The model has two state-owning aggregates. These are data ownership boundaries,
 not a claim that every aggregate must become a C++ class or a new endpoint.
+Within the TVSD application, `TVSDClient` is a general graph participant;
+ASIO is one way to participate, not the definition of a client.
 
 ### `AudioConfiguration`
 
@@ -49,10 +51,16 @@ The applied and observed runtime owned by the running engine:
 - `AppliedGraph`, with route activations linked to their `RouteDefinition` by
   ID and revision. Activation distinguishes active, dormant, and rejected
   routes without treating configuration intent as proof of an active path.
-- `VirtualAsioDriver` and its attached `AsioClientSession[]`.
-- Effective `WasapiBridgeSession[]` and `NativeAudioSession`.
+- Runtime resources: TimoxVasio virtual ASIO attachment sessions, effective
+  WASAPI bridge sessions, and the native audio session.
 - Runtime measurements, buffer health, meters, correlation, and errors, with
   their observation time and provenance where available.
+
+TVSD owns the generic `TVSDClient` identity and graph role. TimoxVasio exposes
+transport-specific runtime resources; TVSD may map those resources to its
+clients. The mapping and TVSD client IDs are not currently part of the
+TimoxVasio API. TVSD may also create a client and use a TimoxVasio WASAPI bridge
+as its transport.
 
 The target engine model should report which configuration revision it has
 applied. Today the API exposes one in-memory `configurationRevision`; it does
@@ -60,21 +68,35 @@ not expose a distinct applied revision, particularly when the engine is
 stopped. A mismatch should become visible as pending or unapplied configuration,
 rather than a second ambiguous configuration list.
 
-## Client, copy scope, device, and endpoint
+## TVSD client, transport, copy scope, device, and endpoint
 
-An **ASIO client session** is direct adhesion: a process opened
-`TimoxVasio.dll` and its attachment to the driver's shared mapping is confirmed.
-The session owns the ASIO ports allocated by `createBuffers`. Callback and
-block-exchange counters show driver activity, but do not prove that the buffers
-contain audible signal. The current API reports only PID and process name, so
-it must not claim durable identity for a process instance. Session identity is
-runtime-scoped unless creation time or executable path is added and verified.
+A **TVSD client** is any participant that TVSD admits to its graph and can
+address through graph ports. The client has a transport-specific participation
+mode; its process does not need to open the ASIO driver to be a TVSD client.
+The identity and graph role belong to TVSD. The TimoxVasio API does not
+currently publish a common client type or a mapping from bridge IDs to TVSD
+graph IDs; it publishes ASIO attachments and WASAPI bridge runtime resources.
 
-A **WASAPI process-copy definition** identifies a process tree to copy from.
-Timox creates a distinct graph stream from shared audio; this does not establish
-that the application selected WASAPI, attach it as an ASIO client, or redirect
-its original output. The resulting bridge session and graph ports belong to
-`AudioEngine`, while the selected scope belongs to `AudioConfiguration`.
+- An **ASIO client** is direct adhesion: an application opened
+  `TimoxVasio.dll` and its attachment to the driver's shared mapping is
+  confirmed. It owns the ASIO ports allocated by `createBuffers`. Callback and
+  block-exchange counters show driver activity, but do not prove audible signal.
+  The current API reports PID and process name, so it cannot claim durable
+  identity for a process instance. Session identity is runtime-scoped unless
+  creation time or executable path is added and verified.
+- A **WASAPI endpoint client** is a TVSD-managed capture or render stream opened
+  against a Windows endpoint. The endpoint is its transport binding; it is not
+  an ASIO client.
+- A **WASAPI process-copy client** is created when TVSD opens a process-copy
+  stream for a selected process tree. The process identity is the source scope;
+  the TVSD-managed stream is the graph client, and the process itself is not.
+  This copies shared audio and creates a distinct graph stream. It does not
+  establish that the application selected WASAPI, attach it to the ASIO driver,
+  or redirect its original output.
+
+A process-copy definition belongs to `AudioConfiguration`; its active
+TVSD-managed stream and graph ports belong to `AudioEngine`. The same
+configuration/runtime distinction applies to endpoint streams.
 
 A **Windows endpoint** is one capture or render endpoint with its own ID and
 state. A **physical device** may group multiple endpoints, for example capture
@@ -92,8 +114,9 @@ discovered item does not mean it is selected, open, or active.
 
 Diagnostics remain a cross-cutting service. Performance measurements and
 health observations belong to the engine session that produced them. PWAR
-configuration remains integration settings; a PWAR ASIO connection, when
-opened, appears as an ordinary attached ASIO client.
+configuration remains integration settings; when PWAR opens TimoxVasio, it is
+an ASIO client with a PWAR integration label. Its product role does not change
+the transport type.
 
 ## Desired, applied, observed
 
@@ -127,8 +150,10 @@ The code already has useful internal boundaries in `AudioControllerConfiguration
 Preserve these boundaries. First extract clear API/domain value types and
 ownership from the flat `State` serializer in `src/control_api_server.cpp`;
 avoid a wholesale engine rewrite. Keep discovery, runtime sessions, and
-configuration persistence as separate services. ASIO clients remain resources
-of the virtual driver session, not top-level application roots.
+configuration persistence as separate services. ASIO attachment details remain
+resources of the virtual driver session. The TVSD-level client model can
+represent ASIO, WASAPI endpoint, and WASAPI process-copy participants uniformly
+without pretending they share the same transport or evidence.
 
 ## Open decisions before implementation
 
