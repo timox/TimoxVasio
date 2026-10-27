@@ -211,9 +211,10 @@ l’audio.
 
 ## 4. Observer les niveaux et la corrélation
 
-`audio.meter` publie le niveau de crête des extrémités routées. Dans l’interface,
-les vumètres de la vue **Canaux** sont limités aux canaux clients ouverts et
-routés. Les compteurs `underruns` et `overruns` décrivent le transport partagé.
+`audio.meter` publie la crête dBFS des extrémités routées et, après remplissage
+d’une fenêtre de 3 s, le loudness court terme en LUFS (`shortTermLufs`). Dans
+l’interface, les vumètres de la vue **Canaux** sont limités aux canaux clients
+ouverts et routés. Les compteurs `underruns` et `overruns` décrivent le transport partagé.
 
 Les paires disponibles pour l’analyse L/R sont dans `stereoPairs`. Choisissez
 un `id` réellement retourné par `/api/v1/state`, puis envoyez :

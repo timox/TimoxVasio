@@ -70,6 +70,8 @@ struct AudioControllerSnapshot {
     std::vector<WasapiBridgeSnapshot> wasapiBridges;
     std::vector<WasapiDeviceInfo> wasapiDevices;
     std::string wasapiInventoryError;
+    std::vector<WasapiProcessInfo> wasapiProcesses;
+    std::string wasapiProcessInventoryError;
     PhysicalAsioCapabilities physicalCapabilities;
 };
 
@@ -130,6 +132,7 @@ public:
     void Stop() noexcept;
     std::vector<PhysicalAsioDriverInfo> EnumeratePhysicalDrivers();
     std::vector<WasapiDeviceInfo> EnumerateWasapiDevices();
+    std::vector<WasapiProcessInfo> EnumerateWasapiProcesses();
     // Legacy callers cannot implicitly clear native desire. A caller that owns
     // that field must explicitly pass preserveNativeAudio=false to replace it.
     AudioControllerResult ApplyConfiguration(const AudioControllerConfiguration& configuration,
@@ -208,7 +211,8 @@ private:
     std::uint64_t performanceMeasurementsGeneration_ = 0; // Controller worker only.
     void ResetPerformanceMeasurementsWindow() noexcept;
     AudioControllerResult ApplyConfigurationCore(const AudioControllerConfiguration& configuration,
-        bool allowUnavailable = false,const std::shared_ptr<NativeAudioManager>& retainedNative = {});
+        bool allowUnavailable = false,const std::shared_ptr<NativeAudioManager>& retainedNative = {},
+        const std::vector<std::string>& unavailableBridgeIds = {});
     std::optional<AudioControllerResult> ApplyPreparedLive(const AudioControllerConfiguration& configuration,
         const AudioControllerConfiguration* durable);
     void ReconcileWasapiOnWorker();
@@ -230,6 +234,8 @@ private:
     std::uint64_t nativePublishedEpoch_=0;
     std::vector<WasapiDeviceInfo> wasapiDevices_;
     std::string wasapiInventoryError_;
+    std::vector<WasapiProcessInfo> wasapiProcesses_;
+    std::string wasapiProcessInventoryError_;
     bool wasapiInventoryObserved_=false; // Worker only; subscribe after first inventory request.
     void RefreshWasapiInventoryOnWorker();
 };

@@ -14,12 +14,27 @@ std::string Failure(const char* operation,HRESULT hr) {
 }
 constexpr unsigned retryDelays[]={250,500,1000,2000,5000};
 HRESULT ResolveEndpoint(const WasapiOpenConfig& config,std::wstring& resolved) {
+    if(config.kind==WasapiStreamKind::ProcessLoopback)return S_OK;
     const auto apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
     if(FAILED(apartment) && apartment!=RPC_E_CHANGED_MODE)return apartment;
     struct ReleaseApartment {bool owned;~ReleaseApartment(){if(owned)CoUninitialize();}} release{SUCCEEDED(apartment)};
     std::string error;
     return WasapiDeviceEnumerator{}.resolve(config.kind==WasapiStreamKind::Capture?
         WasapiDataFlow::Capture:WasapiDataFlow::Render,config.endpointId,config.defaultRole,resolved,error)?S_OK:E_FAIL;
+}
+bool ProcessIdentityStillMatches(const WasapiOpenConfig& config) {
+    HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,config.processId);
+    if(!process)return false;
+    struct Close {HANDLE value;~Close(){CloseHandle(value);}} close{process};
+    FILETIME created{},exited{},kernel{},user{};
+    if(!GetProcessTimes(process,&created,&exited,&kernel,&user))return false;
+    const auto ticks=(static_cast<std::uint64_t>(created.dwHighDateTime)<<32)|created.dwLowDateTime;
+    if(ticks!=config.processCreationTime)return false;
+    std::wstring path(32768,L'\0');DWORD length=static_cast<DWORD>(path.size());
+    if(!QueryFullProcessImageNameW(process,0,path.data(),&length))return false;
+    path.resize(length);
+    return CompareStringOrdinal(path.c_str(),static_cast<int>(path.size()),config.processImagePath.c_str(),
+        static_cast<int>(config.processImagePath.size()),TRUE)==CSTR_EQUAL;
 }
 // Never reuse a generation even across a complete master-clock reconstruction.
 const auto processGeneration=std::make_shared<std::atomic<std::uint64_t>>(1);
@@ -96,12 +111,15 @@ struct WasapiBridgeManager::Session {
     std::uint64_t generation=0;
     std::uint32_t retryAttempt=0;
     Clock::time_point retryAt{};
+    bool identityStale=false;
     ~Session(){if(bridge)bridge->Stop();}
 };
 
 bool WasapiBridgeManager::Same(const WasapiBridgeConfiguration& a,const WasapiBridgeConfiguration& b) {
     return a.id==b.id && a.enabled==b.enabled && a.open.kind==b.open.kind &&
         a.open.endpointId==b.open.endpointId && a.open.defaultRole==b.open.defaultRole &&
+        a.open.processId==b.open.processId && a.open.processCreationTime==b.open.processCreationTime &&
+        a.open.processImagePath==b.open.processImagePath &&
         a.open.bufferDuration100ns==b.open.bufferDuration100ns;
 }
 bool WasapiBridgeManager::MatchesFormat(std::uint32_t rate,std::uint32_t quantum)const noexcept {
@@ -115,6 +133,15 @@ std::shared_ptr<WasapiBridgeManager::Session> WasapiBridgeManager::Create(
     std::string detail;
     const auto hr=Discover(factory_,config.open,effective,detail);
     if(FAILED(hr)) {
+        if(config.open.kind==WasapiStreamKind::ProcessLoopback &&
+            hr==HRESULT_FROM_WIN32(ERROR_INVALID_OWNER)) {
+            session->identityStale=true;
+            session->lastHealth.state=WasapiBridgeState::Failed;
+            session->lastHealth.error=hr;
+            session->retryAt=Clock::time_point::max();
+            error.clear();
+            return session;
+        }
         error=Failure("WASAPI discovery failed",hr);
         if(!detail.empty())error+=": "+detail;
         return {};
@@ -136,21 +163,31 @@ std::shared_ptr<WasapiBridgeManager::Session> WasapiBridgeManager::Create(
         config.open.kind==WasapiStreamKind::Render?WasapiBridgeDirection::Render:WasapiBridgeDirection::Capture,
         effective.format.channels,rate_,quantum_,session->generation,capacity});
     WasapiBridgeConfig options;options.endpoint=config.open;
-    options.endpoint.endpointId=effective.endpointId;options.endpoint.defaultRole.reset();
+    if(config.open.kind!=WasapiStreamKind::ProcessLoopback) {
+        options.endpoint.endpointId=effective.endpointId;options.endpoint.defaultRole.reset();
+    }
     auto factory=factory_;
     auto actual=std::make_shared<WasapiStreamInfo>();
     session->bridge=std::make_unique<WasapiBridge>(options,*session->io,[factory,effective,actual] {
         return std::make_unique<VerifiedBackend>(factory(),effective,actual);
     });
     const auto started=session->bridge->Start();
-    if(FAILED(started)) {error=Failure("WASAPI worker preparation failed",started);return {};}
+    if(FAILED(started)) {
+        if(config.open.kind==WasapiStreamKind::ProcessLoopback && !ProcessIdentityStillMatches(config.open)) {
+            session->bridge.reset();session->io.reset();session->effective.reset();
+            session->identityStale=true;session->lastHealth.state=WasapiBridgeState::Failed;
+            session->lastHealth.error=started;session->retryAt=Clock::time_point::max();error.clear();return session;
+        }
+        error=Failure("WASAPI worker preparation failed",started);return {};
+    }
     session->effective=*actual; // Start handshake synchronizes the worker's Open metadata.
     return session;
 }
 std::shared_ptr<WasapiBridgeManager> WasapiBridgeManager::Prepare(
     const std::vector<WasapiBridgeConfiguration>& desired,std::uint32_t rate,std::uint32_t quantum,
     const std::shared_ptr<WasapiBridgeManager>& previous,const WasapiBridge::BackendFactory& factory,
-    std::string& error,bool allowUnavailable,const EndpointResolver& resolver) {
+    std::string& error,bool allowUnavailable,const EndpointResolver& resolver,
+    const std::vector<std::string>& unavailableBridgeIds) {
     if(!ValidateWasapiBridgeConfigurations(desired,error))return {};
     auto candidate=std::make_shared<WasapiBridgeManager>();candidate->rate_=rate;candidate->quantum_=quantum;
     candidate->factory_=factory?factory:WasapiBridge::BackendFactory{CreateWasapiBackend};
@@ -162,7 +199,9 @@ std::shared_ptr<WasapiBridgeManager> WasapiBridgeManager::Prepare(
         if(previous && previous->MatchesFormat(rate,quantum))
             for(const auto& old:previous->sessions_)if(Same(config,old->config)){session=old;break;}
         if(!session)session=candidate->Create(config,error);
-        if(!session && allowUnavailable) {
+        const bool mayStayUnavailable=allowUnavailable ||
+            std::find(unavailableBridgeIds.begin(),unavailableBridgeIds.end(),config.id)!=unavailableBridgeIds.end();
+        if(!session && mayStayUnavailable) {
             session=std::make_shared<Session>();session->config=config;
             session->lastHealth.state=WasapiBridgeState::Failed;session->lastHealth.error=E_FAIL;
             session->retryAt=Clock::now()+std::chrono::milliseconds(retryDelays[0]);
@@ -191,6 +230,7 @@ std::vector<WasapiBridgeSnapshot> WasapiBridgeManager::Snapshots()const {
         snapshot.health=session->bridge?session->bridge->Health():session->lastHealth;
         snapshot.generation=session->generation;snapshot.retryAttempt=session->retryAttempt;
         if(!session->config.enabled)snapshot.state="disabled";
+        else if(session->identityStale)snapshot.state="unavailable";
         else if(!session->bridge)snapshot.state="retrying";
         else switch(snapshot.health.state) {
             case WasapiBridgeState::Priming:snapshot.state="priming";break;
@@ -199,7 +239,7 @@ std::vector<WasapiBridgeSnapshot> WasapiBridgeManager::Snapshots()const {
             case WasapiBridgeState::Stopped:snapshot.state="stopped";break;
             default:snapshot.state="starting";break;
         }
-        if(session->retryAt>now)snapshot.retryInMs=static_cast<std::uint32_t>(
+        if(!session->identityStale && session->retryAt>now)snapshot.retryInMs=static_cast<std::uint32_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(session->retryAt-now).count());
         if(publicationFailures_ && !session->bridge && session->config.enabled) {
             snapshot.health.error=E_INVALIDARG;

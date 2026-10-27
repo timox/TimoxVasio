@@ -1,5 +1,10 @@
 # Répartition des dépôts — plan d'action
 
+> Plan historique d'extraction. Pour le modèle actuel, lire la
+> [spécification adhérents/nœuds/supervision](../superpowers/specs/2026-10-26-adherents-noeuds-supervision-design.md).
+> Elle remplace notamment les passages attribuant l'identité du graphe à la GUI.
+> Les livrables et leur état sont suivis dans [l'inventaire par dépôt](2026-10-26-livrables-par-depot.md).
+
 > **For Codex:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Séparer pilote, moteur, contrôle et transport PWAR sans perdre les travaux locaux ni casser les contrats existants.

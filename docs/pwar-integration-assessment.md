@@ -26,6 +26,9 @@ flowchart LR
 PWAR devient un pilote externe sélectionné par le moteur. Aucun nouveau protocole
 réseau ni fusion des deux DLL n'est nécessaire. Le pilote ASIO Timox reste
 autonome ; le travail WASAPI natif conserve son périmètre indépendant.
+Le moteur ne reçoit que les canaux de l'endpoint PWAR qu'il ouvre puis route.
+PWAR ne détecte pas et ne redirige pas l'audio des processus Windows ; un client
+qui ouvre directement PWAR hors du moteur reste en dehors du graphe Timox.
 
 ## Compatibilité et limites observées
 

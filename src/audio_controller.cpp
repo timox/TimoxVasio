@@ -279,6 +279,20 @@ std::vector<WasapiDeviceInfo> AudioController::EnumerateWasapiDevices() {
     });
 }
 
+std::vector<WasapiProcessInfo> AudioController::EnumerateWasapiProcesses() {
+    return Invoke([this] {
+        const auto apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        struct Apartment { HRESULT result; ~Apartment() { if (SUCCEEDED(result)) CoUninitialize(); } } release{apartment};
+        wasapiProcesses_.clear(); wasapiProcessInventoryError_.clear();
+        if (SUCCEEDED(apartment) || apartment == RPC_E_CHANGED_MODE) {
+            try { WasapiDeviceEnumerator{}.enumerateActiveRenderProcesses(wasapiProcesses_, wasapiProcessInventoryError_); }
+            catch (...) { wasapiProcesses_.clear(); wasapiProcessInventoryError_ = "Cannot refresh Windows audio application inventory"; }
+        } else wasapiProcessInventoryError_ = "Cannot initialize COM for Windows audio application inventory";
+        SetStatus(Snapshot());
+        return wasapiProcesses_;
+    });
+}
+
 void AudioController::RefreshWasapiInventoryOnWorker() {
     const auto apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
     struct Apartment {HRESULT result;~Apartment(){if(SUCCEEDED(result))CoUninitialize();}} release{apartment};
@@ -629,6 +643,8 @@ void AudioController::SetStatus(const AudioControllerSnapshot& snapshot) {
     }
     state_.wasapiDevices=wasapiDevices_;
     state_.wasapiInventoryError=wasapiInventoryError_;
+    state_.wasapiProcesses=wasapiProcesses_;
+    state_.wasapiProcessInventoryError=wasapiProcessInventoryError_;
     state_.revision = revision;
     state_.configurationRevision = configurationRevision_;
     events_.push_back(state_);
@@ -908,7 +924,22 @@ AudioControllerResult AudioController::ApplyOnWorker(
         if(live)applied=*live;
         else {
             coreStarted=true;nativeManager_.reset();
-            applied=ApplyConfigurationCore(configuration);
+            // An unavailable configured endpoint must not prevent applying
+            // unrelated routes or bridges. Keep an unchanged existing bridge
+            // in retry state; a newly selected invalid endpoint still fails.
+            std::vector<std::string> unavailableBridgeIds;
+            for(const auto& bridge:configuration.wasapiBridges) {
+                if(!bridge.enabled)continue;
+                const auto old=std::find_if(oldConfiguration.wasapiBridges.begin(),oldConfiguration.wasapiBridges.end(),
+                    [&](const auto& candidate){return candidate.id==bridge.id;});
+                if(old==oldConfiguration.wasapiBridges.end() || !old->enabled)continue;
+                const auto& a=old->open;const auto& b=bridge.open;
+                if(a.kind==b.kind && a.endpointId==b.endpointId && a.defaultRole==b.defaultRole &&
+                    a.processId==b.processId && a.processCreationTime==b.processCreationTime &&
+                    a.processImagePath==b.processImagePath && a.bufferDuration100ns==b.bufferDuration100ns)
+                    unavailableBridgeIds.push_back(bridge.id);
+            }
+            applied=ApplyConfigurationCore(configuration,false,{},unavailableBridgeIds);
         }
         if (!applied.success) {restore();return applied;}
         if(!persist)return applied;
@@ -971,7 +1002,8 @@ void AudioController::RestoreConfigurationOnWorker() {
 }
 
 AudioControllerResult AudioController::ApplyConfigurationCore(
-    const AudioControllerConfiguration& configuration,bool allowUnavailable,const std::shared_ptr<NativeAudioManager>& retainedNative) {
+    const AudioControllerConfiguration& configuration,bool allowUnavailable,const std::shared_ptr<NativeAudioManager>& retainedNative,
+    const std::vector<std::string>& unavailableBridgeIds) {
     const bool software = configuration.clockSource == AudioClockSource::Software;
     if (configuration.clockSource != AudioClockSource::Asio && !software)
         return {false, "Unsupported audio clock source"};
@@ -988,7 +1020,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     std::shared_ptr<WasapiBridgeManager> candidate;
     if(configuration.sampleRate && configuration.bufferFrames) {
         candidate=WasapiBridgeManager::Prepare(configuration.wasapiBridges,*configuration.sampleRate,
-            *configuration.bufferFrames,{},wasapiBackendFactory_,preparationError,allowUnavailable,wasapiEndpointResolver_);
+            *configuration.bufferFrames,{},wasapiBackendFactory_,preparationError,allowUnavailable,wasapiEndpointResolver_,unavailableBridgeIds);
         if(!candidate)return {false,preparationError};
     }
     ++bufferHealthGeneration_;
@@ -1054,7 +1086,7 @@ AudioControllerResult AudioController::ApplyConfigurationCore(
     }
 
     if(!candidate)candidate=WasapiBridgeManager::Prepare(configuration.wasapiBridges,sampleRate,
-        physicalBufferFrames,{},wasapiBackendFactory_,error,allowUnavailable,wasapiEndpointResolver_);
+        physicalBufferFrames,{},wasapiBackendFactory_,error,allowUnavailable,wasapiEndpointResolver_,unavailableBridgeIds);
     if(!candidate) {
         physicalHost_->close();next.state="error";next.lastError=error;SetStatus(next);return {false,error};
     }

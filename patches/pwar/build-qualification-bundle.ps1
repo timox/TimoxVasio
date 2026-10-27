@@ -27,7 +27,7 @@ foreach ($entry in $inputs.patches) {
     if ($LASTEXITCODE -ne 0) { throw "Cannot reconstruct reviewed source: $($entry.name)" }
     $patches += $patch
 }
-foreach ($relative in @('windows\asio', 'protocol')) {
+foreach ($relative in @('windows\asio', 'protocol', 'linux')) {
     foreach ($file in Get-ChildItem -LiteralPath (Join-Path $reconstructedSource $relative) -Recurse -File) {
         $tail = $file.FullName.Substring($reconstructedSource.Length + 1)
         # The qualification worktree normalizes CRLF; compare source text with
@@ -53,7 +53,7 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'bundle-CMakeLists.txt') -Destin
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'bundle-README.md') -Destination (Join-Path $bundle 'README.md')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'GPL-3.0.txt') -Destination $bundle
 New-Item -ItemType Directory -Path (Join-Path $bundle 'patches') | Out-Null
-if ($patches.Count -ne 6) { throw 'Expected exactly six reviewed patches' }
+if ($patches.Count -ne 7) { throw 'Expected exactly seven reviewed patches' }
 foreach ($patch in $patches) { Copy-Item -LiteralPath $patch.FullName -Destination (Join-Path $bundle 'patches') }
 Copy-Item -LiteralPath $driver -Destination (Join-Path $bundle 'PWARASIO.dll')
 $files = @(Get-ChildItem -LiteralPath $bundle -Recurse -File | Sort-Object FullName | ForEach-Object {

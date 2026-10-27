@@ -69,6 +69,17 @@ Le service ne mixe pas, ne choisit pas l'horloge du graphe et ne lance pas Elect
 
 Nom SCM `TimoxNativeAudioBroker`, exécutable propre sous Program Files, compte LocalService, service SID `NT SERVICE\TimoxNativeAudioBroker` activé avec `SERVICE_SID_TYPE_UNRESTRICTED`, processus dédié. Le mot UNRESTRICTED désigne ici l'ajout du SID au jeton, pas des droits administrateur. Définir une liste minimale de privilèges et vérifier le jeton réel ; ne pas passer implicitement à LocalSystem si une API manque. L'accès à l'objet noyau est accordé au SID du service et à SYSTEM, pas à LocalService globalement ni au groupe Administrateurs dans le profil de production. Les administrateurs machine restent hors modèle d'attaquant, puisqu'ils contrôlent l'installation. [Service SID Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_sid_info).
 
+**Point à qualifier avant tout déploiement :** la documentation Microsoft indique
+que `SERVICE_SID_TYPE_UNRESTRICTED` ajoute le SID de service avec
+`SE_GROUP_ENABLED_BY_DEFAULT | SE_GROUP_OWNER`, tandis que le contrôle local
+`IsBrokerServiceIdentity` exige `SE_GROUP_ENABLED | SE_GROUP_OWNER`. La
+documentation des groupes de jeton précise qu'un SID sans `SE_GROUP_ENABLED`
+est ignoré lors des contrôles d'accès. Ce texte ne prouve pas les attributs
+effectivement observés sur notre jeton Windows : conserver le refus strict et
+ne pas élargir l'admission par hypothèse. Avant de changer le contrôle, il faut
+capturer les attributs du vrai service et démontrer que son SID satisfait les
+ACL de qualification. Sources : [attributs du SID de service](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_sid_info), [attributs TOKEN_GROUPS](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_groups).
+
 Un seul propriétaire audio global tant que N2 possède une seule paire de files. Le broker garde le handle noyau dans son processus ; aucune duplication vers le moteur. Une connexion moteur acquiert un bail attaché à son jeton authentifié : SID utilisateur, SID de logon, `TokenSessionId` et `AuthenticationId`. PID et nom du processus ne constituent pas l'identité. Une deuxième connexion audio reçoit `OwnedElsewhere`, même avec le même compte ; elle ne peut pas reprendre le bail de force. La déconnexion annule, attend les completions, ferme le handle noyau et retire le bail avant une nouvelle ouverture.
 
 Bootstrap local `\\.\pipe\Timox.NativeAudio.v1`, `PIPE_REJECT_REMOTE_CLIENTS`, première instance avec `FILE_FLAG_FIRST_PIPE_INSTANCE`, taille et nombre de connexions bornés. Politique machine initiale : un SID utilisateur autorisé explicitement par le provisioning, pas Users/Everyone. Le bootstrap ne transporte aucun PCM. Après lecture du handshake, impersonation pour relever le jeton, puis retour immédiat à l'identité service ; tout échec d'identification ou de `RevertToSelf` ferme la connexion et arrête le traitement privilégié. Le client utilise `SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION` ; aucune délégation nécessaire. Un pipe de données distinct, nommé avec un nonce aléatoire, possède une DACL limitée au service/SYSTEM et au SID de logon authentifié. Son nom n'est pas un secret d'autorisation.
@@ -126,11 +137,34 @@ Après RED observé, compilation parent `/W4 /WX`, CTest production 2/2 et revue
 
 **Faisabilité Schannel vérifiée :** le [prototype autonome](../../../native-windows-audio/schannel-probe/README.md) réalise en mémoire un handshake TLS 1.2 mutuel avec certificats épinglés et AES-GCM. Le parent a reproduit le succès du mode explicite à clés utilisateur temporaires, y compris trois suppressions et trois vérifications d'absence. Le mode éphémère est SKIP hors sandbox, pas une réussite TLS. Revue indépendante favorable et build parent vérifié. Aucun pipe, service LocalService, collecteur d'identité ou mécanisme d'isolation audio n'est qualifié par ce prototype.
 
+**Recompilation du noyau Windows (2026-10-24) :** après une première
+tentative bloquée par `MSB4018`/`E_ACCESSDENIED` dans FileTracker sous
+sandbox, la cible `NativeAudioWindowsBroker` compile en Release hors sandbox :
+`NativeAudioWindowsChannel.lib` puis `NativeAudioWindowsBroker.lib` sont
+produites sans erreur. Cette commande n'a lancé aucun test et ne constitue pas
+une validation du service, du socket réel, du certificat ou du pilote.
+
 **Files:** créer `include/native_audio_broker_protocol.h`, `include/native_audio_broker_transport.h`, `src/native_audio_broker_transport.cpp`, `native-windows-audio/broker/broker_session.h`, `native-windows-audio/broker/broker_session.cpp`, `native-windows-audio/broker/pipe_server.cpp`, `native-windows-audio/broker/service_main.cpp`, `native-windows-audio/broker/schannel_channel.h`, `native-windows-audio/broker/schannel_channel.cpp`, `tests/native_audio_broker_tests.cpp`, `tests/native_audio_broker_transport_tests.cpp`. Le canal Schannel est partagé par client et serveur. Réutiliser `include/native_audio_transport.h`, adaptateur direct N3 uniquement dans le service et les outils labo.
 
 **Premier sous-lot vérifié (2026-10-22) :** le validateur pur `include/native_audio_broker_protocol.h` et `tests/native_audio_broker_protocol_tests.cpp` définissent l'enveloppe audio v1 post-authentification : magic TVAB, opcodes 1..5, bit 15 réponse, tailles exactes et payloads documentés dans le header. SESSION attribue un bail non nul uniquement dans sa réponse réussie ; les autres messages corrèlent le bail et la génération du contexte. Le code ne gère ni TLS, ni autorisation, ni état de session ou anti-rejeu : il valide des octets contre un contexte fourni par le futur handler. Après test rouge, compilation `/W4 /WX`, revue indépendante favorable et reconstruction parent via `NativeAudioBrokerProtocolTests`, CTest ciblé réussit 1/1. Les tailles tronquées/surdimensionnées, réservés, statuts, N0, adresses non alignées et limite UINT64_MAX sont couverts. Ce n'est pas encore un broker utilisable.
 
 **Interfaces:** `CreateBrokerNativeAudioTransport() -> std::unique_ptr<INativeAudioTransport>` ; `BrokerSession` reçoit une identité authentifiée, une décision Allowed et un `INativeAudioTransport` injecté. Le parseur pur retourne un résultat explicite sans modifier le lease en cas d'échec. Le service possède l'unique `BrokerSession` audio.
+
+**Résolution d'inscription par connexion (2026-10-24) :** `SocketServer` et
+`SocketSession` acceptent maintenant un `SocketEnrollmentResolver` fourni par
+l'hôte. Il s'exécute sur le worker de chaque connexion, après lecture du PID
+AF_UNIX et du jeton Windows, avant Schannel. Le résultat doit être un pin déjà
+provisionné lié à l'identité exacte observée ; la session revérifie cette
+identité après TLS. L'ancien constructeur à inscription fixe reste disponible
+pour les bancs existants. Annulation passe par le socket sous-jacent et reste
+valide pendant la résolution et le transfert de propriété vers Schannel.
+Compilation Release de `NativeAudioWindowsBroker` réussie le 2026-10-24 après
+ce changement ; aucun test n'a été lancé. `CreateRegistrySocketEnrollmentResolver`
+lit maintenant `AllowedUserSid` (`REG_SZ`) et le `ClientCertificateSha256`
+existant (`REG_BINARY`, 32 octets) dans HKLM Runtime, compare le SID observé et
+attribue des epochs locaux sans wrap. Le provisioning de ces valeurs, le
+branchement de cette factory dans l'hôte SCM et l'hôte SCM lui-même restent à
+implémenter. Aucun champ client ne choisit ou ne crée un certificat.
 
 - [ ] Tests rouges du parseur : toutes troncatures du header, payload au-delà de 32832, reserved non nul, opcode/version inconnu, overflow, requestId répété, bail/génération incorrects, capture/render inversés. Tests du bail : deux clients concurrents, déconnexion entre Full et retry, kill et nouvelle connexion, invalidation des anciens paquets.
 - [ ] Implémenter le parseur et le relais fake ; aucune file audio supplémentaire non bornée. La lecture lente d'un client conserve au plus une réponse de 32880 octets ; délai handshake 5 secondes, 4 connexions bootstrap maximum. Toute opération de shutdown attend ses completions avant de libérer ses buffers.
@@ -144,7 +178,7 @@ Après RED observé, compilation parent `/W4 /WX`, CTest production 2/2 et revue
 
 **Files:** créer `native-windows-audio/scripts/provision-broker.ps1`, `native-windows-audio/scripts/remove-broker.ps1`, `native-windows-audio/broker/README.md` ; modifier ultérieurement `native-windows-audio/driver/control.cpp` et le paquet/INF pour l'ACL de production, dans un commit séparé du broker.
 
-**Interfaces:** provisioning prend `-AllowedUserSid` et des chemins absolus de livrables vérifiés ; il produit un manifeste local contenant service SID, version/hash, certificats/empreintes publics autorisés et état d'installation. Aucun secret privé dans le dépôt ou le manifeste. Mode `-WhatIf` obligatoire avant installation réelle. L'enrôlement du certificat client est une opération de provisioning authentifiée, jamais une commande disponible au premier client d'un pipe public.
+**Interfaces:** provisioning prend `-AllowedUserSid` et des chemins absolus de livrables vérifiés ; il produit un manifeste local contenant service SID, version/hash, certificats/empreintes publics autorisés et état d'installation. Pour le moteur, l'empreinte SHA-256 du certificat client enrôlé est publiée dans `HKLM\SOFTWARE\Timox\NativeAudioBroker\Runtime\ClientCertificateSha256` (`REG_BINARY`, exactement 32 octets) ; le moteur ne lit que cette valeur et recherche le certificat correspondant, valide et avec clé privée, dans `CurrentUser\My`. Le service conserve l'association autorisée sous `AllowedUserSid` (`REG_SZ`) et `ClientCertificateSha256` dans la même clé Runtime ; le résolveur ne prend en compte que le SID utilisateur observé sur le processus. Les ACL machine autorisent l'écriture à SYSTEM/Administrateurs et la lecture au service/client, jamais l'écriture à un utilisateur non privilégié. Aucun secret privé dans le dépôt ou le manifeste. Mode `-WhatIf` obligatoire avant installation réelle. L'enrôlement du certificat client est une opération de provisioning authentifiée, jamais une commande disponible au premier client d'un socket public.
 
 - [ ] Tests rouges : binaire absent/hash erroné, cible hors répertoire produit, mauvais SID, service d'un autre produit, rollback après création clé mais avant service, mise à jour empêchée par handle existant. Aucun wildcard de suppression.
 - [ ] Créer certificats/clés/ACL/liste de confiance/registre/service dans l'ordre avec rollback limité aux objets créés par cette transaction. Répertoire et SCM modifiables seulement par administrateurs/SYSTEM ; SID de service autorisé en lecture/exécution et usage de la clé serveur. Vérifier que seul le compte enrôlé accède à sa clé client, que le service ne sélectionne pas silencieusement un autre certificat et que le jeton effectif contient le service SID.
@@ -156,7 +190,7 @@ Après RED observé, compilation parent `/W4 /WX`, CTest production 2/2 et revue
 
 **Vérification d'intégration complémentaire :** reconstruction Release de `TimoxVirtualAsioEngine`, `ApplicationProfilesApiTests` et `WasapiBridgeApiTests` réussie ; les deux exécutables de tests API ont ensuite terminé avec code 0. Le moteur compilé mesure 1 222 144 octets, SHA-256 `A8E026EEAF95A9C5B614DC235842F78D2693E2CA0693BF48BC13F52E182E0103` (UTC 2026-10-22 18:02:51). Il n'a pas été lancé pour cet essai ni intégré à un Setup. Ces tests de régression ne valident pas les futurs champs natifs ou l'authentification de l'API.
 
-**Intégration contrôleur vérifiée (2026-10-22) :** le contrôleur accepte une factory de transport native injectée, réconcilie le manager sur son worker et publie ses bindings dans les remplacements de graphe. Sans factory, l'état reste Unavailable sans ouverture directe du pilote. Les changements de format conservent l'ancien propriétaire pendant la préparation et la sauvegarde : un échec restaure le même IO/epoch ; un succès retire l'ancien propriétaire avant une nouvelle ouverture. Disable et StopAudio retirent le graphe et attendent les callbacks avant l'arrêt du backend. L'epoch réellement publié est suivi indépendamment des snapshots, afin qu'une exception après publication n'arrête pas un backend encore emprunté.
+**Intégration contrôleur vérifiée (2026-10-22) :** le contrôleur accepte une factory de transport native injectée, réconcilie le manager sur son worker et publie ses bindings dans les remplacements de graphe. Sans factory, l'état reste Unavailable sans ouverture directe du pilote. Depuis le 24 octobre, `main.cpp` injecte `CreateInstalledNativeAudioTransport` : la factory relit la découverte ProgramData validée, le pin serveur, l'empreinte client du registre et le certificat utilisateur à chaque tentative. Le canal socket et le transport broker sont maintenant compilés dans le moteur Release. Cette factory retourne Unavailable tant que le provisioning ou le service manquent ; aucune connexion/audio broker réel n'est encore prouvé. Les changements de format conservent l'ancien propriétaire pendant la préparation et la sauvegarde : un échec restaure le même IO/epoch ; un succès retire l'ancien propriétaire avant une nouvelle ouverture. Disable et StopAudio retirent le graphe et attendent les callbacks avant l'arrêt du backend. L'epoch réellement publié est suivi indépendamment des snapshots, afin qu'une exception après publication n'arrête pas un backend encore emprunté.
 
 Après test rouge observé, revue indépendante et correction du chemin d'exception, le parent a reconstruit les quatre cibles Release et exécuté `AudioControllerNativeTests`, `AudioControllerWasapiTests`, `AudioControllerPersistenceTests` et `AudioControllerClockTests` : toutes réussissent. Le test natif couvre PCM dans les deux sens via le vrai graphe/SRC avec maître et transport simulés, absence/reprise, retrait/réactivation, refus d'accès sans retry automatique, restauration et omission legacy, conflits, échec Save et échec du maître. Le PCM constant ne démontre pas l'absence de samples anciens entre epochs ; aucune qualification du pilote, service, isolation de session ou latence matérielle n'en découle. API, broker de production et GUI native restent à intégrer.
 
@@ -224,9 +258,11 @@ Le lot 6 complet reste à réaliser après raccord de l'API authentifiée.
 ### Avancement du 23 octobre : projection native en lecture seule
 
 Décision de séquencement : rendre l'état déjà détenu par le contrôleur lisible
-avant la migration d'authentification, sans ajouter de mutation native. Le
-backend de production reste sans factory réelle ; aucune ouverture directe
-du pilote n'est ajoutée. Le lot 5 complet reste non réalisé.
+avant la migration d'authentification. Une factory de transport socket est
+maintenant câblée au moteur et résout la découverte protégée et le certificat
+client provisionné ; elle ne crée ni le service ni les credentials. Aucune
+ouverture directe du pilote n'est ajoutée à l'engine. Le lot 5 complet reste
+non réalisé.
 
 - `src/native_audio_api.h` projette le snapshot manager/worker dans `nativeAudio`
   de `/api/v1/state`. `running` exige manager attaché et worker Running ; les
@@ -258,3 +294,34 @@ Vraies dépendances externes : cible récupérable pour tester les ouvertures au
 Critères avant activation publique : séparation audio entre logons démontrée, API et IPC authentifiés, service seul propriétaire, retrait/reprise sans PCM ancien, performances du pipe mesurées, signature/installation/retrait qualifiés. Aucune réussite des seuls tests IPC ne remplit ces critères. Les essais ultérieurs N5 doivent inclure captures corrélées, charge CPU, jitter, latence p50/p95/max et endurance ; l'objectif de parité avec TimoxVasio reste mesuré, pas déduit du nombre de tests.
 
 Choix sûrs déjà fixés : une seule paire et un seul propriétaire, pas de prise de contrôle forcée, pas de privilège permanent GUI/moteur, configuration désactivée par défaut, erreurs natives non fatales, clé privée et données audio absentes des logs, mêmes règles contextuelles GUI. Aucun de ces choix ne requiert de confirmation routinière supplémentaire.
+
+### Stabilisation Windows — 2026-10-24
+
+- Essai utilisateur en cours le 2026-10-24 : Renoise → TimoxVasio → casque
+  Jabra via WASAPI est rapporté comme fonctionnant bien. C'est une validation
+  fonctionnelle qualitative de ce trajet réel ; aucune mesure de latence, CPU,
+  xruns ou durée d'endurance n'a été relevée.
+
+- Le target `TimoxVirtualAsioEngine` ne compilait pas avec `/EHsc`, contrairement
+  aux autres targets MSVC concernés. Ajout de l'option dans `CMakeLists.txt` ;
+  le build candidat Release se termine sans les avertissements C4530 observés
+  auparavant.
+- Candidat construit dans
+  `build_native_audio_engine_candidate_2/Release/TimoxVirtualAsioEngine.exe` :
+  3 903 488 octets, UTC 2026-10-24 19:42:55, SHA-256
+  `C1F5F02356FACE98C41B393C2CA326B27B484DF1462B27FFD7039CCDE7ACB383`.
+- Ce candidat n'a pas été lancé ni installé. Le binaire canonique n'a pas été
+  remplacé ; trois processus moteur étaient actifs lors de la vérification.
+  Aucun test n'a été lancé dans cette étape.
+- Inventaire en lecture seule du poste le 2026-10-24 à 19:45:11 UTC : les
+  services `TimoxWindowsAudio` et `TimoxNativeAudioBroker` sont absents (1060).
+  Le SYS construit est non signé ; aucun service Windows audio ne peut donc
+  fournir le broker attendu actuellement.
+- L'engine canonique `build_codex_110/Release/TimoxVirtualAsioEngine.exe` est
+  toujours un artefact distinct du candidat : 1 257 472 octets, UTC
+  2026-10-24 16:02:19, SHA-256
+  `274A785C61BDBED6F9EEE2C901CE6780CC4088FF642BBFD364EFD1A5FA725E82`.
+  Le probe SCM de qualification est présent, non signé, SHA-256
+  `C5C80695F16C090BD5F1FF2A512B1243871FC635ADA744E2BBF07BAF1E98C2E0`.
+  L'inventaire n'a fait aucune installation, modification SCM, inscription de
+  certificat ou ouverture audio. Il ne prouve pas le fonctionnement du pilote.

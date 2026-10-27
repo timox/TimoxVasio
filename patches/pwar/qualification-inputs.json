@@ -24,6 +24,10 @@
     {
       "name": "0006-disable-network-logging-by-default.patch",
       "sha256": "D1CDFB7DF56A7FCD163047F3D0C231540E526D90590123ECA0555C1255B6C296"
+    },
+    {
+      "name": "0007-linux-guard-callback-input-and-quantum.patch",
+      "sha256": "4775060D9A3FB4F5244FB456D01AA6777838B3705FEE743131A1DF26FF5519FC"
     }
   ],
   "sdkCommon": [

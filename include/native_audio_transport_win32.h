@@ -25,4 +25,8 @@ public:
     virtual bool Finish(HANDLE device, OVERLAPPED& operation, bool wait,
         DWORD& bytes, DWORD& error) noexcept = 0;
 };
+// Production kernel-device transport. Construct only in the dedicated broker
+// service; the engine must use the authenticated broker adapter instead.
+std::unique_ptr<INativeAudioTransport> CreateNativeAudioDriverTransport();
+// Injectable direct-open adapter for isolated transport qualification only.
 std::unique_ptr<INativeAudioTransport> CreateDirectNativeAudioLabTransport(std::shared_ptr<INativeAudioWin32> api);

@@ -11,6 +11,9 @@ struct WasapiOpenConfig {
     WasapiStreamKind kind = WasapiStreamKind::Capture;
     std::wstring endpointId;
     std::optional<WasapiDefaultRole> defaultRole;
+    std::uint32_t processId = 0;
+    std::uint64_t processCreationTime = 0;
+    std::wstring processImagePath;
     std::int64_t bufferDuration100ns = 0; // 0 requests the shared engine default; maximum one second.
 };
 
@@ -54,9 +57,11 @@ HRESULT ValidateWasapiStreamFormat(const WasapiMixFormat& format, std::uint32_t 
 class IWasapiBackend {
 public:
     virtual ~IWasapiBackend() = default;
-    // Exactly one endpointId/defaultRole; endpoint loopback resolves RENDER.
-    // Process loopback is explicitly E_NOTIMPL. Existing open streams remain
-    // intact on a second Open (AUDCLNT_E_ALREADY_INITIALIZED).
+    // Device streams require exactly one endpointId/defaultRole; endpoint
+    // loopback resolves RENDER. Process loopback requires a PID, creation time
+    // and image path, verified before and after async activation. Start/read is
+    // forbidden when either identity check fails. A second Open preserves the
+    // existing stream (AUDCLNT_E_ALREADY_INITIALIZED).
     // Resolver failures map to E_FAIL because the enumerator returns bool;
     // OpenErrorDetail preserves its reason. Subsequent COM failures keep HRESULT.
     virtual HRESULT Open(const WasapiOpenConfig& config) noexcept = 0;

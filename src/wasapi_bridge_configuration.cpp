@@ -40,10 +40,17 @@ bool ValidateWasapiBridgeConfigurations(const std::vector<WasapiBridgeConfigurat
                     (c >= '0' && c <= '9') || c == '_' || c == '-';
             }) || !ids.insert(bridge.id).second) return fail("Invalid or duplicate WASAPI bridge ID");
         const auto& config = bridge.open;
-        if (config.kind != WasapiStreamKind::Capture && config.kind != WasapiStreamKind::Render &&
-            config.kind != WasapiStreamKind::EndpointLoopback) return fail("Unsupported WASAPI bridge kind");
-        if (config.endpointId.empty() == !config.defaultRole.has_value())
-            return fail("WASAPI bridge requires exactly one endpoint ID or default role");
+        if (config.kind == WasapiStreamKind::ProcessLoopback) {
+            std::string image;
+            if (!config.processId || !config.processCreationTime || !config.endpointId.empty() || config.defaultRole ||
+                !WasapiEndpointToUtf8(config.processImagePath, image) || image.size() > 32768)
+                return fail("Process loopback requires a valid process identity and no endpoint selector");
+        } else {
+            if (config.kind != WasapiStreamKind::Capture && config.kind != WasapiStreamKind::Render &&
+                config.kind != WasapiStreamKind::EndpointLoopback) return fail("Unsupported WASAPI bridge kind");
+            if (config.endpointId.empty() == !config.defaultRole.has_value())
+                return fail("WASAPI bridge requires exactly one endpoint ID or default role");
+        }
         if (config.defaultRole && *config.defaultRole != WasapiDefaultRole::Console &&
             *config.defaultRole != WasapiDefaultRole::Multimedia &&
             *config.defaultRole != WasapiDefaultRole::Communications) return fail("Invalid WASAPI default role");

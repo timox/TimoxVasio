@@ -2,8 +2,14 @@
 
 **Français** | [English](WASAPI_BRIDGE_SPEC.en.md)
 
-Statut : proposition de conception, non implémentée. Version cible : 1.3.
-Date : 21 octobre 2026.
+Statut au 25 octobre 2026 : les ponts WASAPI partagés (capture, rendu,
+loopback de périphérique et copie audio par processus) sont présents dans le
+moteur et l'API. La qualification du trajet complet sur une vraie application
+et une vraie sortie reste à faire. L'horloge WASAPI exclusive de phase 2 et
+l'endpoint virtuel Windows de phase 3 ne sont pas déclarés livrés. Cette
+spécification reste la conception cible ; voir le plan d'implémentation et
+`docs/API.md` pour l'état et le contrat actuels.
+Version cible : 1.3. Date de la conception : 21 octobre 2026.
 Plan d'implémentation pour agent codeur : [superpowers/plans/2026-10-21-wasapi-bridge.md](superpowers/plans/2026-10-21-wasapi-bridge.md).
 
 Ce document spécifie l'interface qui permet aux applications ASIO connectées
@@ -24,7 +30,7 @@ WASAPI comble cette séparation.
 |---|---|---|
 | Enregistrer ou traiter le son d'un navigateur dans un DAW | Capture loopback d'un périphérique de rendu Windows, ou d'un seul processus | Entrées virtuelles TimoxVasio d'une application ASIO |
 | Écouter la visioconférence sur les moniteurs de la carte ASIO | Capture loopback | Sorties de la carte ASIO physique |
-| Envoyer le mix d'un DAW vers une visioconférence | Sorties virtuelles TimoxVasio | Périphérique de rendu WASAPI (câble virtuel tiers ou, en phase 3, l'endpoint virtuel TimoxVasio) |
+| Envoyer le mix d'un DAW vers une visioconférence | Sorties virtuelles TimoxVasio | Endpoint virtuel TimoxVasio (phase 3, lorsqu'il sera qualifié) |
 | Utiliser le micro d'un casque USB sans pilote ASIO | Périphérique de capture WASAPI | Entrées virtuelles TimoxVasio |
 | Faire tourner TimoxVasio sur un PC sans carte ASIO | Périphérique WASAPI en mode exclusif comme horloge maître | Tout le graphe |
 
@@ -39,11 +45,11 @@ utilisable seule.
 | 2 | Pont WASAPI exclusif comme horloge maître. TimoxVasio fonctionne sans pilote ASIO physique. | WASAPI exclusif | Aucun |
 | 3 | Endpoint audio virtuel TimoxVasio visible par Windows comme périphérique de lecture et d'enregistrement. | Inchangée | Pilote KS/PortCls signé |
 
-Ce document spécifie entièrement les phases 1 et 2. La phase 3 est décrite
-dans ses grandes lignes à la section 12, car elle exige un pilote en mode
-noyau signé par Microsoft, qui est un projet distinct. En attendant, un câble
-audio virtuel tiers (VB-Cable, Virtual Audio Cable) vu comme périphérique
-WASAPI ordinaire couvre le besoin « ASIO vers application Windows ».
+Ce document décrit la conception cible des phases 1 et 2. L'implémentation
+actuelle de la phase 1 comprend la copie audio par processus, mais sa
+qualification réelle reste à faire. La phase 2 et l'endpoint de phase 3 sont
+des travaux distincts ; aucun périphérique audio virtuel tiers n'est requis
+dans l'architecture TimoxVasio.
 
 Hors périmètre : transport réseau, MIDI, audio spatial Windows, contrôle du
 volume par application dans le mélangeur Windows, formats compressés.
@@ -103,6 +109,30 @@ l'unique cadence du graphe en phase 1.
 
 ## 5. Concepts
 
+### Adhésion directe et copies audio
+
+Timox ne route que les flux qui entrent explicitement dans son graphe. Il y a
+deux façons différentes d'y faire entrer le son :
+
+| Chemin | Qui ouvre le flux ? | Ce que Timox maîtrise | Ce que cela ne prouve pas |
+|---|---|---|---|
+| Client ASIO TimoxVasio | L'application ouvre `TimoxVasio.dll` | Le moteur connaît le client, ses ports, ses buffers et les callbacks échangés avec le pilote | Que le client produit un signal audible à chaque bloc |
+| Pont WASAPI de périphérique | Le moteur Timox ouvre un périphérique Windows existant | Le flux du pont et sa copie dans le graphe | Que l'application source est un client Timox ou que son audio passe par ce pont |
+| Copie audio d'une application | Timox demande à Windows une copie partagée du processus choisi | Cette copie, liée à l'identité du processus sélectionné | Que l'application a choisi WASAPI plutôt que DirectSound, ni son flux ASIO ou exclusif |
+| Copie du mix d'un endpoint | Timox lit le mix partagé d'une sortie Windows | Le mix de cet endpoint | L'identité ou la séparation des applications présentes dans le mix |
+| Endpoint virtuel Timox (cible) | L'application sélectionne l'endpoint Timox dans Windows | Les flux qui ouvrent explicitement cet endpoint, sous réserve de la qualification d'isolation | Que l'endpoint et son attribution par session sont déjà qualifiés en production |
+
+Le terme **adhésion** désigne une connexion explicite à une interface Timox
+que Timox possède ou expose : le client ASIO ouvre le pilote Timox, ou une
+application choisit un endpoint virtuel Timox lorsqu'il sera disponible et
+qualifié. Une **copie audio** est différente : Timox ouvre lui-même une source
+WASAPI et ajoute le signal copié comme nouveau nœud du graphe. Cette copie
+ne crée pas de connexion directe au pilote ASIO et ne redirige pas la lecture
+d'origine. Le même processus peut aussi ouvrir TimoxVasio.dll et apparaître
+comme un client ASIO distinct. Dans l'interface, la source copiée doit donc
+rester distinguable de ce client, même s'ils proviennent du même processus
+Windows.
+
 ### 5.1 Pont (bridge)
 
 Un pont est l'objet de configuration qui relie un périphérique WASAPI au
@@ -112,18 +142,17 @@ sélecteur de périphérique et des paramètres de synchronisation.
 | Champ | Type | Valeurs | Rôle |
 |---|---|---|---|
 | `id` | chaîne | `[A-Za-z0-9_-]{1,64}` | Identifiant stable, réutilisé dans les identifiants d'endpoints |
-| `kind` | énumération | `capture`, `loopback`, `render` | Direction côté Windows |
-| `device` | sélecteur | voir 5.2 | Périphérique visé |
+| `kind` | énumération | `capture`, `render`, `endpointLoopback`, `processLoopback` | Direction et type de source Windows |
+| `endpointId` / `defaultRole` | sélecteur | voir 5.2 | Sélecteur des ponts de périphérique |
 | `shareMode` | énumération | `shared` (défaut), `exclusive` | Mode d'ouverture WASAPI |
 | `channels` | entier ou `null` | 1 à 64 | Canaux exposés ; `null` prend le format du périphérique |
 | `targetLatencyMs` | nombre ou `null` | 1 à 500 | Latence visée dans l'anneau ; `null` applique la valeur par défaut (6.3) |
-| `processFilter` | objet ou `null` | voir 5.3 | Loopback limité à un processus |
+| `processId`, `processCreationTime`, `processImagePath` | identité | voir 5.3 | Obligatoires pour `processLoopback`, absents des ponts de périphérique |
 | `clockRole` | énumération | `slave` (défaut), `master` | Phase 2 : `master` fait du pont l'horloge du moteur |
 | `enabled` | booléen | | Un pont désactivé conserve sa configuration et ses routes mais n'ouvre rien |
 
-Un pont `capture` ou `loopback` expose des endpoints de direction `input`
-(il fournit du signal au graphe). Un pont `render` expose des endpoints de
-direction `output`.
+Les ponts `capture`, `endpointLoopback` et `processLoopback` exposent des
+endpoints `input` au graphe. Un pont `render` expose des endpoints `output`.
 
 ### 5.2 Sélecteur de périphérique
 
@@ -146,21 +175,31 @@ leurs identifiants portent l'`id` du pont, pas celui du périphérique.
 
 ### 5.3 Loopback par processus
 
-Windows 10 2004 et suivants permettent de capturer la sortie d'un seul
-arbre de processus (`AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`). Le
-filtre reprend la logique des profils par exécutable de TimoxVasio :
+La liste Audio setup présente les processus ayant une session de lecture
+Windows active ; elle ne prétend pas savoir si l'application a appelé WASAPI,
+DirectSound ou une autre API passant par le mixeur partagé. L'utilisateur
+choisit explicitement une entrée et Timox crée une copie indépendante de son
+audio partagé, y compris celui de ses processus enfants. La lecture originale
+continue. La copie est liée au PID, à l'heure de création du processus et au
+chemin de son image. Ces trois valeurs sont vérifiées avant et après
+`ActivateAudioInterfaceAsync` ; aucun paquet n'est lu si l'identité change.
+La capture est en lecture seule et ne redirige pas le flux d'origine. Les
+sorties ASIO et WASAPI exclusives ne sont pas capturées. La fonction demande
+Windows 10 build 20348 ou ultérieur.
+
+La configuration courante utilise une identité explicite, sans sélecteur de
+périphérique :
 
 ```json
-{ "processName": "chrome.exe", "mode": "include" }
-{ "processId": 4321, "mode": "exclude" }
+{
+  "id": "browser-copy",
+  "kind": "processLoopback",
+  "processId": 4321,
+  "processCreationTime": "134000000000000000",
+  "processImagePath": "C:\\Program Files\\Browser\\browser.exe",
+  "enabled": true
+}
 ```
-
-Avec `processName`, le pont résout le processus au démarrage et à chaque
-changement de la liste des processus, comme `VasioClientManager` le fait pour
-les clients ASIO. Si plusieurs instances portent ce nom, le pont capture
-l'arbre de la plus ancienne et signale l'ambiguïté dans son état. Sur un
-Windows antérieur, le moteur refuse la configuration avec
-`WASAPI_PROCESS_LOOPBACK_UNSUPPORTED`.
 
 ### 5.4 Familles d'endpoints et règles de liaison
 
@@ -170,7 +209,7 @@ Le graphe gagne deux types d'extrémités.
 enum class RoutingEndpointType {
     PhysicalInput, PhysicalOutput,
     VirtualInput, VirtualOutput,
-    WasapiInput,   // pont capture ou loopback
+    WasapiInput,   // capture, loopback d'endpoint ou copie de processus
     WasapiOutput,  // pont render
 };
 ```
@@ -335,7 +374,7 @@ la moitié de la période du périphérique.
 
 Aucune dépendance tierce : `mmdeviceapi.h`, `audioclient.h`,
 `audiopolicy.h`, `avrt.lib`. L'activation par processus utilise
-`ActivateAudioInterfaceAsync` (`mmdeviceapi.h`, Windows 10 2004).
+`ActivateAudioInterfaceAsync` (`mmdeviceapi.h`, Windows 10 build 20348 ou ultérieur pour la capture par processus).
 
 ### 7.2 Interface C++ d'un pont
 
@@ -348,20 +387,20 @@ struct WasapiDeviceSelector {
     enum class Role { Console, Multimedia, Communications } role = Role::Console;
 };
 
-struct WasapiProcessFilter {
-    std::optional<std::wstring> processName;
-    std::optional<std::uint32_t> processId;
-    bool include = true;
+struct WasapiProcessIdentity {
+    std::uint32_t processId;
+    std::uint64_t processCreationTime;
+    std::wstring processImagePath;
 };
 
 struct WasapiBridgeConfiguration {
     std::string id;
-    enum class Kind { Capture, Loopback, Render } kind = Kind::Loopback;
-    WasapiDeviceSelector device;
+    enum class Kind { Capture, Render, EndpointLoopback, ProcessLoopback } kind = Kind::EndpointLoopback;
+    std::optional<WasapiDeviceSelector> device;
     bool exclusive = false;
     std::optional<std::uint32_t> channels;
     std::optional<double> targetLatencyMs;
-    std::optional<WasapiProcessFilter> processFilter;
+    std::optional<WasapiProcessIdentity> processIdentity;
     bool clockMaster = false;              // phase 2
     bool enabled = true;
 };
@@ -470,12 +509,11 @@ passe à `1.1`.
   "wasapiBridges": [
     {
       "id": "browser",
-      "kind": "loopback",
+      "kind": "endpointLoopback",
       "device": { "kind": "default", "flow": "render", "role": "console" },
       "shareMode": "shared",
       "channels": 2,
       "targetLatencyMs": 12,
-      "processFilter": { "processName": "chrome.exe", "mode": "include" },
       "clockRole": "slave",
       "enabled": true,
       "status": {
@@ -518,14 +556,14 @@ si le périphérique est inactif. `state` reprend les états MMDevice
     "sampleRate": 48000,
     "bufferFrames": 256,
     "wasapiBridges": [
-      { "id": "browser", "kind": "loopback",
+      { "id": "browser", "kind": "endpointLoopback",
         "device": { "kind": "default", "flow": "render", "role": "console" },
         "shareMode": "shared", "channels": 2, "targetLatencyMs": null,
-        "processFilter": null, "clockRole": "slave", "enabled": true },
+        "clockRole": "slave", "enabled": true },
       { "id": "teams-out", "kind": "render",
         "device": { "kind": "id", "id": "{0.0.0.00000000}.{cable-input-...}" },
         "shareMode": "shared", "channels": 2, "targetLatencyMs": 20,
-        "processFilter": null, "clockRole": "slave", "enabled": true }
+        "clockRole": "slave", "enabled": true }
     ],
     "routes": [
       { "id": "r1", "sourceEndpointId": "wasapi:browser:input:1",
@@ -551,7 +589,7 @@ Phase 2, sans carte ASIO :
     { "id": "usb-headset", "kind": "render",
       "device": { "kind": "id", "id": "{0.0.0.00000000}.{headset-...}" },
       "shareMode": "exclusive", "channels": 2, "targetLatencyMs": null,
-      "processFilter": null, "clockRole": "master", "enabled": true }
+      "clockRole": "master", "enabled": true }
   ],
   "routes": [ "..." ]
 }
@@ -563,9 +601,9 @@ Règles de validation, dans l'ordre :
 |---|---|
 | `id` de pont conforme, unique | `INVALID_BRIDGE` |
 | `kind`, `shareMode`, `clockRole`, `device` bien formés | `INVALID_BRIDGE` |
-| `kind: "loopback"` avec `flow: "capture"`, ou `clockRole: "master"` avec loopback ou `shared` | `INVALID_BRIDGE` |
+| `kind: "endpointLoopback"` avec un endpoint de capture, ou `clockRole: "master"` avec loopback ou `shared` | `INVALID_BRIDGE` |
 | Plusieurs ponts `master`, ou `master` avec `physicalDriverId` non nul, ou ni l'un ni l'autre alors que des routes existent | `INVALID_CONFIGURATION` |
-| `processFilter` sur un Windows antérieur à 10 2004 | `WASAPI_PROCESS_LOOPBACK_UNSUPPORTED` |
+| `processLoopback` sur une version Windows non prise en charge | Le pont reste indisponible avec une erreur visible ; aucune capture ne démarre |
 | Endpoint `wasapi:<id>:...` dont le pont n'est pas dans `wasapiBridges` | `UNKNOWN_BRIDGE` |
 | Canal au-delà de `channels` du pont | `UNKNOWN_ENDPOINT` |
 | Liaison hors du tableau 5.4 | `INVALID_ROUTE_DIRECTION` |
@@ -663,7 +701,7 @@ La règle d'interface d'`AGENTS.md` s'applique sans exception.
 | Fonction | Prérequis |
 |---|---|
 | Ponts partagés, loopback de périphérique, rendu, capture | Windows 10 1703 ou Windows 11 (`IAudioClient3` pour les petites périodes ; repli `IAudioClient` sur Windows 10 antérieur) |
-| Loopback par processus | Windows 10 2004 (build 19041) ou Windows 11 |
+| Loopback par processus | Windows 10 build 20348 ou ultérieur |
 | Mode exclusif | Autorisé dans les propriétés du périphérique Windows (« Autoriser les applications à prendre le contrôle exclusif ») |
 | Pont maître (phase 2) | Même prérequis que le mode exclusif ; aucun pilote ASIO physique sélectionné |
 
@@ -703,8 +741,10 @@ Sondes et vérifications manuelles sur machine Windows :
   exclusif à 48 kHz et 192 frames ; Renoise et Mixxx ouvrent TimoxVasio et
   se routent l'un vers l'autre et vers le casque.
 
-Critères d'acceptation de la phase 1 : les quatre premiers cas d'usage de la
-section 1 fonctionnent depuis Control et depuis un script WebSocket, les
+Critères d'acceptation de la phase 1 : les cas d'usage 1, 2 et 4 de la
+section 1 fonctionnent depuis Control et depuis un script WebSocket. Le cas 3
+attend l'endpoint virtuel TimoxVasio de phase 3 ; aucun câble tiers ne le
+remplace dans le périmètre produit. Les
 tests ci-dessus passent, les mesures de performance existantes ne montrent
 aucune augmentation du temps de callback au-delà du coût des copies
 d'anneau, et la documentation `API.md`, `ARCHITECTURE.md` et `FONCTIONS.md`
@@ -721,8 +761,9 @@ moteur lit et écrit comme n'importe quel anneau, avec l'horloge du moteur
 comme référence, ce qui supprime la dérive pour ce pont. Les identifiants
 d'endpoints, l'API et l'interface de ce document s'appliquent sans
 changement ; seul le sélecteur gagne `{ "kind": "virtual" }`. Cette phase
-dépend d'une décision sur le coût de signature et sur l'installateur, et
-n'est pas nécessaire aux phases 1 et 2.
+dépend de l'implémentation, de la qualification et de la voie de signature et
+d'installation du pilote ; elle reste nécessaire pour rendre TimoxVasio
+directement visible comme périphérique Windows.
 
 ## 13. Décisions prises et questions ouvertes
 
@@ -737,14 +778,19 @@ Décisions :
 - WASAPI vers WASAPI est refusé en phase 1.
 - Les ponts absents de la requête sont conservés (8.3).
 
-Questions ouvertes, à trancher avant l'implémentation :
+Décision prise depuis la rédaction de cette conception :
 
-1. Faut-il exposer l'inventaire des sessions audio Windows
-   (`IAudioSessionEnumerator`) pour peupler la liste des processus du filtre
-   loopback, ou laisser la saisie libre du nom d'exécutable ?
-2. Faut-il autoriser `targetLatencyMs` en dessous d'une période WASAPI, avec
+1. L'inventaire présente les sessions audio Windows actives par processus ;
+   la sélection crée explicitement une copie loopback liée au PID, à l'heure
+   de création et au chemin du processus. Il ne prétend pas identifier l'API
+   utilisée par l'application. Voir
+   [le plan process-loopback](superpowers/plans/2026-10-25-wasapi-process-loopback.md).
+
+Questions de conception encore ouvertes :
+
+1. Faut-il autoriser `targetLatencyMs` en dessous d'une période WASAPI, avec
    le risque d'underruns documenté, ou borner à une période ?
-3. Faut-il un gain par pont en plus du gain par route, pour compenser le
+2. Faut-il un gain par pont en plus du gain par route, pour compenser le
    volume du mélangeur Windows en loopback ?
 
 ## 14. Références WASAPI

@@ -45,9 +45,7 @@ flowchart LR
 
 La branche virtuelle cible utilise notre pilote `TimoxWindowsAudio.sys` et un transport privé vers le moteur. Le backend reçoit les données du rendu Windows et fournit au pilote celles de la capture Windows. Il ne tente pas d'écrire dans un microphone via WASAPI. Ce transport est distinct des ponts WASAPI vers les périphériques existants.
 
-**Des câbles virtuels tiers permettent déjà de tester le graphe.** Dans ce cas, le pont lit la capture d'un câble pour recevoir le son d'une application, et écrit le rendu d'un autre câble pour alimenter un microphone virtuel. Notre pilote natif supprime ce détour. Son prototype et son transport privé se compilent, mais leur chargement et leurs échanges réels restent à qualifier sur une cible de test ; le backend moteur est en développement. Installation, signature et distribution restent des lots distincts. Voir la [conception du pilote natif](superpowers/specs/2026-10-22-native-windows-audio-driver.md).
-
-Le moteur n'a pas besoin de ce nouveau pilote pour utiliser un microphone USB, des haut-parleurs ou un câble virtuel déjà présents. Il en a besoin pour proposer **ses propres** périphériques Windows aux autres applications.
+Le pont de copie audio par processus (*process loopback*) peut créer une nouvelle source à partir de l'audio partagé d'une application Windows. Pour envoyer le son du graphe vers un microphone sélectionnable dans une autre application Windows, Timox doit fournir son propre endpoint d'enregistrement virtuel. Le prototype du pilote natif et son transport privé se compilent, mais leur chargement et leurs échanges réels restent à qualifier sur une cible de test ; le backend moteur est en développement. Installation, signature et distribution restent des lots distincts. Voir la [conception du pilote natif](superpowers/specs/2026-10-22-native-windows-audio-driver.md).
 
 ### Où se placent FlexASIO et ASIO2WASAPI ?
 
@@ -64,17 +62,15 @@ Ils dépendent du point de vue :
 | « Sortie audio virtuelle » | L'application **écrit** son son vers cette sortie. | Une **source** qui entre dans le graphe. |
 | « Microphone virtuel » | L'application **lit** le son de ce microphone. | Une **destination** alimentée par le graphe. |
 
-Le **loopback** est encore autre chose : il permet de capturer le son joué sur une sortie Windows. Il ne crée ni sortie ni microphone virtuel. Le loopback d'un endpoint partagé peut contenir plusieurs applications mélangées ; une capture par processus est une fonction distincte. [Loopback Microsoft](https://learn.microsoft.com/en-gb/windows/win32/coreaudio/loopback-recording).
+Le **loopback** copie le son partagé joué sur une sortie Windows vers une nouvelle source du graphe. Il ne crée ni sortie ni microphone virtuel. Le loopback d'un endpoint peut contenir plusieurs applications mélangées ; la copie par processus produit une source distincte pour le processus choisi et ses enfants. [Loopback Microsoft](https://learn.microsoft.com/en-gb/windows/win32/coreaudio/loopback-recording).
 
 ## Trois usages concrets
 
-**Envoyer un navigateur vers un logiciel ASIO :** navigateur → sortie d'un câble virtuel → capture WASAPI du câble → moteur → TimoxVasio → logiciel ASIO. Autre possibilité : capturer par loopback une sortie Windows, avec le risque de récupérer aussi les autres sons de cette sortie.
+**Copier l'audio d'un navigateur dans un logiciel ASIO :** Firefox continue sa lecture Windows habituelle ; Timox crée une source indépendante à partir d'une copie de son audio partagé → graphe → TimoxVasio → logiciel ASIO. Aucun changement de sortie Windows n'est nécessaire. La copie couvre le processus et ses enfants ; la renvoyer vers la sortie originale peut faire entendre le son deux fois.
 
-**Envoyer un logiciel ASIO vers une application de visioconférence :** logiciel ASIO → TimoxVasio → moteur → rendu WASAPI vers le câble virtuel → microphone du câble choisi dans l'application de visioconférence.
+**Envoyer un logiciel ASIO vers une application de visioconférence :** logiciel ASIO → TimoxVasio → moteur → endpoint d'enregistrement virtuel Timox → microphone Timox choisi dans l'application de visioconférence. L'endpoint d'enregistrement natif reste à livrer.
 
 **Relier deux logiciels ASIO sans carte ASIO physique :** application A → TimoxVasio → moteur cadencé par l'horloge logicielle → TimoxVasio → application B. Aucun pont WASAPI n'est nécessaire sur ce trajet.
-
-Avec notre futur pilote Windows, ses périphériques remplaceront ceux du câble tiers dans les deux premiers exemples.
 
 ## Ce qu'un pont doit réellement résoudre
 
@@ -153,8 +149,9 @@ En cas de capture refusée, vérifier dans Windows l'accès au microphone pour l
 | Ports WASAPI dans le runtime | Tests de transfert, y compris avec le transport virtuel, réussis. |
 | Worker adaptatif et persistance des ponts | Implémentés ; qualification matérielle en cours, notamment du préremplissage et de la dérive. |
 | Activation Control/API et reconnexion | Implémentées ; GUI vérifiée visuellement avec simulation. Un premier trajet réel ASIO→WASAPI→loopback→ASIO détecte le signal attendu. Mesures prolongées et parcours complet Electron à terminer. |
-| Notre pilote virtuel Windows | Conception et validation du protocole initial disponibles ; aucun endpoint ou pilote noyau encore livré. Câble tiers pour les premiers usages. |
-| Exclusif, maître WASAPI matériel, loopback par processus | Travaux ultérieurs non livrés dans cette tranche. |
+| Notre pilote virtuel Windows | Conception et validation du protocole initial disponibles ; aucun endpoint ou pilote noyau encore livré. |
+| Copie audio par processus (process loopback) | Implémentée dans cette branche ; crée une source indépendante à partir du son partagé du processus et de ses enfants, sans remplacer la lecture originale. Qualification réelle complète en attente. |
+| Exclusif et maître WASAPI matériel | Travaux ultérieurs non livrés dans cette tranche. |
 
 L'exigence reste une GUI, une API et des performances au moins au niveau de TimoxVasio. **Cette parité n'est pas encore démontrée.** Le chemin ASIO sans pont doit être comparé séparément : il ne doit pas payer le traitement SRC des ponts inutilisés.
 

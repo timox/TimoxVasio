@@ -7,6 +7,7 @@
   "scripts": {
     "react-start": "node scripts/embed-openapi.js && react-scripts start",
     "react-build": "node scripts/embed-openapi.js && react-scripts build",
+    "react-build:tvsd": "node scripts/build-ui.js tvsd",
     "react-test": "node scripts/embed-openapi.js && react-scripts test",
     "contract-test": "node --test src/api-contract.test.cjs",
     "react-eject": "react-scripts eject",
@@ -17,6 +18,8 @@
     "release-preflight": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-release-artifacts.ps1 -Stage PrePackage",
     "release-postflight": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-release-artifacts.ps1 -Stage PostPackage",
     "electron-build": "npm run react-build && npm run release-preflight && electron-builder && npm run release-postflight",
+    "tvsd-build": "npm run react-build:tvsd && powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-tvsd-build.ps1 -Stage PrePackage && electron-builder --config electron-builder.tvsd.json && powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-tvsd-build.ps1 -Stage PostPackage",
+    "dist:tvsd": "npm run tvsd-build",
     "pack": "electron-builder --dir",
     "dist": "npm run electron-build"
   },

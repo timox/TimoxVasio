@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstring>
 #include <iostream>
+#include <cmath>
 
 // Only the registry/activation adapter is replaced. PhysicalAsioHost and its
 // sample conversions below are the production sources, and IASIO is the DLL.
@@ -39,10 +40,33 @@ struct CallbackState {
     bool selected[2]{true,true};
     std::atomic<unsigned> calls{0};
     std::atomic<bool> mismatch{false};
+    bool live = false;
+    float stimulusGain = 1.0f;
+    std::atomic<unsigned> signalBlocks{0};
+    std::atomic<bool> holdFirst{false}, enteredFirst{false};
 };
 void Process(const float* const* inputs, float* const* outputs, std::uint32_t frames, void* context) noexcept {
     auto& state = *static_cast<CallbackState*>(context);
-    const float scale = static_cast<float>(state.calls.load() + 1);
+    if(state.holdFirst.load() && state.calls.load()==0) {
+        state.enteredFirst=true;
+        const auto deadline=GetTickCount64()+1000;
+        while(state.holdFirst.load() && GetTickCount64()<deadline) Sleep(1);
+    }
+    if (state.live) {
+        bool signal = false;
+        if (frames != 128 || !inputs[0] || !outputs[0] || !outputs[1]) { state.mismatch=true; return; }
+        for (unsigned f=0; f<frames; ++f) {
+            const float sample=inputs[0][f];
+            if (!std::isfinite(sample) || std::abs(sample)>1.0f) { state.mismatch=true; outputs[0][f]=outputs[1][f]=0; continue; }
+            if (std::abs(sample)>0.001f) signal=true;
+            outputs[0][f]=sample*0.5f;
+            outputs[1][f]=-sample*0.5f;
+        }
+        if(signal) ++state.signalBlocks;
+        ++state.calls;
+        return;
+    }
+    const float scale = static_cast<float>(state.calls.load() + 1) * state.stimulusGain;
     if (frames != 128) { state.mismatch = true; return; }
     for (unsigned channel = 0; channel < 2; ++channel) {
         if (!!inputs[channel] != state.selected[channel] || !!outputs[channel] != state.selected[channel]) {
@@ -98,10 +122,13 @@ int main(int argc, char** argv) {
     Socket receiver; CHECK(receiver.Bind(18321));
     CallbackState state;
     const std::string mode = argv[1];
+    if (mode == "burst") state.stimulusGain = 1.0f / 16.0f;
     std::vector<std::uint32_t> channels{0,1};
     if (mode == "right") { channels = {1}; state.selected[0] = false; }
     else if (mode == "clock") { channels.clear(); state.selected[0] = state.selected[1] = false; }
-    else CHECK(mode == "stereo");
+    else CHECK(mode == "stereo" || mode == "sequence64" || mode == "live" || mode == "burst");
+    state.live = mode == "live";
+    state.holdFirst = mode == "burst";
     PhysicalAsioHost host;
     CHECK(host.enumerate().size() == 1);
     PhysicalAsioCapabilities capabilities;
@@ -114,14 +141,41 @@ int main(int argc, char** argv) {
         CHECK(error.find("UDP listener on port 8321") != std::string::npos);
     }
     CHECK(host.start(128, channels, channels, Process, &state, error));
+    if (state.live) {
+        std::cout << "LIVE_READY: 60 seconds, mono input returned as L=0.5*x R=-0.5*x\n" << std::flush;
+        for(unsigned second=0;second<60;++second) {
+            Sleep(1000);
+            if(second%5==4) std::cout << "callbacks=" << state.calls << " signal_blocks=" << state.signalBlocks << " invalid=" << state.mismatch << '\n' << std::flush;
+        }
+        host.stop(); host.close();
+        CHECK(state.calls>=100 && state.signalBlocks>=100 && !state.mismatch);
+        return 0;
+    }
     sockaddr_in destination{}; destination.sin_family = AF_INET;
     destination.sin_addr.s_addr = htonl(INADDR_LOOPBACK); destination.sin_port = htons(8321);
-    for (unsigned pass = 0; pass < 2; ++pass) {
+    const unsigned passes=mode=="burst"?16:2;
+    if(mode=="burst") {
+        for(unsigned pass=0;pass<passes;++pass) {
+            pwar_packet_t packet{}; packet.n_samples=128; packet.num_packets=1; packet.seq=100+pass;
+            for(unsigned c=0;c<2;++c)
+                for(unsigned f=0;f<128;++f) packet.samples[c][f]=(c?-.25f:.125f)*(pass+1)*state.stimulusGain;
+            CHECK(sendto(receiver.value,reinterpret_cast<const char*>(&packet),sizeof(packet),0,
+                reinterpret_cast<const sockaddr*>(&destination),sizeof(destination))==sizeof(packet));
+            if(pass==0) {
+                const auto deadline=GetTickCount64()+500;
+                while(!state.enteredFirst.load() && GetTickCount64()<deadline) Sleep(1);
+                CHECK(state.enteredFirst.load());
+            }
+        }
+        state.holdFirst=false;
+    }
+    for (unsigned pass = 0; pass < passes; ++pass) {
         pwar_packet_t packet{}; packet.n_samples = 128; packet.num_packets = 1; packet.seq = 100 + pass;
+        if (mode == "sequence64") packet.seq = uint64_t{UINT32_MAX} + pass;
         for (unsigned channel = 0; channel < 2; ++channel)
             for (unsigned frame = 0; frame < 128; ++frame)
-                packet.samples[channel][frame] = (channel ? -0.25f : 0.125f) * (pass + 1);
-        CHECK(sendto(receiver.value, reinterpret_cast<const char*>(&packet), sizeof(packet), 0,
+                packet.samples[channel][frame] = (channel ? -0.25f : 0.125f) * (pass + 1) * state.stimulusGain;
+        if(mode!="burst") CHECK(sendto(receiver.value, reinterpret_cast<const char*>(&packet), sizeof(packet), 0,
             reinterpret_cast<const sockaddr*>(&destination), sizeof(destination)) == sizeof(packet));
         pwar_packet_t response{};
         int bytes = 0;
@@ -130,12 +184,12 @@ int main(int argc, char** argv) {
             if (bytes != sizeof(pwar_latency_info_t)) break;
         }
         CHECK(bytes == sizeof(response) && response.seq == packet.seq && response.n_samples == 128);
-        CHECK(state.calls == pass + 1 && !state.mismatch);
+        CHECK(state.calls >= pass + 1 && !state.mismatch);
         for (unsigned channel = 0; channel < 2; ++channel)
             for (unsigned frame = 0; frame < 128; ++frame)
                 CHECK(response.samples[channel][frame] == (state.selected[channel] ? packet.samples[channel][frame] * 2 : 0));
     }
-    CHECK(host.consumeTimingCounters().callbacks == 2);
+    CHECK(host.consumeTimingCounters().callbacks == passes);
     host.stop();
     host.close();
     Socket released; CHECK(released.Bind(8321));

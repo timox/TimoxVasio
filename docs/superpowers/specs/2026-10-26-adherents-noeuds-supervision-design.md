@@ -72,6 +72,11 @@ Les connexions relient des ports de nœuds. Leur identité, gain et mute sont
 conservés dans le graphe organisé par le moteur. Une connexion configurée
 peut exister alors que son nœud ou son adhérent n'est pas actif.
 
+**Les liens sont gérés par le moteur, pas par les adhérents.** L'adhérent
+possède ses nœuds ; le moteur établit, maintient et supprime les liens entre
+leurs ports. Un adhérent peut demander une connexion et consulter les liens
+qui le concernent, sans en devenir propriétaire.
+
 ### Moteur
 
 Le moteur fixe la cadence commune, organise le graphe et gère les ressources
@@ -136,7 +141,17 @@ fournisse une réserve réelle.
 
 ### Éjection
 
-Quand un adhérent ne tient plus les conditions de participation et qu'aucune
+**Décision du 27 octobre : aucune éjection automatique avant de disposer
+d'une supervision capable d'identifier et de localiser un problème à partir
+de mesures fiables.** Le travail actuel porte sur l'observation et le
+diagnostic : disponibilité, provenance, fenêtres et fraîcheur des indicateurs.
+Une mesure inconnue ne suffit pas à déclarer un adhérent défaillant.
+
+La politique de réaction sera définie après validation de cette capacité de
+supervision. Le principe cible ci-dessous ne constitue donc pas une consigne
+d'implémenter dès maintenant l'éjection.
+
+À terme, quand un adhérent ne tient plus les conditions de participation et qu'aucune
 compensation effective ne les préserve, le moteur met fin à la participation
 défaillante. Cela signifie arrêter/déconnecter l'accès au moteur, **pas tuer
 le processus, désinstaller un pilote ou effacer les routes sauvegardées**.
@@ -192,6 +207,13 @@ Pour chaque situation, elle doit permettre de répondre :
 5. Quelle décision est prise, sur quelle preuve, avec quel résultat ?
 
 ### Mesures et provenance
+
+Le moteur produit et expose les observations. Un vumètre représente une
+mesure de ses canaux, référencée au nœud/port concerné ; une mesure de lien
+référence le lien concerné. Ces valeurs ne sont pas dupliquées comme propriétés
+indépendantes des adhérents. Le lissage visuel reste une présentation GUI.
+Une animation déduite du niveau source et du gain est une estimation, pas une
+mesure du signal effectivement transmis sur le lien.
 
 Une observation doit identifier sa source, son périmètre (moteur, adhérent,
 nœud, port ou connexion), sa fenêtre de mesure, son unité, sa fraîcheur et sa

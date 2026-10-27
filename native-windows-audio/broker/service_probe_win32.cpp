@@ -17,10 +17,14 @@ SERVICE_STATUS_HANDLE statusHandle=nullptr;
 struct Handle{HANDLE value=INVALID_HANDLE_VALUE;~Handle(){if(value!=INVALID_HANDLE_VALUE)CloseHandle(value);}};
 struct Security{PSECURITY_DESCRIPTOR value=nullptr;~Security(){if(value)LocalFree(value);}};
 enum Stage:DWORD {Passed=0,TokenRead=1,WrongIdentity=2,Root=3,Publish=4,Read=5,Owner=6,Compare=7,Cancelled=8,Random=9,StatusReport=10};
-void Event(DWORD stage,DWORD error) noexcept {
+void Event(DWORD stage,DWORD error,const BrokerServiceIdentity* identity=nullptr,DWORD tokenError=ERROR_SUCCESS) noexcept {
     const auto log=RegisterEventSourceW(nullptr,L"TimoxNativeAudioServiceProbe");
     if(!log)return;
-    wchar_t text[96]{};swprintf_s(text,L"Publication qualification: stage=%lu WindowsError=%lu",stage,error);
+    const auto attributes=identity?identity->serviceGroupAttributes:0u;
+    const auto eligible=identity&&IsBrokerServiceIdentity(*identity);
+    wchar_t text[192]{};
+    swprintf_s(text,L"Publication qualification: stage=%lu WindowsError=%lu tokenError=%lu serviceGroupAttributes=0x%08lX eligible=%u",
+        stage,error,tokenError,attributes,eligible?1u:0u);
     const wchar_t* strings[]={text};
     ReportEventW(log,stage?EVENTLOG_ERROR_TYPE:EVENTLOG_INFORMATION_TYPE,0,1,nullptr,1,0,strings,nullptr);
     DeregisterEventSource(log);
@@ -51,9 +55,11 @@ void WINAPI ServiceMain(DWORD,wchar_t**) noexcept {
     const auto pending=Status(SERVICE_START_PENDING);
     if(pending){Event(StatusReport,pending);resultCode.store(StatusReport);return;}
     DWORD stage=Passed,error=ERROR_SUCCESS;
+    BrokerServiceIdentity identity{};
+    DWORD tokenError=ERROR_SUCCESS;
     {
-        BrokerServiceIdentity identity;
-        error=ObserveBrokerServiceIdentity(identity);
+        tokenError=ObserveBrokerServiceIdentity(identity);
+        error=tokenError;
         if(error)stage=TokenRead;
         else if(!IsBrokerServiceIdentity(identity)){stage=WrongIdentity;error=ERROR_ACCESS_DENIED;}
         Handle root;
@@ -75,9 +81,9 @@ void WINAPI ServiceMain(DWORD,wchar_t**) noexcept {
             if(!stage&&cancelled.load()){stage=Cancelled;error=ERROR_CANCELLED;}
         }
     }
-    Event(stage,error);resultCode.store(stage);
+    Event(stage,error,&identity,tokenError);resultCode.store(stage);
     const auto stopped=Status(SERVICE_STOPPED,stage);
-    if(stopped){Event(StatusReport,stopped);resultCode.store(StatusReport);}
+    if(stopped){Event(StatusReport,stopped,&identity,tokenError);resultCode.store(StatusReport);}
 }
 int Inspect() {
     BrokerServiceIdentity identity;const auto token=ObserveBrokerServiceIdentity(identity);

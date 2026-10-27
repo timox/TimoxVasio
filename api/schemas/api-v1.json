@@ -31,11 +31,13 @@
     },
     "wasapiBridgeConfiguration": {
       "type":"object", "additionalProperties":false, "required":["id","kind"],
-      "oneOf":[{"required":["endpointId"],"not":{"required":["defaultRole"]}},{"required":["defaultRole"],"not":{"required":["endpointId"]}}],
+      "oneOf":[{"required":["endpointId"],"not":{"anyOf":[{"required":["defaultRole"]},{"required":["processId"]},{"required":["processCreationTime"]},{"required":["processImagePath"]}]}},{"required":["defaultRole"],"not":{"anyOf":[{"required":["endpointId"]},{"required":["processId"]},{"required":["processCreationTime"]},{"required":["processImagePath"]}]}},{"required":["processId","processCreationTime","processImagePath"],"not":{"anyOf":[{"required":["endpointId"]},{"required":["defaultRole"]}]}}],
+      "allOf":[{"if":{"properties":{"kind":{"enum":["capture","render","endpointLoopback"]}},"required":["kind"]},"then":{"not":{"anyOf":[{"required":["processId"]},{"required":["processCreationTime"]},{"required":["processImagePath"]}]}}},{"if":{"properties":{"kind":{"const":"processLoopback"}},"required":["kind"]},"then":{"required":["processId","processCreationTime","processImagePath"],"not":{"anyOf":[{"required":["endpointId"]},{"required":["defaultRole"]}]}}}],
       "properties": {
         "id":{"type":"string","pattern":"^[A-Za-z0-9_-]+$","maxLength":128},
-        "enabled":{"type":"boolean","default":true}, "kind":{"enum":["capture","render","endpointLoopback"]},
+        "enabled":{"type":"boolean","default":true}, "kind":{"enum":["capture","render","endpointLoopback","processLoopback"],"description":"A processLoopback bridge creates an app audio copy owned by Timox and adds it as a separate graph source; it does not create a Timox ASIO client connection or redirect playback. The same process may also appear separately as an ASIO client if it opens the Timox virtual driver."},
         "endpointId":{"type":"string","minLength":1,"maxLength":32768,"pattern":"^[^\\u0000]+$"},
+        "processId":{"type":"integer","minimum":1,"maximum":4294967295,"description":"Process whose shared Windows audio Timox copies into a separate graph source. This does not establish that the process opened the Timox ASIO driver."},"processCreationTime":{"type":"string","pattern":"^[0-9]{1,20}$","description":"Decimal process creation timestamp paired with processId to distinguish this process instance from another process reusing the PID."},"processImagePath":{"type":"string","minLength":1,"maxLength":32768,"description":"Executable image path paired with processId and processCreationTime to validate the process selected for copying; it does not identify the process's audio API."},
         "defaultRole":{"enum":["console","multimedia","communications"]},
         "bufferDuration100ns":{"type":"integer","minimum":0,"maximum":10000000,"default":0}
       }
@@ -44,7 +46,7 @@
     "wasapiDevice": {
       "type":"object","additionalProperties":false,"required":["id","name","flow","state","mixFormat","error"],
       "properties": {
-        "id":{"type":"string","minLength":1},"name":{"type":"string"},"flow":{"enum":["capture","render"]},
+        "id":{"type":"string","minLength":1},"name":{"type":"string"},"containerId":{"type":["string","null"],"description":"Windows hardware container ID used to group related capture and render endpoints; null if unavailable."},"flow":{"enum":["capture","render"]},
         "state":{"type":"integer","minimum":0,"description":"Windows DEVICE_STATE_* bitmask."},
         "mixFormat":{"oneOf":[{"$ref":"#/definitions/wasapiFormat"},{"type":"null"}]},
         "error":{"type":["string","null"]}
@@ -54,11 +56,19 @@
       "type":"object","additionalProperties":false,"required":["wasapiDevices","wasapiInventoryError"],
       "properties":{"wasapiDevices":{"type":"array","items":{"$ref":"#/definitions/wasapiDevice"}},"wasapiInventoryError":{"type":["string","null"]}}
     },
+    "windowsAudioApplication": {
+      "type":"object","description":"A process with an active render session in the Windows shared audio mixer. This does not indicate whether the process opened TimoxVasio ASIO or which Windows audio API it selected.","additionalProperties":false,"required":["processId","creationTime","imagePath","displayName","renderEndpoints"],
+      "properties":{"processId":{"type":"integer","minimum":1,"description":"PID of the process that owns the shared render session; use with creationTime to distinguish process instances."},"creationTime":{"type":"string","pattern":"^[0-9]+$","description":"Process creation time as a decimal string; paired with processId to identify this process instance."},"imagePath":{"type":"string","description":"Executable image path for the process owning the shared render session."},"displayName":{"type":"string","description":"Windows audio-session display name; it may differ from the executable name."},"renderEndpoints":{"type":"array","description":"Windows output endpoints associated with the shared render session; this does not identify the audio API used by the process.","items":{"type":"string"}}}
+    },
+    "windowsAudioApplicationInventory": {
+      "type":"object","additionalProperties":false,"required":["windowsAudioApplications","windowsAudioApplicationInventoryError"],
+      "properties":{"windowsAudioApplications":{"type":"array","items":{"$ref":"#/definitions/windowsAudioApplication"}},"windowsAudioApplicationInventoryError":{"type":["string","null"],"description":"Null when enumeration succeeded; otherwise contains the inventory error. An empty applications array with an error does not mean that no sessions exist."}}
+    },
     "wasapiStreamInfo": {
       "type":"object","additionalProperties":false,
       "required":["endpointId","kind","format","bufferFrames","streamLatency100ns","defaultPeriod100ns","minimumPeriod100ns"],
       "properties": {
-        "endpointId":{"type":"string"},"kind":{"enum":["capture","render","endpointLoopback"]},
+        "endpointId":{"type":"string"},"kind":{"enum":["capture","render","endpointLoopback","processLoopback"]},
         "format":{"$ref":"#/definitions/wasapiFormat"},"bufferFrames":{"type":"integer","minimum":1},
         "streamLatency100ns":{"type":"integer","minimum":0},"defaultPeriod100ns":{"type":"integer","minimum":0},
         "minimumPeriod100ns":{"type":"integer","minimum":0}
@@ -153,16 +163,34 @@
         "bufferFrames": { "type": ["integer", "null"], "minimum": 1 },
         "clients": {
           "type": "array",
+          "description": "Processes directly attached through TimoxVasio ASIO. A client is listed even when it has not allocated any channels yet; empty inputChannels and outputChannels arrays mean no routable ASIO ports are allocated, not that no client is attached.",
           "items": {
             "type": "object",
             "required": ["pid", "processName", "inputChannels", "outputChannels"],
             "properties": {
-              "pid": { "type": "integer", "minimum": 1 },
-              "processName": { "type": "string" },
+              "pid": { "type": "integer", "minimum": 1, "description": "Process ID of the application that opened the TimoxVasio ASIO driver." },
+              "processName": { "type": "string", "description": "Executable name of the direct ASIO client process." },
               "processCpuPercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100, "description": "Windows process CPU averaged across all active logical processors. Null until two process-time samples are available." },
               "processCpuWindowMs": { "type": ["integer", "null"], "minimum": 1, "description": "Elapsed wall time between process CPU samples. Null until the first measurement." },
-              "inputChannels": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 256 } },
-              "outputChannels": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 256 } }
+              "inputChannels": { "type": "array", "uniqueItems": true, "description": "ASIO input channels allocated by createBuffers; these are destinations for graph routes. May be empty while the ASIO client remains attached.", "items": { "type": "integer", "minimum": 1, "maximum": 256 } },
+              "outputChannels": { "type": "array", "uniqueItems": true, "description": "ASIO output channels allocated by createBuffers; these are sources for graph routes. May be empty while the ASIO client remains attached.", "items": { "type": "integer", "minimum": 1, "maximum": 256 } },
+              "activity": {
+                "type": "object",
+                "description": "Read-only ASIO client status. Callback and exchange counters are since the most recent client start. An exchanged block may contain silence; these counters do not detect audible signal.",
+                "required": ["available", "stable", "state", "callbackCount", "successfulExchangeCount", "exchangedFrames", "lastCallbackAgeMs", "requestedSampleRate", "requestedBufferFrames"],
+                "properties": {
+                  "available": { "type": "boolean", "description": "Whether the driver's shared client-status record could be read." },
+                  "stable": { "type": "boolean", "description": "Whether the callback counters came from one coherent snapshot." },
+                  "state": { "enum": ["initialized", "buffers-ready", "running", "stopped", "detached", "unknown", null] },
+                  "callbackCount": { "type": ["integer", "null"], "minimum": 0, "description": "ASIO callbacks observed by this client since start." },
+                  "successfulExchangeCount": { "type": ["integer", "null"], "minimum": 0, "description": "Callbacks that exchanged a complete block with the Timox engine." },
+                  "exchangedFrames": { "type": ["integer", "null"], "minimum": 0 },
+                  "lastCallbackAgeMs": { "type": ["integer", "null"], "minimum": 0, "description": "Age of the most recent callback at this API read; null if none was observed or timing is unavailable." },
+                  "requestedSampleRate": { "type": ["integer", "null"], "minimum": 1 },
+                  "requestedBufferFrames": { "type": ["integer", "null"], "minimum": 1 }
+                },
+                "additionalProperties": false
+              }
             },
             "additionalProperties": false
           }
@@ -260,6 +288,7 @@
       "properties": {
         "apiVersion": { "enum": ["1.0", "1.1"] },
         "configurationRevision": { "type": "integer", "minimum": 0 },
+        "capabilities": { "type": "object", "properties": { "wasapiProcessLoopback": { "type": "boolean", "description": "Whether the engine can create a separate graph source from one Windows process tree's shared audio." } }, "additionalProperties": false },
         "engine": { "$ref": "#/definitions/engine" },
         "physicalDrivers": { "type": "array", "items": { "$ref": "#/definitions/physicalDriver" } },
         "virtualDrivers": { "type": "array", "items": { "$ref": "#/definitions/virtualDriver" } },
@@ -618,10 +647,12 @@
             "event": { "const": "audio.meter" },
             "payload": {
               "type": "object",
-              "required": ["endpointId", "peakDbfs", "underruns", "overruns"],
+              "required": ["endpointId", "peakDbfs", "shortTermLufs", "lufsWindowSeconds", "underruns", "overruns"],
               "properties": {
                 "endpointId": { "type": "string", "minLength": 1 },
                 "peakDbfs": { "type": "number", "minimum": -120, "maximum": 0 },
+                "shortTermLufs": { "type": ["number", "null"], "minimum": -120 },
+                "lufsWindowSeconds": { "const": 3 },
                 "underruns": { "type": "integer", "minimum": 0 },
                 "overruns": { "type": "integer", "minimum": 0 }
               },

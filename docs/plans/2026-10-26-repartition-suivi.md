@@ -1,5 +1,13 @@
 # Suivi — plan : docs/plans/2026-10-26-repartition-depots.md
 
+## Évolution après extraction
+
+La projection métier/API et les corrections GUI ont commencé après l'extraction
+décrite ci-dessous. Voir le [suivi GUI/API](2026-10-26-gui-supervision-suivi.md)
+et [les livrables par dépôt](2026-10-26-livrables-par-depot.md) pour l'état courant.
+Les résultats d'extraction restent des preuves historiques, pas la validation
+automatique des changements suivants.
+
 ## Autorisation et méthode
 
 L'utilisateur a confié au parent la gestion des sous-agents et la bonne

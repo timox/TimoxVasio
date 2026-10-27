@@ -24,6 +24,9 @@ un véritable pair Linux, la stabilité sur durée et les performances restent
    le brouillon et appliquer la configuration. Si PWAR était déjà ouvert,
    utiliser **Reopen PWAR driver** après enregistrement des réglages.
 
+PWAR transporte les canaux de cet endpoint ASIO quand le moteur l'ouvre et les
+route. Il ne recherche ni ne redirige l'audio des autres applications Windows.
+
 Pour désenregistrer ce même pilote, après fermeture des applications qui
 l'utilisent, exécuter dans le même dossier et avec les mêmes droits :
 
@@ -35,12 +38,12 @@ l'utilisent, exécuter dans le même dossier et avec les mêmes droits :
 
 Un crash Linux au démarrage dans une routine `memcpy` a été signalé pendant
 la préparation de ce candidat. Le source Linux fourni ne corrige pas encore
-ce problème : le callback utilise l'entrée sans test de nullité et copie le
-quantum dans un paquet limité à 128 échantillons sans vérifier cette limite.
-La trace du crash reste nécessaire pour identifier le chemin effectivement
-atteint. GUI et CLI partagent cette bibliothèque ; le CLI n'est donc pas un
-contournement garanti. Ce paquet est une qualification Windows, pas une
-version Linux stabilisée.
+le crash utilisateur de façon confirmée. Le correctif 0007 protège désormais
+le callback contre une entrée nulle et un quantum réseau supérieur à 128 : il
+produit du silence et compte un xrun dans ces cas. Les blocs plus grands restent
+à prendre en charge par fragmentation. La trace du crash et un essai PipeWire
+réel restent nécessaires. GUI et CLI partagent cette bibliothèque ; le CLI
+n'est donc pas un contournement garanti. Aucun binaire Linux corrigé n'est inclus.
 
 Le source amont épinglé est fourni sous `sources/PWAR`, avec ses instructions
 Linux dans son README. L'interface ou le CLI PWAR doit envoyer vers l'IPv4
@@ -58,7 +61,7 @@ pare-feux doivent permettre l'échange UDP ; le paquet ne les modifie pas.
 ## Sources et provenance
 
 - Base PWAR : `ripxorip/PWAR`, commit `ed5b07c44c7635d006422d646d56368600504b3f`.
-- Six correctifs fournis sous `patches`, déjà appliqués dans `sources/PWAR`.
+- Sept correctifs fournis sous `patches`, déjà appliqués dans `sources/PWAR`.
 - Journalisation UDP de diagnostic désactivée par défaut.
 - Sources SDK ASIO nécessaires fournies sous `sources/asiosdk/common`, avec leurs
   notices. Licence PWAR dans `sources/PWAR/LICENSE` et `GPL-3.0.txt`.

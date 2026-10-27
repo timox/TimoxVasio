@@ -1,0 +1,53 @@
+{
+  "appId": "com.timox.vsounddealer",
+  "productName": "TimoxVSoundDealer",
+  "directories": {
+    "output": "dist/tvsd-0.1.0",
+    "buildResources": "assets"
+  },
+  "files": [
+    "build/**/*",
+    "electron/**/*",
+    "node_modules/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "../build_codex_110/Release/TimoxVirtualAsioEngine.exe",
+      "to": "backend/TimoxVirtualAsioEngine.exe"
+    },
+    {
+      "from": "../build_pwar_reconciled_tests/Release/PwarAsioClient.exe",
+      "to": "backend/PwarAsioClient.exe"
+    },
+    {
+      "from": "../api/openapi-v1.json",
+      "to": "backend/openapi-v1.json"
+    },
+    {
+      "from": "../api/schemas",
+      "to": "backend/schemas"
+    },
+    {
+      "from": "../LICENSE",
+      "to": "legal/LICENSE.txt"
+    },
+    {
+      "from": "../docs/LICENSING.md",
+      "to": "legal/LICENSING.md"
+    },
+    {
+      "from": "../asiosdk/LICENSE.txt",
+      "to": "legal/ASIO-SDK-LICENSE.txt"
+    }
+  ],
+  "win": {
+    "target": ["portable"],
+    "artifactName": "TimoxVSoundDealer-0.1.0-portable.${ext}"
+  },
+  "extraMetadata": {
+    "name": "timox-vsounddealer",
+    "version": "0.1.0",
+    "description": "TimoxVSoundDealer 0.1 for TimoxVasio 1.2.7",
+    "main": "electron/main.js"
+  }
+}

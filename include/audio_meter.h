@@ -6,6 +6,8 @@
 struct AudioMeterSnapshot {
     std::string endpointId;
     float peakLinear = 0.0f;
+    float shortTermLufs = -120.0f;
+    bool shortTermLufsReady = false;
     std::uint64_t underruns = 0;
     std::uint64_t overruns = 0;
 };
