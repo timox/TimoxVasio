@@ -156,6 +156,7 @@ int wmain() {
 
     WasapiBridgeConfiguration capture;
     capture.id = "Capture_1";
+    capture.name = "ProcessCopy+firefox.exe";
     capture.open.endpointId = L"{opaque-device}-\u00e9-\U0001f3a7";
     capture.open.bufferDuration100ns = 10000000;
     WasapiBridgeConfiguration render;
@@ -173,7 +174,7 @@ int wmain() {
         for (std::size_t i = 0; i < 3; ++i) {
             const auto& actual = restored.wasapiBridges[i];
             const auto& original = expected.wasapiBridges[i];
-            passed = require(actual.id == original.id && actual.enabled == original.enabled &&
+            passed = require(actual.id == original.id && actual.name == original.name && actual.enabled == original.enabled &&
                 actual.open.kind == original.open.kind && actual.open.endpointId == original.open.endpointId &&
                 actual.open.defaultRole == original.open.defaultRole &&
                 actual.open.bufferDuration100ns == original.open.bufferDuration100ns,

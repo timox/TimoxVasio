@@ -39,6 +39,10 @@ bool ValidateWasapiBridgeConfigurations(const std::vector<WasapiBridgeConfigurat
                 return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                     (c >= '0' && c <= '9') || c == '_' || c == '-';
             }) || !ids.insert(bridge.id).second) return fail("Invalid or duplicate WASAPI bridge ID");
+        std::wstring name;
+        if (!bridge.name.empty() && (!WasapiEndpointFromUtf8(bridge.name, name) || name.size() > 128 ||
+            std::any_of(name.begin(), name.end(), [](wchar_t c) { return c < 32; })))
+            return fail("Invalid WASAPI bridge name");
         const auto& config = bridge.open;
         if (config.kind == WasapiStreamKind::ProcessLoopback) {
             std::string image;

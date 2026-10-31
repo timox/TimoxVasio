@@ -232,3 +232,23 @@ This stage supports shared mode, endpoint loopback and per-process loopback of s
 
 See the [model and property mapping](SUPERVISION_API.md). GET /api/v1/state exposes supervision.schemaVersion=1; supervision.observations separates dynamic counters from topology changes. Unavailable levels stay null with an explicit unavailable reason.
 
+
+## Process-copy template catalogue
+
+`GET /api/v1/process-copy-templates` reads the catalogue; `PUT` atomically
+replaces it with `{"templates":[{"id":"firefox_copy","name":"ProcessCopy+firefox.exe","processName":"firefox.exe","bufferDuration100ns":0}]}`.
+IDs are unique, 1..128 ASCII letters/digits/underscore/hyphen. Display names are
+independent of routing IDs. Existing WASAPI bridge configurations also accept
+optional `name` (display fallback: ID). The catalogue allows at most 1024
+templates, display names of 1..128 UTF-16 units without control characters, and
+executable .exe basenames normalized to lowercase. PID, creation time, image
+path and unknown properties are rejected. Storage is engine-owned at
+`%LOCALAPPDATA%/TimoxVasio/process-copy-templates.json`. Concurrent updates use
+last-write-wins, like application profiles. Invalid input returns 400; storage
+errors return 500. Failed updates preserve the previous catalogue.
+
+`capabilities.processCopyTemplates` advertises support. Saving does not start
+audio or create routes. Applying a template explicitly selects a current
+process instance (choose if ambiguous) and uses existing `configuration.apply`
+with its current PID, creation time and image path. Those identities belong
+to the active bridge, never to the template. No automatic name-only binding.

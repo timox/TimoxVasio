@@ -20,7 +20,7 @@ struct NativeState {
     std::atomic<unsigned> opens{0},starts{0},closes{0},serial{0},invalidateThrough{0};
     std::atomic<bool> wrongThread{false},mismatch{false},offline{false},defaultCollision{false};
     unsigned rate=48000,bufferFrames=128;
-    bool growSecondBuffer=false;
+    bool growSecondBuffer=false,failSecondOpen=false;
     std::atomic<unsigned> captureAvailable{0};
 };
 class Backend final:public IWasapiBackend {
@@ -29,7 +29,7 @@ public:
     ~Backend()override{Check();}
     HRESULT Open(const WasapiOpenConfig& config) noexcept override{
         Check();++s->opens;
-        if(s->offline || config.endpointId==L"missing")return AUDCLNT_E_DEVICE_INVALIDATED;
+        if(s->offline || config.endpointId==L"missing" || (s->failSecondOpen && serial%2==0))return AUDCLNT_E_DEVICE_INVALIDATED;
         info.kind=config.kind;info.endpointId=config.endpointId.empty()?(s->defaultCollision?L"render":L"default"):config.endpointId;
         info.format={s->rate,2,32,32,8,3,WasapiSampleEncoding::IeeeFloat};
         if(s->mismatch && serial%2==0){info.format.channels=1;info.format.blockAlign=4;info.format.channelMask=1;}
@@ -61,6 +61,29 @@ private:
 };
 WasapiBridgeConfiguration Bridge(const char* id,WasapiStreamKind kind,const wchar_t* endpoint){
     WasapiBridgeConfiguration b;b.id=id;b.open.kind=kind;b.open.endpointId=endpoint;return b;
+}
+void ExitedProcessCannotRetry() {
+    wchar_t executable[32768]{};
+    Require(GetModuleFileNameW(nullptr,executable,32768)>0,"test executable path");
+    std::wstring command=L"\""+std::wstring(executable)+L"\" --identity-exit";
+    STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION child{};
+    Require(CreateProcessW(executable,command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,
+        nullptr,nullptr,&startup,&child)!=FALSE,"identity child startup");
+    struct CloseChild {PROCESS_INFORMATION value;~CloseChild(){CloseHandle(value.hThread);CloseHandle(value.hProcess);}} close{child};
+    Require(WaitForSingleObject(child.hProcess,5000)==WAIT_OBJECT_0,"identity child exit");
+    FILETIME created{},exited{},kernel{},user{};
+    Require(GetProcessTimes(child.hProcess,&created,&exited,&kernel,&user)!=FALSE,"identity child timestamps");
+    auto config=Bridge("exited",WasapiStreamKind::ProcessLoopback,L"");
+    config.open.processId=child.dwProcessId;
+    config.open.processCreationTime=(static_cast<std::uint64_t>(created.dwHighDateTime)<<32)|created.dwLowDateTime;
+    config.open.processImagePath=executable;
+    auto native=std::make_shared<NativeState>();native->failSecondOpen=true;
+    std::string error;
+    // Keep the exited process handle alive: its PID and creation time still match.
+    const auto manager=WasapiBridgeManager::Prepare({config},48000,64,{},
+        [native]{return std::make_unique<Backend>(native);},error);
+    Require(manager && manager->Snapshots().at(0).state=="unavailable",
+        "exited process identity was treated as live/retryable");
 }
 void NativeCapacityPreparation() {
     std::string error;
@@ -326,6 +349,7 @@ void ActiveDefaultFollowsRole(const std::wstring& path) {
 }
 }
 int main(int argc,char** argv){
+    if(argc>1&&std::string(argv[1])=="--identity-exit")return 0;
     wchar_t temp[MAX_PATH]{};GetTempPathW(MAX_PATH,temp);
     const auto path=std::wstring(temp)+L"TimoxVasio-controller-wasapi-"+std::to_wstring(GetCurrentProcessId())+L".json";
     DeleteFileW(path.c_str());
@@ -347,7 +371,7 @@ int main(int argc,char** argv){
             DeleteFileW(path.c_str());DeleteFileW((path+L".profiles").c_str());return 0;
         }catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
     }
-    try{DormantNativePhysicalReservations(path);NativeCapacityPreparation();Transactions(path);OfflineRestoreAndStop(path);PublicationBackoff(path);ActiveDefaultFollowsRole(path);NativeDesireKeepsMaster(path);}catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
+    try{ExitedProcessCannotRetry();DormantNativePhysicalReservations(path);NativeCapacityPreparation();Transactions(path);OfflineRestoreAndStop(path);PublicationBackoff(path);ActiveDefaultFollowsRole(path);NativeDesireKeepsMaster(path);}catch(const std::exception& e){std::cerr<<e.what()<<'\n';DeleteFileW(path.c_str());return 1;}
     DeleteFileW(path.c_str());DeleteFileW((path+L".profiles").c_str());
     std::cout<<"Audio controller WASAPI tests passed\n";
 }

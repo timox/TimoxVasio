@@ -12,7 +12,7 @@ class EngineDiagnostics;
 class ControlApiServer final {
 public:
     ControlApiServer(VasioClientManager& clients, AudioController& controller, EngineDiagnostics& diagnostics,
-        std::function<void()> stopRequest);
+        std::function<void()> stopRequest, std::wstring processCopyTemplatesPath = {});
     ~ControlApiServer();
     ControlApiServer(const ControlApiServer&) = delete;
     ControlApiServer& operator=(const ControlApiServer&) = delete;

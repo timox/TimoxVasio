@@ -7,6 +7,7 @@
     { "$ref": "#/definitions/drivers" },
     { "$ref": "#/definitions/wasapiInventory" },
     { "$ref": "#/definitions/applicationProfiles" },
+    { "$ref": "#/definitions/processCopyTemplates" },
     { "$ref": "#/definitions/applicationProfilesUpdate" },
     { "$ref": "#/definitions/applyCommand" },
     { "$ref": "#/definitions/engineStartCommand" },
@@ -990,12 +991,15 @@
         "encoding":{"enum":["pcmInteger","ieeeFloat"]}
       }
     },
+    "processCopyTemplate": {"type":"object","additionalProperties":false,"required":["id","name","processName","bufferDuration100ns"],"properties":{"id":{"type":"string","pattern":"^[A-Za-z0-9_-]+$","maxLength":128},"name":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[^\\u0000-\\u001f]+$","description":"Human-readable name, independent of the stable routing ID. Optional for existing bridges; controllers fall back to id."},"processName":{"type":"string","minLength":5,"maxLength":260,"pattern":"^[^\\\\/:*?\"<>|\\u0000-\\u001f]+\\.[eE][xX][eE]$","description":"Executable basename only, normalized to lowercase. No PID, creation timestamp or executable path."},"bufferDuration100ns":{"type":"integer","minimum":0,"maximum":10000000}}},
+    "processCopyTemplates": {"type":"object","additionalProperties":false,"required":["templates"],"properties":{"templates":{"type":"array","maxItems":1024,"items":{"$ref":"#/definitions/processCopyTemplate"}}},"description":"Persisted reusable process-copy templates. IDs unique. Activation requires selecting a current process instance; saving a template never starts audio."},
     "wasapiBridgeConfiguration": {
       "type":"object", "additionalProperties":false, "required":["id","kind"],
       "oneOf":[{"required":["endpointId"],"not":{"anyOf":[{"required":["defaultRole"]},{"required":["processId"]},{"required":["processCreationTime"]},{"required":["processImagePath"]}]}},{"required":["defaultRole"],"not":{"anyOf":[{"required":["endpointId"]},{"required":["processId"]},{"required":["processCreationTime"]},{"required":["processImagePath"]}]}},{"required":["processId","processCreationTime","processImagePath"],"not":{"anyOf":[{"required":["endpointId"]},{"required":["defaultRole"]}]}}],
       "allOf":[{"if":{"properties":{"kind":{"enum":["capture","render","endpointLoopback"]}},"required":["kind"]},"then":{"not":{"anyOf":[{"required":["processId"]},{"required":["processCreationTime"]},{"required":["processImagePath"]}]}}},{"if":{"properties":{"kind":{"const":"processLoopback"}},"required":["kind"]},"then":{"required":["processId","processCreationTime","processImagePath"],"not":{"anyOf":[{"required":["endpointId"]},{"required":["defaultRole"]}]}}}],
       "properties": {
         "id":{"type":"string","pattern":"^[A-Za-z0-9_-]+$","maxLength":128},
+        "name":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[^\\u0000-\\u001f]+$","description":"Human-readable name, independent of the stable routing ID. Optional for existing bridges; controllers fall back to id."},
         "enabled":{"type":"boolean","default":true}, "kind":{"enum":["capture","render","endpointLoopback","processLoopback"],"description":"A processLoopback bridge creates an app audio copy owned by Timox and adds it as a separate graph source; it does not create a Timox ASIO client connection or redirect playback. The same process may also appear separately as an ASIO client if it opens the Timox virtual driver."},
         "endpointId":{"type":"string","minLength":1,"maxLength":32768,"pattern":"^[^\\u0000]+$"},
         "processId":{"type":"integer","minimum":1,"maximum":4294967295,"description":"Process whose shared Windows audio Timox copies into a separate graph source. This does not establish that the process opened the Timox ASIO driver."},"processCreationTime":{"type":"string","pattern":"^[0-9]{1,20}$","description":"Decimal process creation timestamp paired with processId to distinguish this process instance from another process reusing the PID."},"processImagePath":{"type":"string","minLength":1,"maxLength":32768,"description":"Executable image path paired with processId and processCreationTime to validate the process selected for copying; it does not identify the process's audio API."},
@@ -1068,6 +1072,7 @@
       "required":["id","state","generationId","retryAttempt","retryInMs","effectiveInfo","graphFormat","inputEndpoints","outputEndpoints","health"],
       "properties": {
         "id":{"type":"string","pattern":"^[A-Za-z0-9_-]+$","maxLength":128},
+        "name":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[^\\u0000-\\u001f]+$","description":"Human-readable name, independent of the stable routing ID. Optional for existing bridges; controllers fall back to id."},
         "state":{"enum":["idle","starting","disabled","priming","running","retrying","failed","stopped"]},
         "generationId":{"type":"string","pattern":"^[0-9]+$","description":"Decimal uint64 string preserves exact identity in JavaScript. 0 means no generation."},
         "retryAttempt":{"type":"integer","minimum":0},"retryInMs":{"type":"integer","minimum":0},
@@ -1421,6 +1426,7 @@
         "capabilities": {
           "type": "object",
           "properties": {
+            "processCopyTemplates": { "type": "boolean", "description": "GET/PUT process-copy template catalogue and optional bridge display names are supported." },
             "wasapiProcessLoopback": {
               "type": "boolean",
               "description": "Whether the engine can create a separate graph source from one Windows process tree's shared audio."

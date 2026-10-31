@@ -88,7 +88,7 @@ int wmain(int argc, wchar_t** argv) {
     if (connected) {
         Json payload{{"physicalDriverId", nullptr}, {"sampleRate", 48000}, {"bufferFrames", 256},
             {"clockSource", {{"kind", "software"}}}, {"routes", Json::array()},
-            {"wasapiBridges", Json::array({{{"id", "capture_a"}, {"enabled", false}, {"kind", "capture"}, {"defaultRole", "communications"}},
+            {"wasapiBridges", Json::array({{{"id", "capture_a"}, {"name", "ProcessCopy+firefox.exe"}, {"enabled", false}, {"kind", "capture"}, {"defaultRole", "communications"}},
                 {{"id", "loopback_b"}, {"enabled", false}, {"kind", "endpointLoopback"}, {"endpointId", "test-render-endpoint"}, {"bufferDuration100ns", 100000}}})}};
         check(apply(payload).value("success", false), "API accepts disabled default and explicit loopback configurations");
         payload["nativeAudio"] = {{"enabled", true}};
@@ -104,6 +104,7 @@ int wmain(int argc, wchar_t** argv) {
         check(effective[0]["health"].contains("controlBacklogUpdates") &&
             effective[0]["health"]["controlBacklogUpdates"] == 0,
             "API exposes cumulative control backlog diagnostic even for a disabled bridge");
+        check(bridges[0]["name"] == "ProcessCopy+firefox.exe", "bridge display name survives API apply and read");
         payload.erase("wasapiBridges"); payload.erase("clockSource");
         payload["expectedConfigurationRevision"] = configured.at("configurationRevision");
         check(apply(payload).value("success", false), "omitted bridge field is accepted");

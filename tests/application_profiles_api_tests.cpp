@@ -3,6 +3,7 @@
 
 #include "audio_controller.h"
 #include "control_api_server.h"
+#include "process_copy_template_store.h"
 #include "vasio_client_manager.h"
 #include "engine_diagnostics.h"
 
@@ -69,9 +70,11 @@ std::wstring tempPath(const wchar_t* suffix) {
 int wmain() {
     const auto configPath = tempPath(L"-configuration.json");
     const auto profilesPath = tempPath(L"-profiles.json");
+    const auto templatesPath = tempPath(L"-process-copy-templates.json");
     if (configPath.empty() || profilesPath.empty()) return 2;
     DeleteFileW(configPath.c_str());
     DeleteFileW(profilesPath.c_str());
+    DeleteFileW(templatesPath.c_str());
 
     VasioClientManager clients;
     AudioController controller(clients, configPath, profilesPath,
@@ -83,7 +86,7 @@ int wmain() {
     if (!diagnostics.Initialize(tempPath(L"-logs"), error)) return 3;
 
     std::atomic<bool> stopRequested{false};
-    ControlApiServer api(clients, controller, diagnostics, [&] { stopRequested.store(true); });
+    ControlApiServer api(clients, controller, diagnostics, [&] { stopRequested.store(true); }, templatesPath);
     std::uint16_t port = 0;
     if (!api.Start(0, port, error)) {
         std::fprintf(stderr, "API server failed to start: %s\n", error.c_str());
@@ -93,6 +96,46 @@ int wmain() {
 
     httplib::Client client("127.0.0.1", port);
     bool passed = true;
+    using Json = nlohmann::json;
+    const char* cataloguePath = "/api/v1/process-copy-templates";
+    const auto emptyCatalogue = client.Get(cataloguePath);
+    passed = require(emptyCatalogue && emptyCatalogue->status == 200 &&
+        Json::parse(emptyCatalogue->body) == Json{{"templates", Json::array()}},
+        "missing process-copy catalogue is empty") && passed;
+    Json templateItem{{"id", "firefox_copy"}, {"name", "ProcessCopy+firefox.exe"},
+        {"processName", "FIREFOX.EXE"}, {"bufferDuration100ns", 0}};
+    Json catalogue{{"templates", Json::array({templateItem})}};
+    const auto savedCatalogue = client.Put(cataloguePath, catalogue.dump(), "application/json");
+    catalogue["templates"][0]["processName"] = "firefox.exe";
+    passed = require(savedCatalogue && savedCatalogue->status == 200 &&
+        Json::parse(savedCatalogue->body) == catalogue, "catalogue stores normalized executable name without PID") && passed;
+    ProcessCopyTemplateStore reopenedTemplates(templatesPath);
+    Json reloaded;
+    passed = require(reopenedTemplates.Load(reloaded, error) && reloaded == catalogue,
+        "process-copy catalogue survives reopening the store") && passed;
+    for (const auto* field : {"processId", "processCreationTime", "processImagePath", "unexpected"}) {
+        auto invalid = catalogue; invalid["templates"][0][field] = "forbidden";
+        const auto reply = client.Put(cataloguePath, invalid.dump(), "application/json");
+        passed = require(reply && reply->status == 400, "catalogue rejects runtime identity and unknown properties") && passed;
+    }
+    for (const auto* name : {"C:\\Firefox\\firefox.exe", "../firefox.exe", "firefox", "*.exe", ""}) {
+        auto invalid = catalogue; invalid["templates"][0]["processName"] = name;
+        const auto reply = client.Put(cataloguePath, invalid.dump(), "application/json");
+        passed = require(reply && reply->status == 400, "catalogue requires an executable basename") && passed;
+    }
+    auto duplicate = catalogue; duplicate["templates"].push_back(duplicate["templates"][0]);
+    const auto duplicateReply = client.Put(cataloguePath, duplicate.dump(), "application/json");
+    const auto malformedReply = client.Put(cataloguePath, "{", "application/json");
+    passed = require(duplicateReply && duplicateReply->status == 400 && malformedReply && malformedReply->status == 400,
+        "catalogue rejects duplicate IDs and malformed JSON") && passed;
+    for (const auto& invalidDuration : {Json(-1), Json(10000001), Json(1.5), Json(UINT64_MAX)}) {
+        auto invalid = catalogue; invalid["templates"][0]["bufferDuration100ns"] = invalidDuration;
+        const auto reply = client.Put(cataloguePath, invalid.dump(), "application/json");
+        passed = require(reply && reply->status == 400, "catalogue bounds buffer duration without integer wrapping") && passed;
+    }
+    const auto unchangedCatalogue = client.Get(cataloguePath);
+    passed = require(unchangedCatalogue && unchangedCatalogue->status == 200 &&
+        Json::parse(unchangedCatalogue->body) == catalogue, "invalid updates preserve catalogue") && passed;
     const auto initialState = client.Get("/api/v1/state");
     passed = require(initialState && initialState->status == 200 &&
         nlohmann::json::parse(initialState->body).contains("configuredRoutes"),
@@ -340,6 +383,7 @@ int wmain() {
     controller.Stop();
     DeleteFileW(configPath.c_str());
     DeleteFileW(profilesPath.c_str());
+    DeleteFileW(templatesPath.c_str());
     if (!passed) return 1;
     std::puts("PASS: application profile API is reachable over local HTTP.");
     return 0;

@@ -18,6 +18,60 @@
     }
   ],
   "paths": {
+    "/api/v1/process-copy-templates": {
+  "get": {
+    "operationId": "getProcessCopyTemplates",
+    "summary": "Lire le catalogue des copies de processus / Read process-copy templates",
+    "responses": {
+      "200": {
+        "description": "Catalogue / Template catalogue",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProcessCopyTemplates"
+            }
+          }
+        }
+      },
+      "500": {
+        "$ref": "#/components/responses/ServerError"
+      }
+    }
+  },
+  "put": {
+    "operationId": "replaceProcessCopyTemplates",
+    "summary": "Remplacer le catalogue / Replace process-copy template catalogue",
+    "description": "Sauvegarde persistante, sans activation audio. Le nom de processus est un basename .exe ; PID, date de création et chemin sont interdits. Réappliquer exige une instance actuelle sélectionnée explicitement. / Atomic persistent replacement, no audio activation. No runtime process identity is retained; applying a template uses the existing configuration.apply with current PID, creation time and image path. Concurrent updates use last-write-wins, like application profiles.",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/ProcessCopyTemplates"
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "Catalogue / Template catalogue",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProcessCopyTemplates"
+            }
+          }
+        }
+      },
+      "400": {
+        "description": "Invalid templates; existing catalogue unchanged"
+      },
+      "500": {
+        "$ref": "#/components/responses/ServerError"
+      }
+    }
+  }
+},
     "/api/v1/pwar": {
       "get": {
         "operationId": "getPwarSettings",
@@ -438,6 +492,8 @@
   },
   "components": {
     "schemas": {
+      "ProcessCopyTemplate": {"description":"Modèle de copie réutilisable / Reusable process copy, without PID", "allOf":[{"$ref":"./schemas/api-v1.json#/definitions/processCopyTemplate"}]},
+      "ProcessCopyTemplates": {"allOf":[{"$ref":"./schemas/api-v1.json#/definitions/processCopyTemplates"}]},
       "State": {
         "$ref": "./schemas/api-v1.json#/definitions/state"
       },

@@ -318,3 +318,25 @@ Cette étape prend en charge le mode partagé, le loopback d'endpoint et le loop
 
 Voir [le modèle et la matrice de propriétés](SUPERVISION_API.md). GET /api/v1/state expose supervision.schemaVersion=1 ; supervision.observations sépare les compteurs dynamiques des changements de topologie. Les niveaux absents restent null, avec une raison d'indisponibilité.
 
+
+## Catalogue de copies de processus
+
+`GET /api/v1/process-copy-templates` lit le catalogue ; `PUT` remplace
+l'ensemble par `{"templates":[{"id":"firefox_copy","name":"ProcessCopy+firefox.exe","processName":"firefox.exe","bufferDuration100ns":0}]}`.
+Les identifiants sont uniques (1 à 128 lettres ASCII, chiffres, tiret ou underscore).
+Le nom affiché est distinct de l'identifiant technique ; `name` est également
+optionnel sur les configurations de ponts WASAPI existantes (repli d'affichage : ID).
+Le catalogue accepte au plus 1024 modèles, un nom de 1 à 128 unités UTF-16 sans
+caractère de contrôle et un basename exécutable .exe normalisé en minuscules.
+Il rejette PID, date de création, chemin et toute propriété inconnue.
+Le moteur conserve les modèles dans `%LOCALAPPDATA%/TimoxVasio/process-copy-templates.json`
+par remplacement atomique. Les mises à jour concurrentes suivent la dernière
+écriture, comme les profils d'applications. Une erreur de validation renvoie 400,
+une erreur de stockage 500, sans modifier le catalogue précédent.
+
+La capacité `capabilities.processCopyTemplates` annonce ce contrat. Sauvegarder
+un modèle ne crée pas de session ni de route. Le réappliquer exige une instance
+courante sélectionnée explicitement (choix si plusieurs correspondances) et la
+commande `configuration.apply` existante avec PID, date de création et chemin
+courants. Ces identifiants restent dans le pont actif, jamais dans le modèle.
+Aucun rattachement automatique par seul nom n'est effectué.

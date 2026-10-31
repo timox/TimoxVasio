@@ -10,6 +10,7 @@ struct WasapiBridgeConfiguration {
     std::string id;
     bool enabled = true;
     WasapiOpenConfig open;
+    std::string name;
 };
 
 // Control-thread helpers. Reject malformed UTF, embedded NUL and endpoint IDs

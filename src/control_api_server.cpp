@@ -10,6 +10,7 @@
 #include "vasio_client_manager.h"
 #include "engine_diagnostics.h"
 #include "pwar_configuration_store.h"
+#include "process_copy_template_store.h"
 #include "pwar_client_supervisor.h"
 
 #include <windows.h>
@@ -198,6 +199,7 @@ Json wasapiConfigurationsJson(const std::vector<WasapiBridgeConfiguration>& brid
             item["processCreationTime"] = std::to_string(bridge.open.processCreationTime);
             item["processImagePath"] = utf8(bridge.open.processImagePath);
         } else item["endpointId"] = utf8(bridge.open.endpointId);
+        if (!bridge.name.empty()) item["name"] = bridge.name;
         result.push_back(std::move(item));
     }
     return result;
@@ -209,11 +211,15 @@ bool parseWasapiConfigurations(const Json& value, std::vector<WasapiBridgeConfig
         if (!item.is_object() || !item.contains("id") || !item["id"].is_string() ||
             !item.contains("kind") || !item["kind"].is_string()) return false;
         for (auto field = item.begin(); field != item.end(); ++field)
-            if (field.key() != "id" && field.key() != "kind" && field.key() != "enabled" &&
+            if (field.key() != "name" && field.key() != "id" && field.key() != "kind" && field.key() != "enabled" &&
                 field.key() != "endpointId" && field.key() != "defaultRole" && field.key() != "bufferDuration100ns" &&
                 field.key() != "processId" && field.key() != "processCreationTime" && field.key() != "processImagePath") return false;
         WasapiBridgeConfiguration bridge;
         bridge.id = item["id"].get<std::string>();
+        if (item.contains("name")) {
+            if (!item["name"].is_string() || item["name"].get<std::string>().empty()) return false;
+            bridge.name = item["name"].get<std::string>();
+        }
         if (item["kind"] == "capture") bridge.open.kind = WasapiStreamKind::Capture;
         else if (item["kind"] == "render") bridge.open.kind = WasapiStreamKind::Render;
         else if (item["kind"] == "endpointLoopback") bridge.open.kind = WasapiStreamKind::EndpointLoopback;
@@ -449,6 +455,7 @@ struct ControlApiServer::Impl {
     VasioClientManager& clients;
     AudioController& controller;
     PwarConfigurationStore pwarConfiguration;
+    ProcessCopyTemplateStore processCopyTemplates;
     PwarClientSupervisor pwarClient;
     EngineDiagnostics& diagnostics;
     std::function<void()> stopRequest;
@@ -466,8 +473,9 @@ struct ControlApiServer::Impl {
     mutable ProcessCpuMonitor processCpu;
 
     Impl(VasioClientManager& manager, AudioController& audioController, EngineDiagnostics& engineDiagnostics,
-         std::function<void()> requestStop)
-        : clients(manager), controller(audioController), diagnostics(engineDiagnostics), stopRequest(std::move(requestStop)) {}
+         std::function<void()> requestStop, std::wstring templatesPath)
+        : clients(manager), controller(audioController), processCopyTemplates(std::move(templatesPath)),
+          diagnostics(engineDiagnostics), stopRequest(std::move(requestStop)) {}
     ~Impl() { Stop(); }
 
     Json physicalDriversJson() const {
@@ -689,7 +697,7 @@ struct ControlApiServer::Impl {
         for (const auto& route : state.configuredRoutes)
             configuredRoutes.push_back(routeJson(route));
         Json result{{"apiVersion", "1.1"}, {"configurationRevision", state.configurationRevision},
-            {"capabilities", {{"wasapiProcessLoopback", supportsWasapiProcessLoopback()}}},
+            {"capabilities", {{"wasapiProcessLoopback", supportsWasapiProcessLoopback()}, {"processCopyTemplates", true}}},
             {"engine", {{"state", state.state}, {"clockSource", clockSourceJson(state)},
                          {"clockCapabilities", clockCapabilitiesJson(state)}, {"physicalDriverId", std::move(physicalId)},
                          {"sampleRate", std::move(sampleRate)}, {"bufferFrames", std::move(bufferFrames)},
@@ -980,6 +988,31 @@ struct ControlApiServer::Impl {
         return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}}}};
     }
 
+    void configureProcessCopyTemplateRoutes() {
+        server.Get("/api/v1/process-copy-templates", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            Json document; std::string error;
+            if (!processCopyTemplates.Load(document, error)) {
+                response.status = 500;
+                document = {{"code", "PROCESS_COPY_TEMPLATE_STORE_FAILED"}, {"message", error}};
+            }
+            response.set_content(document.dump(), "application/json; charset=utf-8");
+        });
+        server.Put("/api/v1/process-copy-templates", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            auto document = Json::parse(request.body, nullptr, false);
+            std::string error;
+            if (!ProcessCopyTemplateStore::Normalize(document, error)) {
+                response.status = 400;
+                document = {{"code", "INVALID_PROCESS_COPY_TEMPLATES"}, {"message", error}};
+            } else if (!processCopyTemplates.Save(document, error)) {
+                response.status = 500;
+                document = {{"code", "PROCESS_COPY_TEMPLATE_STORE_FAILED"}, {"message", error}};
+            }
+            response.set_content(document.dump(), "application/json; charset=utf-8");
+        });
+    }
+
     void configureApplicationProfileRoutes() {
         server.Get("/api/v1/application-profiles", [this](const httplib::Request& request,
                                                            httplib::Response& response) {
@@ -1190,6 +1223,7 @@ struct ControlApiServer::Impl {
             }
         });
         configureApplicationProfileRoutes();
+        configureProcessCopyTemplateRoutes();
         const auto optionsHandler = [](const httplib::Request& request, httplib::Response& response) {
             setCors(request, response);
             response.set_header("Access-Control-Allow-Methods", "GET, PUT, OPTIONS");
@@ -1201,6 +1235,7 @@ struct ControlApiServer::Impl {
         server.Options("/api/v1/openapi.json", optionsHandler);
         server.Options("/api/v1/schemas/api-v1.json", optionsHandler);
         server.Options("/api/v1/application-profiles", optionsHandler);
+        server.Options("/api/v1/process-copy-templates", optionsHandler);
         server.Options("/api/v1/pwar", optionsHandler);
         server.Options("/api/v1/diagnostics", optionsHandler);
         server.set_pre_request_handler([](const httplib::Request& request, httplib::Response& response) {
@@ -1394,8 +1429,8 @@ struct ControlApiServer::Impl {
 };
 
 ControlApiServer::ControlApiServer(VasioClientManager& clients, AudioController& controller, EngineDiagnostics& diagnostics,
-    std::function<void()> stopRequest)
-    : impl_(std::make_unique<Impl>(clients, controller, diagnostics, std::move(stopRequest))) {}
+    std::function<void()> stopRequest, std::wstring processCopyTemplatesPath)
+    : impl_(std::make_unique<Impl>(clients, controller, diagnostics, std::move(stopRequest), std::move(processCopyTemplatesPath))) {}
 ControlApiServer::~ControlApiServer() = default;
 
 bool ControlApiServer::Start(std::uint16_t requestedPort, std::uint16_t& boundPort, std::string& error) {

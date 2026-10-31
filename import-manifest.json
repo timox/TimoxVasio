@@ -25,18 +25,18 @@
       "target": "api/openapi-v1.json",
       "sha256": "243d01272e07b00cfd52819812ba3f96ec083d57207b4498b3490805081ef392",
       "sourceSha256": "243d01272e07b00cfd52819812ba3f96ec083d57207b4498b3490805081ef392",
-      "targetSha256": "208dc9c42be9eb0b9449ad89b612c0ecf399c2c478b5848ccc1798e4a7633073",
+      "targetSha256": "33daf80bd0ddd5f6daf9be926e53da2fa2ac87b73343971cc805adfed3949fc2",
       "status": "modified",
-      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "api/schemas/api-v1.json",
       "target": "api/schemas/api-v1.json",
       "sha256": "113b1ea91f7635457cd40881cfe139e595cf6ab02e38533c99e03670e3140bf0",
       "sourceSha256": "113b1ea91f7635457cd40881cfe139e595cf6ab02e38533c99e03670e3140bf0",
-      "targetSha256": "2eb0630bdb93b81b2061aa58556ae4cbbd90480e0d31b44106796b8a05d07302",
+      "targetSha256": "62d99886de4f698bd178346bfe7908d56863c208b1e12a5c9ea44b4dcd5df918",
       "status": "modified",
-      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "asiosdk/common/asio.h",
@@ -140,18 +140,18 @@
       "target": "docs/API.en.md",
       "sha256": "d91027d1159608107576480b1218f7c32663c4050ad7cd9e8b6bb12e955b0fb8",
       "sourceSha256": "d91027d1159608107576480b1218f7c32663c4050ad7cd9e8b6bb12e955b0fb8",
-      "targetSha256": "b181aabffd2d04cb055d18964b16c987f8148d191adfa921252317ad5eaf17dd",
+      "targetSha256": "9b9c83fa5dfc6284a014f7ccf05c39c4b31cdcbb9f4f2c47245805cd9d502d6f",
       "status": "modified",
-      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "docs/API.md",
       "target": "docs/API.md",
       "sha256": "3bdaf76b83fcff4da8304ae1c91a8757e149ccd87843c7e80473a8092a429f3b",
       "sourceSha256": "3bdaf76b83fcff4da8304ae1c91a8757e149ccd87843c7e80473a8092a429f3b",
-      "targetSha256": "8c10c59046f082686efa2cb13dcef8a0a595e9818f48af3ca1e10247e9c7c6f4",
+      "targetSha256": "dc33b09b99182e972945ba984f2dd1125be7db82897e2091ad5152f829e6b7fc",
       "status": "modified",
-      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "docs/ASIO_WASAPI_GUIDE.en.md",
@@ -246,8 +246,9 @@
       "target": "include/control_api_server.h",
       "sha256": "a3dde9dadb927bfaf4d6f91fb518cb40be6bb0aa79f817539b710274d0b192fb",
       "sourceSha256": "a3dde9dadb927bfaf4d6f91fb518cb40be6bb0aa79f817539b710274d0b192fb",
-      "targetSha256": "a3dde9dadb927bfaf4d6f91fb518cb40be6bb0aa79f817539b710274d0b192fb",
-      "status": "unchanged"
+      "targetSha256": "d90e76f80a43e403786290d81d46c40519d454c9b20299cf0d404686b84b92e1",
+      "status": "modified",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "include/engine_diagnostics.h",
@@ -382,8 +383,9 @@
       "target": "include/wasapi_bridge_configuration.h",
       "sha256": "1fd25c8812b95a4fe940ac136d6714f7b2ab067696a78ee1b55fb13fe7439294",
       "sourceSha256": "1fd25c8812b95a4fe940ac136d6714f7b2ab067696a78ee1b55fb13fe7439294",
-      "targetSha256": "1fd25c8812b95a4fe940ac136d6714f7b2ab067696a78ee1b55fb13fe7439294",
-      "status": "unchanged"
+      "targetSha256": "cecee1037130a40db2c0ae0e5d6221937ecde767aa12783f0e5a7a2960d2d7b8",
+      "status": "modified",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "include/wasapi_bridge_io.h",
@@ -646,8 +648,9 @@
       "target": "src/audio_configuration_store.cpp",
       "sha256": "fee8fb12d7cca1bd0d2e0b86af76073c7541b6bc4047f2341091de5db6f1d5c5",
       "sourceSha256": "fee8fb12d7cca1bd0d2e0b86af76073c7541b6bc4047f2341091de5db6f1d5c5",
-      "targetSha256": "b2e74d26fec1243d78276c8dd8ba9276865dcbb917f866151e9e152daba2399f",
-      "status": "adapted"
+      "targetSha256": "2c3f1050100655165aa2e0b80effe27fd560eaad58e482e5bc8ef0873ef2e4e4",
+      "status": "modified",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "src/audio_configuration_store.h",
@@ -678,9 +681,9 @@
       "target": "src/control_api_server.cpp",
       "sha256": "f1d0e5c4a16deefe94247cf691ea1e0502999403396f0994c2a63aff9dc29a8c",
       "sourceSha256": "f1d0e5c4a16deefe94247cf691ea1e0502999403396f0994c2a63aff9dc29a8c",
-      "targetSha256": "8d993ac545786679fafaf9a61aee87ace01cab346795a6a18868a037c8298810",
+      "targetSha256": "85c7c3303094ea3946f3a38835ce9e51d0a728511b24e87cd3d06e19cfc8fc9d",
       "status": "modified",
-      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "src/drift_resampler.cpp",
@@ -863,8 +866,9 @@
       "target": "src/wasapi_bridge_configuration.cpp",
       "sha256": "2ea846765af8e39f7db5a2ba48ec27566fe9611fb12a32780fcd42c2b769fc5c",
       "sourceSha256": "2ea846765af8e39f7db5a2ba48ec27566fe9611fb12a32780fcd42c2b769fc5c",
-      "targetSha256": "2ea846765af8e39f7db5a2ba48ec27566fe9611fb12a32780fcd42c2b769fc5c",
-      "status": "unchanged"
+      "targetSha256": "5744bde90664d2e95cbcfb49d7713b798a3c6659ee6ad161414e2c864cb3241a",
+      "status": "modified",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "src/wasapi_bridge_manager.cpp",
@@ -919,9 +923,9 @@
       "target": "tests/application_profiles_api_tests.cpp",
       "sha256": "9201594036d16a4f6768dbe31d35d41f231ee4223d9a175fd0f7247814c14f3f",
       "sourceSha256": "9201594036d16a4f6768dbe31d35d41f231ee4223d9a175fd0f7247814c14f3f",
-      "targetSha256": "ce21e33d9898627e3d1be65e1c22e52d0f9d21c82287f0035771728df9dcfcb6",
+      "targetSha256": "fa300575bc9894ba11957a3c5adb0bdcc4dd7c4cc875f1d246ddb989bdf42dd6",
       "status": "modified",
-      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "tests/asio_buffer_health_tests.cpp",
@@ -960,8 +964,9 @@
       "target": "tests/audio_configuration_store_tests.cpp",
       "sha256": "c03b2c78a98bb48cca5b9c0b97bec2b89fa3296bdf677301a6a8365c5fdaef1e",
       "sourceSha256": "c03b2c78a98bb48cca5b9c0b97bec2b89fa3296bdf677301a6a8365c5fdaef1e",
-      "targetSha256": "c03b2c78a98bb48cca5b9c0b97bec2b89fa3296bdf677301a6a8365c5fdaef1e",
-      "status": "unchanged"
+      "targetSha256": "94d52b4419981bb9ba316bb4abfe2469d7369b7fb5fd3628e566218ee8d5d17a",
+      "status": "modified",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "tests/audio_controller_clock_tests.cpp",
@@ -992,8 +997,9 @@
       "target": "tests/audio_controller_wasapi_tests.cpp",
       "sha256": "1ca89092a95509a547f7cdbc71a06011a9a75bf88cfccf995e6052774aa70a31",
       "sourceSha256": "1ca89092a95509a547f7cdbc71a06011a9a75bf88cfccf995e6052774aa70a31",
-      "targetSha256": "1ca89092a95509a547f7cdbc71a06011a9a75bf88cfccf995e6052774aa70a31",
-      "status": "unchanged"
+      "targetSha256": "cc247230dc0540944e28eb17495796ce025757c63b6eeeb0b29876446217e7b5",
+      "status": "modified",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "tests/audio_path_benchmark.cpp",
@@ -1136,8 +1142,9 @@
       "target": "tests/wasapi_bridge_api_tests.cpp",
       "sha256": "59d0000cbc0ac4f4a2d376c7573870701d76dbb2e07dc32b7783db0c16b567cc",
       "sourceSha256": "59d0000cbc0ac4f4a2d376c7573870701d76dbb2e07dc32b7783db0c16b567cc",
-      "targetSha256": "59d0000cbc0ac4f4a2d376c7573870701d76dbb2e07dc32b7783db0c16b567cc",
-      "status": "unchanged"
+      "targetSha256": "ce895c2093e9e7abe94c8d5aca381adbba9e11883f7070dec1944344aa926d1d",
+      "status": "modified",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     },
     {
       "source": "tests/wasapi_bridge_io_tests.cpp",
@@ -1310,6 +1317,15 @@
       "targetSha256": "d65e3321a93ac431e27eb60d2ed73e940d6e8749a7f62fc0aefbcb2bed5a331b",
       "status": "generated",
       "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+    },
+    {
+      "source": null,
+      "target": "src/process_copy_template_store.h",
+      "sourceSha256": null,
+      "sha256": null,
+      "status": "generated",
+      "targetSha256": "34ee1962509e17d9df5a85ca5e3030b0e90a46fa644db2efc455c27dd3d4a1b3",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     }
   ],
   "owner": "TimoxVAudioEngine",

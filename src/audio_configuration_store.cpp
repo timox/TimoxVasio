@@ -83,6 +83,7 @@ Json encodeBridges(const std::vector<WasapiBridgeConfiguration>& bridges) {
             WasapiEndpointToUtf8(config.endpointId, endpoint); // Validated before serialization.
             item["endpointId"] = std::move(endpoint);
         }
+        if (!bridge.name.empty()) item["name"] = bridge.name;
         result.push_back(std::move(item));
     }
     return result;
@@ -95,12 +96,16 @@ bool decodeBridges(const Json& value, std::vector<WasapiBridgeConfiguration>& br
         if (!item.is_object() || !item.contains("id") || !item["id"].is_string() ||
             !item.contains("kind") || !item["kind"].is_string()) return false;
         for (auto field = item.begin(); field != item.end(); ++field)
-            if (field.key() != "id" && field.key() != "enabled" && field.key() != "kind" &&
+            if (field.key() != "name" && field.key() != "id" && field.key() != "enabled" && field.key() != "kind" &&
                 field.key() != "endpointId" && field.key() != "defaultRole" &&
                 field.key() != "bufferDuration100ns" && field.key() != "processId" &&
                 field.key() != "processCreationTime" && field.key() != "processImagePath") return false;
         WasapiBridgeConfiguration bridge;
         bridge.id = item["id"].get<std::string>();
+        if (item.contains("name")) {
+            if (!item["name"].is_string() || item["name"].get<std::string>().empty()) return false;
+            bridge.name = item["name"].get<std::string>();
+        }
         if (item["kind"] == "capture") bridge.open.kind = WasapiStreamKind::Capture;
         else if (item["kind"] == "render") bridge.open.kind = WasapiStreamKind::Render;
         else if (item["kind"] == "endpointLoopback") bridge.open.kind = WasapiStreamKind::EndpointLoopback;
