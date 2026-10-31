@@ -20,6 +20,7 @@ import AnalysisTimeline from './AnalysisTimeline';
 import { readHardwareTransfer, saveHardwareTransfer, transferRoutesToDriver } from './hardware-transfer';
 import { DEFAULT_ROUTE_COLOR, readRouteVisuals, routeVisualKey, saveRouteVisuals } from './route-visuals';
 import { transferProcessConnections } from './process-connection-transfer';
+import { defaultProcessCopyName, processExecutableName, processCopyTemplate, processCopyCanConnect } from './process-copy';
 const { configurationFromState, deviceTopologyKey, mergeClientObservations } = require('./api-contract');
 const { mergeConfigurationDraft } = require('./configuration-merge');
 const openApiDocument = require('./openapi-spec.generated');
@@ -54,12 +55,17 @@ function App() {
     const [selectedRouteId, setSelectedRouteId] = useState(null);
     const [routingDialog, setRoutingDialog] = useState(null);
     const [profileCatalogOpen, setProfileCatalogOpen] = useState(false);
+    const [processCopyTemplates, setProcessCopyTemplates] = useState([]);
+    const [templatesError, setTemplatesError] = useState('');
+    const [templatesBusy, setTemplatesBusy] = useState(false);
     const [bridgeDialog, setBridgeDialog] = useState(null);
     const [nativeDialogOpen, setNativeDialogOpen] = useState(false);
     const [pwarDialogOpen, setPwarDialogOpen] = useState(false);
     const [bridgeInventoryBusy, setBridgeInventoryBusy] = useState(false);
     const [processInventoryBusy, setProcessInventoryBusy] = useState(false);
     const [processInventoryError, setProcessInventoryError] = useState('');
+    const [windowsAudioApplications, setWindowsAudioApplications] = useState([]);
+    const processInventoryRequest = useRef(0);
     const [migrationLog, setMigrationLog] = useState(readMigrationLog);
     const pendingMigrations = useRef([]);
     const [routeVisuals, setRouteVisuals] = useState(readRouteVisuals);
@@ -116,6 +122,12 @@ function App() {
     }, [rawMeters, meters]);
 
     useEffect(() => { saveRouteVisuals(routeVisuals); }, [routeVisuals]);
+    useEffect(() => {
+        if (!connectionError) return;
+        ++processInventoryRequest.current;
+        setWindowsAudioApplications([]);
+        setProcessInventoryBusy(false);
+    }, [connectionError]);
     useEffect(() => { saveHardwareTransfer(hardwareTransfer); }, [hardwareTransfer]);
     useEffect(() => {
         try { window.localStorage.setItem(migrationLogKey, JSON.stringify(migrationLog)); }
@@ -220,11 +232,7 @@ function App() {
         recordPerformanceState(state);
         const confirmedConfiguration = configurationFromState(state);
         const previousConfirmed = lastConfirmedConfiguration.current;
-        setApiState(current => ({
-            ...state,
-            windowsAudioApplications: current?.windowsAudioApplications || [],
-            windowsAudioApplicationInventoryError: current?.windowsAudioApplicationInventoryError || null
-        }));
+        setApiState(state);
         setEngine(state.engine);
         setConfiguration(current => {
             if (resetDraft || !current || !previousConfirmed ||
@@ -248,7 +256,7 @@ function App() {
             setConfirmedProfiles(result.profiles);
         } catch (error) {
             setProfilesError(error.status === 404
-                ? 'The running engine does not support application profiles yet. Rebuild and restart TimoxVasio Engine.'
+                ? 'Application profiles are unavailable in this engine version. Relaunch the application to check and manage its bundled engine automatically.'
                 : error.message);
         } finally {
             setProfilesLoading(false);
@@ -311,6 +319,9 @@ function App() {
                 setConnectionError('');
                 disconnectListener = window.electronAPI.onEngineConnection(status => {
                     const generation = ++connectionGeneration.current;
+                    ++processInventoryRequest.current;
+                    setWindowsAudioApplications([]);
+                    setProcessInventoryBusy(false);
                     if (!status.connected) {
                         metersRef.current = {}; setMeters({}); deviceTopologyRef.current = null;
                         setConnectionError(status.error || 'The VASIO engine is stopped');
@@ -357,11 +368,7 @@ function App() {
                 if (generation !== connectionGeneration.current) return;
                 updateMeterTopology(state);
                 recordPerformanceState(state);
-                setApiState(current => ({
-                    ...state,
-                    windowsAudioApplications: current?.windowsAudioApplications || [],
-                    windowsAudioApplicationInventoryError: current?.windowsAudioApplicationInventoryError || null
-                }));
+                setApiState(state);
                 setEngine(state.engine);
                 setConnectionError('');
             }).catch(error => { if (generation === connectionGeneration.current) setConnectionError(error.message); });
@@ -427,7 +434,11 @@ function App() {
         .flatMap(driver => driver.clients || [])
         .map(client => client.processName.trim().toLocaleLowerCase())), [apiState]);
     const bridgeGroups = useMemo(() => (configuration?.wasapiBridges || []).map(bridge => {
-        const runtime = apiState?.wasapiBridges?.find(item => item.id === bridge.id);
+        const confirmed = apiState?.configuredWasapiBridges?.find(item => item.id === bridge.id);
+        const pendingProcess = bridge.kind === 'processLoopback' && (!confirmed ||
+            confirmed.processId !== bridge.processId || confirmed.processCreationTime !== bridge.processCreationTime ||
+            confirmed.processImagePath !== bridge.processImagePath);
+        const runtime = pendingProcess ? undefined : apiState?.wasapiBridges?.find(item => item.id === bridge.id);
         const capture = bridge.kind !== 'render';
         const direction = capture ? 'input' : 'output';
         const prefix = `wasapi:${bridge.id}:${direction}:`;
@@ -446,7 +457,7 @@ function App() {
             }
         }
         const process = bridge.kind === 'processLoopback'
-            ? (apiState?.windowsAudioApplications || []).find(item => item.processId === bridge.processId &&
+            ? windowsAudioApplications.find(item => item.processId === bridge.processId &&
                 item.creationTime === bridge.processCreationTime) : null;
         const appName = process?.displayName || (bridge.kind === 'processLoopback'
             ? (bridge.processImagePath || '').split(/[\\/]/).pop() : '');
@@ -454,15 +465,17 @@ function App() {
         const deviceName = (apiState?.wasapiDevices || []).find(item => item.id === endpointId)?.name;
         return { id: `wasapi:${bridge.id}`, bridgeId: bridge.id,
             badgeType: bridge.kind === 'processLoopback' ? 'wasapiApp' : 'wasapi', kind: capture ? 'wasapi-capture' : 'wasapi-render',
-            label: `${appName || deviceName || bridge.id} · ${bridge.enabled === false ? 'disabled' : runtime?.state || 'pending'}`,
+            label: `${bridge.name || appName || deviceName || bridge.id} · ${bridge.enabled === false ? 'disabled' : runtime?.state || 'pending'}`,
             bridgeKind: bridge.kind, enabled: bridge.enabled !== false,
+            availableForConnection: bridge.kind !== 'processLoopback' || processCopyCanConnect(bridge, runtime, pendingProcess && !!process),
             resolvedEndpointId: endpointId || null,
             endpoints: [...ports.values()] };
-    }), [configuration, apiState]);
+    }), [configuration, apiState, windowsAudioApplications]);
     const bridgeConnectionAllowed = (sourceId, destinationId) => {
         const source = bridgeGroups.find(group => group.endpoints.some(port => port.id === sourceId));
         const destination = bridgeGroups.find(group => group.endpoints.some(port => port.id === destinationId));
         return source?.enabled !== false && destination?.enabled !== false &&
+            source?.availableForConnection !== false && destination?.availableForConnection !== false &&
             !(source?.bridgeKind === 'endpointLoopback' && destination?.bridgeKind === 'render' &&
                 source.resolvedEndpointId && source.resolvedEndpointId === destination.resolvedEndpointId);
     };
@@ -475,19 +488,90 @@ function App() {
         finally { setBridgeInventoryBusy(false); }
     };
     const refreshWasapiProcesses = async () => {
-        if (!window.vasio.getWindowsAudioApplications) return;
+        const request = ++processInventoryRequest.current;
+        const generation = connectionGeneration.current;
+        setWindowsAudioApplications([]);
+        setProcessInventoryError('');
         setProcessInventoryBusy(true);
+        const isCurrent = () => request === processInventoryRequest.current && generation === connectionGeneration.current;
         try {
+            if (!window.vasio.getWindowsAudioApplications) throw new Error('Windows application discovery is unavailable.');
             const inventory = await window.vasio.getWindowsAudioApplications();
-            setApiState(current => ({ ...current, ...inventory }));
-            setProcessInventoryError(inventory.windowsAudioApplicationInventoryError || '');
+            if (!isCurrent()) return;
+            if (inventory.windowsAudioApplicationInventoryError) throw new Error(inventory.windowsAudioApplicationInventoryError);
+            setWindowsAudioApplications(inventory.windowsAudioApplications || []);
+            return inventory;
         } catch (error) {
+            if (!isCurrent()) return;
+            setWindowsAudioApplications([]);
             const unsupported = error.status === 404 || /HTTP 404\b/.test(error.message || '');
             setProcessInventoryError(unsupported
-                ? 'The connected engine does not support Windows application discovery. Save your audio work, stop the old engine, then reopen this application to start its bundled engine.'
+                ? 'Windows application discovery is unavailable in this engine version. Relaunch the application to check and manage its bundled engine automatically.'
                 : error.message);
         }
-        finally { setProcessInventoryBusy(false); }
+        finally { if (isCurrent()) setProcessInventoryBusy(false); }
+    };
+
+    const openProfileCatalog = async () => {
+        setProfileCatalogOpen(true);
+        if (!apiState?.capabilities?.processCopyTemplates || !window.vasio.getProcessCopyTemplates) return;
+        setTemplatesBusy(true); setTemplatesError('');
+        const generation = connectionGeneration.current;
+        try {
+            const result = await window.vasio.getProcessCopyTemplates();
+            if (generation === connectionGeneration.current) setProcessCopyTemplates(result.templates);
+        } catch (error) { if (generation === connectionGeneration.current) setTemplatesError(error.message); }
+        finally { setTemplatesBusy(false); }
+    };
+    const saveProcessCopyTemplate = async bridge => {
+        setTemplatesBusy(true); setTemplatesError('');
+        const generation = connectionGeneration.current;
+        try {
+            const current = await window.vasio.getProcessCopyTemplates();
+            if (generation !== connectionGeneration.current) return false;
+            const template = processCopyTemplate(bridge);
+            const existing = new Map(current.templates.map(item => [item.id, item.processName.toLowerCase()]));
+            const baseId = template.id;
+            let number = 2;
+            while (existing.has(template.id) && existing.get(template.id) !== template.processName) {
+                const suffix = `_${number++}`;
+                template.id = baseId.slice(0, 128 - suffix.length) + suffix;
+            }
+            const result = await window.vasio.replaceProcessCopyTemplates([
+                ...current.templates.filter(item => item.id !== template.id), template]);
+            if (generation !== connectionGeneration.current) return false;
+            setProcessCopyTemplates(result.templates);
+            setNotice(`${template.name} saved to the catalogue without a process ID.`);
+            return true;
+        } catch (error) { if (generation === connectionGeneration.current) setTemplatesError(error.message); return false; }
+        finally { setTemplatesBusy(false); }
+    };
+    const removeProcessCopyTemplate = async id => {
+        setTemplatesBusy(true); setTemplatesError('');
+        const generation = connectionGeneration.current;
+        try {
+            const current = await window.vasio.getProcessCopyTemplates();
+            if (generation !== connectionGeneration.current) return;
+            const result = await window.vasio.replaceProcessCopyTemplates(current.templates.filter(item => item.id !== id));
+            if (generation === connectionGeneration.current) setProcessCopyTemplates(result.templates);
+        } catch (error) { if (generation === connectionGeneration.current) setTemplatesError(error.message); }
+        finally { setTemplatesBusy(false); }
+    };
+    const applyProcessCopyTemplate = async template => {
+        const inventory = await refreshWasapiProcesses();
+        if (!inventory || inventory.windowsAudioApplicationInventoryError) return;
+        const matches = inventory.windowsAudioApplications.filter(process =>
+            processExecutableName(process.imagePath) === template.processName.toLowerCase());
+        let number = 1;
+        const ids = new Set((configuration?.wasapiBridges || []).map(bridge => bridge.id));
+        while (ids.has(`app_${number}`)) number++;
+        const process = matches.length === 1 ? matches[0] : null;
+        setProfileCatalogOpen(false);
+        setBridgeDialog({ kind: 'add', templateProcessName: template.processName, bridge: {
+            id: `app_${number}`, name: template.name, kind: 'processLoopback', enabled: true,
+            bufferDuration100ns: template.bufferDuration100ns,
+            ...(process ? { processId: process.processId, processCreationTime: process.creationTime, processImagePath: process.imagePath } : {})
+        } });
     };
     const patchbayGroups = useMemo(() => {
         if (!apiState) return { sources: [], destinations: [] };
@@ -1249,7 +1333,7 @@ function App() {
                     <div className="notice" role="status">{notice}</div>}
                 {!connectionError && apiState?.apiVersion === '1.0' && <div className="notice" role="status" aria-label="Engine compatibility">
                     Older engine connected (API 1.0). Windows audio bridges require the newer engine included with this application.
-                    {' '}Closing this window does not stop the background engine. Save your audio work, stop audio, then exit the old engine before reopening the updated application.
+                    {' '}Relaunch the application to check and manage its bundled engine automatically.
                 </div>}
                 {['configuration', 'channels'].includes(activeView) && dormantPhysicalRoutes.length > 0 &&
                     <p className="hint" role="status">{dormantPhysicalRoutes.length} physical connections remain saved and inactive with the software clock. They resume when a compatible physical ASIO driver is selected.</p>}
@@ -1404,7 +1488,7 @@ function App() {
                     {apiState.wasapiInventoryError && <p role="alert">Windows endpoint discovery: {apiState.wasapiInventoryError}</p>}
                     {!(configuration?.wasapiBridges || []).length && <p>No Windows audio bridges configured.</p>}
                     {(configuration?.wasapiBridges || []).map(bridge => <article className="application-channel-card" key={bridge.id}>
-                        <h3>{bridge.id} · {wasapiBridgeLabel(bridge.kind)}</h3><BridgeStatus compact bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} />
+                        <h3>{bridge.name || bridge.id} · {wasapiBridgeLabel(bridge.kind)}</h3><BridgeStatus compact bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} />
                         <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'edit', bridge })}>Configure {bridge.id}</button>
                             <button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'remove', bridge })}>Remove {bridge.id}</button></div>
                     </article>)}
@@ -1418,17 +1502,19 @@ function App() {
                                 enabled: device.state === 1, bufferDuration100ns: 0 } });
                         }} />
                     {apiState.capabilities?.wasapiProcessLoopback === true
-                        ? <WasapiProcessList processes={apiState.windowsAudioApplications || []} bridges={configuration?.wasapiBridges || []}
+                        ? <WasapiProcessList processes={windowsAudioApplications} bridges={configuration?.wasapiBridges || []}
                             busy={processInventoryBusy} disabled={configurationLocked || !!hardwareTransfer} error={processInventoryError}
                             onRefresh={refreshWasapiProcesses} onAdd={process => {
+                                refreshWasapiProcesses();
                                 let number = 1;
                                 const ids = new Set((configuration?.wasapiBridges || []).map(bridge => bridge.id));
                                 while (ids.has(`app_${number}`)) number++;
                                 setBridgeDialog({ kind: 'add', bridge: { id: `app_${number}`, kind: 'processLoopback', enabled: true,
+                                    ...(apiState?.capabilities?.processCopyTemplates ? { name: defaultProcessCopyName(process.imagePath) } : {}),
                                     processId: process.processId, processCreationTime: process.creationTime,
                                     processImagePath: process.imagePath, bufferDuration100ns: 0 } });
                             }} />
-                        : <div className="notice" role="status"><strong>Process copies are unavailable in the connected engine.</strong> This engine does not advertise Windows process-copy support. Save audio work, stop the older engine, then reopen this application to start its bundled engine.</div>}
+                        : <div className="notice" role="status"><strong>Process copies are unavailable in this engine version.</strong> Relaunch the application to check and manage its bundled engine automatically.</div>}
                     </div>
                     <div className="subtopic-panel" id="wasapi-panel-status" role="tabpanel" aria-labelledby="wasapi-tab-status" hidden={wasapiTab !== 'status'}>
                         <div className="section-heading"><h3>Stream monitoring</h3><ContextHelp topic="wasapi-status" onOpen={setHelpTopic} label="Read the stream counters" /></div>
@@ -1446,12 +1532,12 @@ function App() {
                         onBulkChangeRouteVisuals={updateManyRouteVisuals}
                         onSelectRoute={setSelectedRouteId} onEditRoute={editRoute}
                         profiles={confirmedProfiles} onAssignProfile={assignProfileToProcess}
-                        onShowProfiles={() => setProfileCatalogOpen(true)}
+                        onShowProfiles={openProfileCatalog}
                         onRemoveProcessConfiguration={removeProcessConfiguration}
                         onTransferProcessConnections={moveProcessConnections}
-                        onCreateConnection={processName => setRoutingDialog({ kind: 'add', processName })}
+                        onCreateConnection={processName => { refreshWasapiProcesses(); setRoutingDialog({ kind: 'add', processName }); }}
                         onShowProcessDetail={processName => setRoutingDialog({ kind: 'process', processName })}
-                        onCreateBridge={apiState?.apiVersion === '1.1' ? () => setBridgeDialog({ kind: 'add' }) : undefined}
+                        onCreateBridge={apiState?.apiVersion === '1.1' ? () => { refreshWasapiProcesses(); setBridgeDialog({ kind: 'add' }); } : undefined}
                         onShowNativeAudio={() => setNativeDialogOpen(true)}
                         onConfigurePwar={() => setPwarDialogOpen(true)}
                         onEditBridge={id => setBridgeDialog({ kind: 'edit', bridge: configuration.wasapiBridges.find(item => item.id === id) })}
@@ -1464,8 +1550,8 @@ function App() {
                 }}><div className="routing-dialog" role="dialog" aria-modal="true" aria-label={routingDialog.kind === 'add' ? 'Add a connection' : 'Process and channel detail'}>
                     <div className="routing-dialog-heading"><h2>{routingDialog.kind === 'add' ? 'Add a connection' : 'Process and channel detail'}</h2>
                         <button type="button" onClick={() => setRoutingDialog(null)}>Close</button></div>
-                    {routingDialog.kind === 'add' ? <QuickRouting sourceGroups={patchbayGroups.sources}
-                        destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
+                    {routingDialog.kind === 'add' ? <QuickRouting sourceGroups={patchbayGroups.sources.filter(group => group.availableForConnection !== false)}
+                        destinationGroups={patchbayGroups.destinations.filter(group => group.availableForConnection !== false)} routes={configuration?.routes || []}
                         onAddRoutes={addRoutes} resolveEndpointId={stableEndpointId}
                         isConnectionAllowed={bridgeConnectionAllowed}
                         preferredProcessName={routingDialog.processName || ''}
@@ -1517,6 +1603,22 @@ function App() {
                                 </button>
                             </li>;
                         })}</ul> : <p className="profile-catalog-empty">No saved profiles</p>}
+                    {apiState?.capabilities?.processCopyTemplates && <>
+                        <h3>Process copy templates</h3>
+                        <p className="hint">Templates keep the executable name, never a process ID. Apply selects a current instance before creating a bridge.</p>
+                        {templatesBusy && <p role="status">Loading templates…</p>}
+                        {templatesError && <p role="alert">{templatesError}</p>}
+                        {processInventoryError && <p role="alert">{processInventoryError}</p>}
+                        {!templatesBusy && !processCopyTemplates.length && <p>No process copy templates</p>}
+                        <ul className="profile-catalog-list">{processCopyTemplates.map(template => <li key={template.id}>
+                            <div className="profile-catalog-entry"><span className="profile-catalog-name">{template.name}</span>
+                                <span>{template.processName}</span></div>
+                            <button type="button" disabled={templatesBusy || processInventoryBusy || configurationLocked || !!connectionError}
+                                onClick={() => applyProcessCopyTemplate(template)}>Apply template {template.name}</button>
+                            <button type="button" disabled={templatesBusy || !!connectionError}
+                                onClick={() => removeProcessCopyTemplate(template.id)}>Remove template {template.name}</button>
+                        </li>)}</ul>
+                    </>}
                 </section></div>, document.body)}
 
                 {activeView === 'channels' && pwarDialogOpen && <PwarDialog
@@ -1529,9 +1631,11 @@ function App() {
                 {bridgeDialog && <BridgeDialog key={`${bridgeDialog.kind}:${bridgeDialog.bridge?.id || ''}`} dialog={bridgeDialog}
                     bridges={configuration?.wasapiBridges || []} routes={configuration?.routes || []}
                     devices={apiState?.wasapiDevices || []} runtime={apiState?.wasapiBridges?.find(item => item.id === bridgeDialog.bridge?.id)}
-                    processes={apiState?.windowsAudioApplications || []} processInventoryBusy={processInventoryBusy}
+                    processes={windowsAudioApplications} processInventoryBusy={processInventoryBusy}
                     processLoopbackSupported={apiState?.capabilities?.wasapiProcessLoopback === true}
-                    processInventoryError={processInventoryError} onRefreshProcesses={refreshWasapiProcesses}
+                    templatesSupported={apiState?.capabilities?.processCopyTemplates === true}
+                    templatesBusy={templatesBusy} templatesError={templatesError} onSaveTemplate={saveProcessCopyTemplate}
+                    processInventoryError={connectionError || processInventoryError} onRefreshProcesses={refreshWasapiProcesses}
                     inventoryError={apiState?.wasapiInventoryError} onHelp={setHelpTopic} disabled={configurationLocked || !!hardwareTransfer}
                     onClose={() => setBridgeDialog(null)} onSave={bridge => {
                         updateDraft(current => ({ ...current, wasapiBridges: [...(current.wasapiBridges || []).filter(item => item.id !== bridge.id), bridge] }));
@@ -1586,9 +1690,13 @@ function BridgeStatus({ bridge, runtime, devices, compact = false, onHelp }) {
     </div>;
 }
 
-function BridgeDialog({ dialog, bridges, routes, devices, runtime, processes, processInventoryBusy, processLoopbackSupported, processInventoryError, onRefreshProcesses, inventoryError, disabled, onClose, onSave, onRemove, onHelp }) {
-    const [draft, setDraft] = useState(() => ({ id: '', kind: 'capture', enabled: true, bufferDuration100ns: 0, endpointId: '', ...dialog.bridge }));
+function BridgeDialog({ dialog, bridges, routes, devices, runtime, processes, processInventoryBusy, processLoopbackSupported, processInventoryError, onRefreshProcesses, inventoryError, disabled, onClose, onSave, onRemove, onHelp,
+    templatesSupported, templatesBusy, templatesError, onSaveTemplate }) {
+    const [draft, setDraft] = useState(() => ({ id: '', kind: 'capture', enabled: true, bufferDuration100ns: 0, endpointId: '',
+        ...(templatesSupported && dialog.bridge?.kind === 'processLoopback'
+            ? { name: defaultProcessCopyName(dialog.bridge.processImagePath) } : {}), ...dialog.bridge }));
     const [selection, setSelection] = useState(dialog.bridge?.defaultRole ? 'default' : 'endpoint');
+    const [templateSaved, setTemplateSaved] = useState(false);
     const dialogRef = useRef(null);
     const closeRef = useRef(onClose);
     closeRef.current = onClose;
@@ -1611,6 +1719,11 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, processes, pr
     const selected = choices.find(item => item.id === draft.endpointId);
     const usedRoutes = routes.filter(route => [route.sourceEndpointId, route.destinationEndpointId].some(id => id.startsWith(`wasapi:${draft.id}:`)));
     const processLoopback = draft.kind === 'processLoopback';
+    const matchingProcesses = processInventoryBusy || processInventoryError ? [] : dialog.templateProcessName ? processes.filter(process =>
+        processExecutableName(process.imagePath) === dialog.templateProcessName.toLowerCase()) : processes;
+    const selectedAudioProcess = !processInventoryBusy && !processInventoryError && matchingProcesses.find(process =>
+        process.processId === draft.processId && process.creationTime === draft.processCreationTime &&
+        process.imagePath === draft.processImagePath);
     const modeLocked = dialog.kind !== 'add' && usedRoutes.length > 0;
     const canUseProcessLoopback = processLoopbackSupported || dialog.bridge?.kind === 'processLoopback';
     const deviceModes = [
@@ -1618,13 +1731,21 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, processes, pr
         { id: 'endpointLoopback', title: 'Copy Windows output → Timox', description: 'Duplicate all shared playback from one output.', icon: 'copy' },
         { id: 'render', title: 'Timox → Windows output', description: 'Send graph audio to a Windows playback device.', icon: 'output' }
     ];
-    const selectKind = kind => setDraft(current => ({ ...current, kind, endpointId: '',
-        ...(kind === 'processLoopback' ? {} : { processId: undefined, processCreationTime: undefined, processImagePath: undefined }) }));
-    const valid = /^[A-Za-z0-9_-]{1,128}$/.test(draft.id) &&
+    const selectKind = kind => setDraft(current => {
+        let number = 1;
+        const ids = new Set(bridges.map(bridge => bridge.id));
+        while (ids.has(`app_${number}`)) number++;
+        return { ...current, kind, endpointId: '',
+            ...(kind === 'processLoopback' ? { id: current.id || `app_${number}` }
+                : { processId: undefined, processCreationTime: undefined, processImagePath: undefined }) };
+    });
+    const validTemplate = /^[A-Za-z0-9_-]{1,128}$/.test(draft.id) &&
+        (!templatesSupported || !processLoopback || (!!draft.name?.trim() && draft.name.length <= 128)) &&
         (dialog.kind !== 'add' || (bridges.length < 32 && !bridges.some(item => item.id === draft.id))) &&
         Number.isInteger(draft.bufferDuration100ns) && draft.bufferDuration100ns >= 0 && draft.bufferDuration100ns <= 10000000 &&
         (processLoopback ? Number.isInteger(draft.processId) && draft.processId > 0 && !!draft.processCreationTime && !!draft.processImagePath
             : selection === 'default' || (!!draft.endpointId && (!draft.enabled || selected?.state === 1)));
+    const valid = validTemplate && (!processLoopback || !!selectedAudioProcess);
     const save = () => {
         if (!valid || disabled) return;
         const { endpointId, defaultRole, ...common } = draft;
@@ -1635,6 +1756,8 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, processes, pr
             <div className="routing-dialog-heading"><h2>{dialog.kind === 'remove' ? 'Remove Windows audio bridge' : 'Windows audio bridge'}</h2><button type="button" onClick={onClose}>Close</button></div>
             {dialog.kind === 'remove' ? <><p>Remove {draft.id} and {usedRoutes.length} saved connection{usedRoutes.length === 1 ? '' : 's'}? This takes effect when you apply the configuration.</p>
                 <button type="button" disabled={disabled} onClick={() => onRemove(draft.id)}>Remove bridge and its connections</button></> : <>
+                {processLoopback && templatesSupported && <label className="field">Bridge name<input aria-label="Bridge name" maxLength="128"
+                    disabled={disabled} value={draft.name || ''} onChange={event => { set('name', event.target.value); setTemplateSaved(false); }} /></label>}
                 <label className="field">Bridge ID<input aria-label="Bridge ID" maxLength="128" disabled={disabled || dialog.kind !== 'add'} value={draft.id} onChange={event => set('id', event.target.value)} /></label>
                 <p className="hint">Use letters, digits, underscores or hyphens. The ID stays fixed so saved channel connections remain stable.</p>
                 <div className="field-help-heading"><span>Choose a scope</span><ContextHelp topic="wasapi-mode" onOpen={onHelp} label="How do the bridge scopes differ?" /></div>
@@ -1666,23 +1789,32 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, processes, pr
                 {processLoopback ? <div className="wasapi-process-identity">
                     <div className="field-help-heading"><span>Process to copy</span><ContextHelp topic="wasapi-process" onOpen={onHelp} label="What audio does this copy include?" /></div>
                     <label className="field"><span className="sr-only">Process with active Windows audio</span><select aria-label="Process to copy" disabled={disabled || processInventoryBusy}
-                        value={draft.processId && draft.processCreationTime ? `${draft.processId}:${draft.processCreationTime}` : ''}
+                        value={selectedAudioProcess ? `${draft.processId}:${draft.processCreationTime}` : ''}
                         onChange={event => {
-                            const process = processes.find(item => `${item.processId}:${item.creationTime}` === event.target.value);
+                            const process = matchingProcesses.find(item => `${item.processId}:${item.creationTime}` === event.target.value);
                             setDraft(current => ({ ...current, processId: process?.processId, processCreationTime: process?.creationTime,
+                                ...(templatesSupported && process && (!current.name || current.name === defaultProcessCopyName(current.processImagePath))
+                                    ? { name: defaultProcessCopyName(process.imagePath) } : {}),
                                 processImagePath: process?.imagePath, enabled: process ? true : current.enabled }));
                         }}>
                         <option value="">Select a process with active audio</option>
-                        {draft.processId && !processes.some(item => item.processId === draft.processId && item.creationTime === draft.processCreationTime) &&
-                            <option value={`${draft.processId}:${draft.processCreationTime}`}>{(draft.processImagePath || '').split(/[\\/]/).pop()} · PID {draft.processId} (not detected)</option>}
-                        {processes.map(process => <option key={`${process.processId}:${process.creationTime}`} value={`${process.processId}:${process.creationTime}`}>
+                        {matchingProcesses.map(process => <option key={`${process.processId}:${process.creationTime}`} value={`${process.processId}:${process.creationTime}`}>
                             {process.displayName} · PID {process.processId} · {process.renderEndpoints.join(', ')}
                         </option>)}
                     </select></label>
+                    {dialog.templateProcessName && <p role="status">{matchingProcesses.length === 0
+                        ? `No current audio process named ${dialog.templateProcessName}. Start audio in that application and refresh.`
+                        : matchingProcesses.length > 1 ? `Several instances of ${dialog.templateProcessName} are available. Select the one to copy.`
+                            : `Current instance of ${dialog.templateProcessName} selected.`}</p>}
                     <div className="analysis-actions"><button type="button" disabled={disabled || processInventoryBusy || !onRefreshProcesses}
                         onClick={onRefreshProcesses}>{processInventoryBusy ? 'Scanning…' : 'Refresh active apps'}</button>
                         {processInventoryError && <p role="alert">{processInventoryError}</p>}</div>
-                    {draft.processId && <details className="bridge-technical"><summary>Selected process identity</summary><code>{draft.processImagePath} · PID {draft.processId}</code></details>}
+                    <div className="field"><strong>Original Windows output(s)</strong>
+                        <output aria-label="Original Windows outputs">{selectedAudioProcess?.renderEndpoints?.length
+                            ? selectedAudioProcess.renderEndpoints.join(', ') : 'Unknown — refresh active apps while the process is playing audio.'}</output>
+                        <p className="hint">This bridge copies audio; it does not change the process’s Windows output. The catalogue rediscovers these outputs when you apply a template.</p>
+                    </div>
+                    {draft.processId && <details className="bridge-technical"><summary>{selectedAudioProcess ? 'Selected process identity' : 'Saved process identity (not currently verified)'}</summary><code>{draft.processImagePath} · PID {draft.processId}</code></details>}
                     <p className="hint">Timox creates a separate graph source by copying shared-mode audio from this process and its child processes. Original playback continues independently. ASIO and WASAPI-exclusive output cannot be copied.</p>
                     <p className="hint">Save this bridge to the draft, then apply the audio configuration. The new source appears in Routing. Sending it to the same output as the original may play the audio twice.</p></div> : <>
                 <div className="field-help-heading"><span>Device selection</span><ContextHelp topic="wasapi-endpoint" onOpen={onHelp} label="Fixed device or Windows default?" /></div>
@@ -1707,8 +1839,17 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, processes, pr
                 <label className="field"><span>Milliseconds · 0 uses the Windows default</span><input aria-label="Bridge buffer duration (ms)" type="number" min="0" max="1000" step="0.0001" disabled={disabled} value={draft.bufferDuration100ns / 10000} onChange={event => set('bufferDuration100ns', Math.round(Number(event.target.value) * 10000))} /></label>
                 {runtime && <details className="bridge-runtime-disclosure"><summary>View current stream status (read-only)</summary><BridgeStatus bridge={dialog.bridge} runtime={runtime} devices={devices} onHelp={onHelp} /></details>}
 
-                {!valid && <p role="status">Choose a valid audio source, a unique ID, and a duration between 0 and 1000 ms.</p>}
+                {!valid && <p role="status">{processLoopback && !selectedAudioProcess
+                    ? 'Refresh active apps and select a currently detected process before saving the bridge.'
+                    : 'Choose a valid audio source, a unique ID, and a duration between 0 and 1000 ms.'}</p>}
                 <button type="button" disabled={disabled || !valid} onClick={save}>Save bridge to draft</button>
+                {processLoopback && templatesSupported && <>
+                    <button type="button" disabled={disabled || templatesBusy || !validTemplate} onClick={async () => {
+                        setTemplateSaved(await onSaveTemplate(draft));
+                    }}>Save process copy to catalogue</button>
+                    {templateSaved && <p role="status">Template saved without a process ID.</p>}
+                    {templatesError && <p role="alert">{templatesError}</p>}
+                </>}
             </>}
         </div></div>, document.body);
 }

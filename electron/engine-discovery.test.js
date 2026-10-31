@@ -38,3 +38,14 @@ test('TimoxVSSC explicitly requires API 1.1, independently of its product versio
     await assert.rejects(discoverEngine(response('1.0'), {requiredApiVersion:'1.1'}), /TimoxVSSC requires engine API 1.1/);
     assert.equal(await discoverEngine(response('1.1'), {requiredApiVersion:'1.1'}), 52525);
 });
+
+test('API version alone cannot satisfy required GUI capabilities and supervision schema', async () => {
+    const state = { apiVersion: '1.1', virtualDrivers: [{ id: 'TimoxVasio' }] };
+    const response = async () => ({ ok: true, json: async () => state });
+    const required = { requiredApiVersion: '1.1', requiredCapabilities: ['processCopyTemplates'], requiredSupervisionVersion: 1 };
+    await assert.rejects(discoverEngine(response, required), error => error.code === 'API_CONTRACT_MISMATCH');
+    state.capabilities = { processCopyTemplates: true };
+    await assert.rejects(discoverEngine(response, required), /supervision schema/);
+    state.supervision = { schemaVersion: 1 };
+    assert.equal(await discoverEngine(response, required), 52525);
+});

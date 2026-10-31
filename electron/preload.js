@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('vasio', {
     getWindowsAudioApplications: () => ipcRenderer.invoke('api:get-windows-audio-applications'),
     getNetworkAddresses: () => ipcRenderer.invoke('system:get-network-addresses'),
     getApplicationProfiles: () => ipcRenderer.invoke('api:get-application-profiles'),
+    getProcessCopyTemplates: () => ipcRenderer.invoke('api:get-process-copy-templates'),
+    replaceProcessCopyTemplates: templates => ipcRenderer.invoke('api:replace-process-copy-templates', templates),
     replaceApplicationProfiles: profiles => ipcRenderer.invoke('api:replace-application-profiles', profiles),
     getDiagnostics: limit => ipcRenderer.invoke('api:get-diagnostics', limit),
     setDiagnosticLevel: level => ipcRenderer.invoke('api:set-diagnostic-level', level),

@@ -30,27 +30,27 @@
       "source": "api/openapi-v1.json",
       "target": "api/openapi-v1.json",
       "sourceSha256": "243d01272e07b00cfd52819812ba3f96ec083d57207b4498b3490805081ef392",
-      "sha256": "208dc9c42be9eb0b9449ad89b612c0ecf399c2c478b5848ccc1798e4a7633073",
-      "targetSha256": "208dc9c42be9eb0b9449ad89b612c0ecf399c2c478b5848ccc1798e4a7633073",
-      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26",
+      "sha256": "33daf80bd0ddd5f6daf9be926e53da2fa2ac87b73343971cc805adfed3949fc2",
+      "targetSha256": "33daf80bd0ddd5f6daf9be926e53da2fa2ac87b73343971cc805adfed3949fc2",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
       "status": "modified"
     },
     {
       "source": "api/schemas/api-v1.json",
       "target": "api/schemas/api-v1.json",
       "sourceSha256": "113b1ea91f7635457cd40881cfe139e595cf6ab02e38533c99e03670e3140bf0",
-      "sha256": "2eb0630bdb93b81b2061aa58556ae4cbbd90480e0d31b44106796b8a05d07302",
-      "targetSha256": "2eb0630bdb93b81b2061aa58556ae4cbbd90480e0d31b44106796b8a05d07302",
-      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26",
+      "sha256": "62d99886de4f698bd178346bfe7908d56863c208b1e12a5c9ea44b4dcd5df918",
+      "targetSha256": "62d99886de4f698bd178346bfe7908d56863c208b1e12a5c9ea44b4dcd5df918",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
       "status": "modified"
     },
     {
       "source": null,
       "target": "artifacts.lock.json",
       "sourceSha256": null,
-      "sha256": "953260b89b36e4c5c9439df56c9bd994a95b27618a292b6ccdd2bbd003786b9b",
-      "targetSha256": "953260b89b36e4c5c9439df56c9bd994a95b27618a292b6ccdd2bbd003786b9b",
-      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26",
+      "sha256": "d58b8c508c5b6c32fb41673c16d22fc8142b874ce7a4a5499e8b8774b0f2ccde",
+      "targetSha256": "d58b8c508c5b6c32fb41673c16d22fc8142b874ce7a4a5499e8b8774b0f2ccde",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
       "status": "generated"
     },
     {
@@ -65,33 +65,37 @@
       "source": "gui/electron/api-client.js",
       "target": "electron/api-client.js",
       "sourceSha256": "a3abc866b7ae225111adb9326e9a684e2b75716a076b999192b1f3a22817a80a",
-      "sha256": "a3abc866b7ae225111adb9326e9a684e2b75716a076b999192b1f3a22817a80a",
-      "targetSha256": "a3abc866b7ae225111adb9326e9a684e2b75716a076b999192b1f3a22817a80a",
-      "transformation": "verbatim import"
+      "sha256": "99eb3d59351408c0ef3839e359863e2aa52befcd0ac4a6e8905dbc4089b38fb9",
+      "targetSha256": "99eb3d59351408c0ef3839e359863e2aa52befcd0ac4a6e8905dbc4089b38fb9",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "modified"
     },
     {
       "source": "gui/electron/api-client.test.js",
       "target": "electron/api-client.test.js",
       "sourceSha256": "84aebeb6662a80a638cf3c6e20ff94575413f79f6396e4e1d13997d3a1a47be3",
-      "sha256": "84aebeb6662a80a638cf3c6e20ff94575413f79f6396e4e1d13997d3a1a47be3",
-      "targetSha256": "84aebeb6662a80a638cf3c6e20ff94575413f79f6396e4e1d13997d3a1a47be3",
-      "transformation": "verbatim import"
+      "sha256": "5a9a000c88dd6bafda4f96d363b229a4a8a568c841e23fe8ea4f9d32f450ae0b",
+      "targetSha256": "5a9a000c88dd6bafda4f96d363b229a4a8a568c841e23fe8ea4f9d32f450ae0b",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "modified"
     },
     {
       "source": "gui/electron/engine-discovery.js",
       "target": "electron/engine-discovery.js",
       "sourceSha256": "2b68ea86222615d5432782af59e35d99fd82c6a295a1864b9622853438c1379c",
-      "sha256": "755380280510d16e4be10d25c1c6a9eba203978d322af328b82389456922b8bb",
-      "targetSha256": "755380280510d16e4be10d25c1c6a9eba203978d322af328b82389456922b8bb",
-      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+      "sha256": "999418d034ebb66cf02a5326cde3c94a59faefb5024ab48e293beeace54d489e",
+      "targetSha256": "999418d034ebb66cf02a5326cde3c94a59faefb5024ab48e293beeace54d489e",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "modified"
     },
     {
       "source": "gui/electron/engine-discovery.test.js",
       "target": "electron/engine-discovery.test.js",
       "sourceSha256": "d0a0b56218f236e047accb532d6f90b190474ca4e46a03749a972e5b8c6c518c",
-      "sha256": "7157416b0356ec877539af4d859e9ed944053434b255b805165b58d05108785d",
-      "targetSha256": "7157416b0356ec877539af4d859e9ed944053434b255b805165b58d05108785d",
-      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+      "sha256": "e78fc43078d9e9dbf9d5db533edaafe2ed6c972facfd9c1b7c6d317755e61b8d",
+      "targetSha256": "e78fc43078d9e9dbf9d5db533edaafe2ed6c972facfd9c1b7c6d317755e61b8d",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "modified"
     },
     {
       "source": "gui/electron/engine-process.js",
@@ -113,33 +117,37 @@
       "source": "gui/electron/main-startup.test.js",
       "target": "electron/main-startup.test.js",
       "sourceSha256": "4537aa3068ec97129d90398d87101349666ff36bbae439195b91d07c087f1605",
-      "sha256": "1d4148878a3be8811694661edbcaac281be14da42aa8357433d0cd97426cf007",
-      "targetSha256": "1d4148878a3be8811694661edbcaac281be14da42aa8357433d0cd97426cf007",
-      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+      "sha256": "101f77af7513fd0a21c1d51d63fc0eb325d1db3150ffd9c5bbccec96d704008a",
+      "targetSha256": "101f77af7513fd0a21c1d51d63fc0eb325d1db3150ffd9c5bbccec96d704008a",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "modified"
     },
     {
       "source": "gui/electron/main.js",
       "target": "electron/main.js",
       "sourceSha256": "af594d82d70b8244ecee8533ae445eff11f723ac833e89bc5d48ce5450a76034",
-      "sha256": "8a8ee81709f64bf4850fa562319bed3db99baaaa28f2a4be1394074b1a19052f",
-      "targetSha256": "8a8ee81709f64bf4850fa562319bed3db99baaaa28f2a4be1394074b1a19052f",
-      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+      "sha256": "8143bd12725813142b3cf4e249a75872702783ffc15ebb8cbfaf5e6082789f6b",
+      "targetSha256": "8143bd12725813142b3cf4e249a75872702783ffc15ebb8cbfaf5e6082789f6b",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "modified"
     },
     {
       "source": "gui/electron/preload.js",
       "target": "electron/preload.js",
       "sourceSha256": "3dd2d2cd55055f5207f4934882f033c720994c7454f354ecc355437cb2d5e509",
-      "sha256": "3dd2d2cd55055f5207f4934882f033c720994c7454f354ecc355437cb2d5e509",
-      "targetSha256": "3dd2d2cd55055f5207f4934882f033c720994c7454f354ecc355437cb2d5e509",
-      "transformation": "verbatim import"
+      "sha256": "5273289883cca9fe2f004369c6034e13094e3f66f02748655ad17a0bec50aabd",
+      "targetSha256": "5273289883cca9fe2f004369c6034e13094e3f66f02748655ad17a0bec50aabd",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "modified"
     },
     {
       "source": "gui/electron-builder.tvsd.json",
       "target": "electron-builder.tvsd.json",
       "sourceSha256": "751f20a8b462d23f9cc02a473afde10b02e4287fd6948a8806ef2fab376cf392",
-      "sha256": "9ac694a952246681522c3101541aa87d84443b2b19c035241b31cc6222718ad5",
-      "targetSha256": "9ac694a952246681522c3101541aa87d84443b2b19c035241b31cc6222718ad5",
-      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+      "sha256": "f5e4e046221d840c91ef58e3af21426afbc48f6f106b692f9828c9d6d4807674",
+      "targetSha256": "f5e4e046221d840c91ef58e3af21426afbc48f6f106b692f9828c9d6d4807674",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "modified"
     },
     {
       "source": "gui/GUI_GUIDE.en.md",
@@ -218,9 +226,10 @@
       "source": "gui/package.json",
       "target": "package.json",
       "sourceSha256": "eda10c6039a143519612f4e35a143fd2db5f451da710ba6d75638d64719e46b6",
-      "sha256": "257e3b19f12bc74083b679a153ef81a58e8df427eda69fde3b052673ae7a2141",
-      "targetSha256": "257e3b19f12bc74083b679a153ef81a58e8df427eda69fde3b052673ae7a2141",
-      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+      "sha256": "83188b94e49915953bf5109d3f85cbe48a9794b8cb6d02d89fbd442294e841f1",
+      "targetSha256": "83188b94e49915953bf5109d3f85cbe48a9794b8cb6d02d89fbd442294e841f1",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "modified"
     },
     {
       "source": "gui/public/index.html",
@@ -242,9 +251,10 @@
       "source": "gui/README.md",
       "target": "README.md",
       "sourceSha256": "a19410281ddec4fd317d8c6a9b9d20c19f0425d250dea3357b0a19a861881b58",
-      "sha256": "dbd847319c79afdb59101536abc64986d218965f3d7adc7a4a20154a76367094",
-      "targetSha256": "dbd847319c79afdb59101536abc64986d218965f3d7adc7a4a20154a76367094",
-      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+      "sha256": "fa9024727a9ff95be78e61b5eb414ffe46e869901782389e929d1a1a6e1009e1",
+      "targetSha256": "fa9024727a9ff95be78e61b5eb414ffe46e869901782389e929d1a1a6e1009e1",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "modified"
     },
     {
       "source": null,
@@ -365,9 +375,9 @@
       "source": "gui/src/App.js",
       "target": "src/App.js",
       "sourceSha256": "b06bb398673ee0bdc625fe5c0206941e2c2d63fed654ab58cb8b0dfeefbfcc22",
-      "sha256": "92975553664f1c4e97696aad0bd9bf7de77620ed61831339d271c5b85ee08580",
-      "targetSha256": "92975553664f1c4e97696aad0bd9bf7de77620ed61831339d271c5b85ee08580",
-      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26",
+      "sha256": "18d93bc6db391eb9e777fa24997463044fef348d9d766611cbfd5b8bb4648a4d",
+      "targetSha256": "18d93bc6db391eb9e777fa24997463044fef348d9d766611cbfd5b8bb4648a4d",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
       "status": "modified"
     },
     {
@@ -752,9 +762,10 @@
       "source": null,
       "target": "import-manifest.json",
       "sourceSha256": null,
-      "sha256": null,
-      "targetSha256": null,
-      "transformation": "manifest self-entry; hash intentionally omitted"
+      "sha256": "40c2e60e88a91d30015207f4f2ea4795828d4174b0e97b981ca23a64ea5ca879",
+      "targetSha256": "40c2e60e88a91d30015207f4f2ea4795828d4174b0e97b981ca23a64ea5ca879",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27",
+      "status": "generated"
     },
     {
       "source": null,
@@ -790,6 +801,87 @@
       "targetSha256": "0bbc839a8901a90630e77b4ac148e451aab37f309c4fa9cc6b68f1f7a0b744c4",
       "status": "generated",
       "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+    },
+    {
+      "source": null,
+      "target": "src/process-copy.js",
+      "sourceSha256": null,
+      "sha256": "09d1146df73424b67ef67587aa62ab50e4f3c4fffe1cb9f8046c529939579d8d",
+      "status": "generated",
+      "targetSha256": "09d1146df73424b67ef67587aa62ab50e4f3c4fffe1cb9f8046c529939579d8d",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
+    },
+    {
+      "source": null,
+      "target": "src/process-copy.test.js",
+      "sourceSha256": null,
+      "sha256": "09ea960e357044a04792eb314c9e263ab3210b740b6a8ea5f147ae5c809063bc",
+      "status": "generated",
+      "targetSha256": "09ea960e357044a04792eb314c9e263ab3210b740b6a8ea5f147ae5c809063bc",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
+    },
+    {
+      "source": null,
+      "target": "src/App.process-copy.test.js",
+      "sourceSha256": null,
+      "sha256": "c539d7d8ca2d450c30dc82adf6f83d8712ceeef2d35e0271751948397e823a61",
+      "status": "generated",
+      "targetSha256": "c539d7d8ca2d450c30dc82adf6f83d8712ceeef2d35e0271751948397e823a61",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
+    },
+    {
+      "source": null,
+      "target": "electron/runtime-dependencies.js",
+      "sourceSha256": null,
+      "sha256": "a8850e7c65a6bec29697d2165342ad391073cdf69ae69a225afd9476e1f4f24e",
+      "status": "generated",
+      "targetSha256": "a8850e7c65a6bec29697d2165342ad391073cdf69ae69a225afd9476e1f4f24e",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
+    },
+    {
+      "source": null,
+      "target": "electron/runtime-dependencies.test.js",
+      "sourceSha256": null,
+      "sha256": "fef1f8d7183cb3cb7694762c0894d4520be199cd7ab1faf43810680b377bc155",
+      "status": "generated",
+      "targetSha256": "fef1f8d7183cb3cb7694762c0894d4520be199cd7ab1faf43810680b377bc155",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
+    },
+    {
+      "source": null,
+      "target": "electron/engine-ownership.js",
+      "sourceSha256": null,
+      "sha256": "984ad1135a722d9f98262abcb7c6d5a835878539501be9a937e0dbc5f8f93ffb",
+      "status": "generated",
+      "targetSha256": "984ad1135a722d9f98262abcb7c6d5a835878539501be9a937e0dbc5f8f93ffb",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
+    },
+    {
+      "source": null,
+      "target": "electron/engine-ownership.test.js",
+      "sourceSha256": null,
+      "sha256": "e66de41aaeea8637ffef5e1e3dceddfbd5a81a601ebb22f69b8a3ef82e82473e",
+      "status": "generated",
+      "targetSha256": "e66de41aaeea8637ffef5e1e3dceddfbd5a81a601ebb22f69b8a3ef82e82473e",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
+    },
+    {
+      "source": null,
+      "target": "electron/http-json.js",
+      "sourceSha256": null,
+      "sha256": "f1b406536e99e9dcc313d759e0ca20ac398518eedbf0c747ae1ecedb5d7e0d71",
+      "status": "generated",
+      "targetSha256": "f1b406536e99e9dcc313d759e0ca20ac398518eedbf0c747ae1ecedb5d7e0d71",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
+    },
+    {
+      "source": null,
+      "target": "electron/http-json.test.js",
+      "sourceSha256": null,
+      "sha256": "ef7aff7fddd21b9660fbfd612c4807f3d4af05e3c8a988a84399e381cf3cb735",
+      "status": "generated",
+      "targetSha256": "ef7aff7fddd21b9660fbfd612c4807f3d4af05e3c8a988a84399e381cf3cb735",
+      "transformation": "Process-copy names, reusable catalogue and connection availability, 2026-10-27"
     }
   ],
   "excluded": [

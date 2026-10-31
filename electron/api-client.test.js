@@ -11,6 +11,7 @@ async function createApiFixture() {
     const diagnostics = { level: 'info', entries: [] };
     let diagnosticLevel = 'info';
     let submittedProfiles = null;
+    let templates = [];
     const server = http.createServer((request, response) => {
         response.setHeader('content-type', 'application/json');
         if (request.url === '/api/v1/state') response.end(JSON.stringify(state));
@@ -27,6 +28,21 @@ async function createApiFixture() {
                     profiles: submittedProfiles.profiles,
                     restartRequiredClients: [{ pid: 42, processName: 'AudioApp.exe' }]
                 }));
+            });
+        }
+        else if (request.url === '/api/v1/process-copy-templates' && request.method === 'GET')
+            response.end(JSON.stringify({ templates }));
+        else if (request.url === '/api/v1/process-copy-templates' && request.method === 'PUT') {
+            const chunks = [];
+            request.on('data', chunk => chunks.push(chunk));
+            request.on('end', () => {
+                templates = JSON.parse(Buffer.concat(chunks).toString()).templates;
+                if (!Array.isArray(templates)) {
+                    response.statusCode = 400;
+                    response.end(JSON.stringify({ code: 'INVALID_PROCESS_COPY_TEMPLATES', message: 'Expected templates array' }));
+                    return;
+                }
+                response.end(JSON.stringify({ templates }));
             });
         }
         else if (request.url.startsWith('/api/v1/diagnostics') && request.method === 'GET')
@@ -174,4 +190,40 @@ test('a closed WebSocket rejects pending commands', async () => {
         fixture.client.close();
         await assert.rejects(pending, /closed|disconnect/i);
     } finally { await fixture.close(); }
+});
+
+test('process copy templates use the documented catalogue GET and PUT routes', async () => {
+    const fixture = await createApiFixture();
+    const templates = [{ id: 'app_1', name: 'ProcessCopy+firefox.exe', processName: 'firefox.exe', bufferDuration100ns: 0 }];
+    try {
+        assert.deepEqual(await fixture.client.getProcessCopyTemplates(), { templates: [] });
+        assert.deepEqual(await fixture.client.replaceProcessCopyTemplates(templates), { templates });
+        assert.deepEqual(await fixture.client.getProcessCopyTemplates(), { templates });
+        assert.deepEqual(await fixture.client.httpRequest('GET', '/api/v1/process-copy-templates'), { status: 200, body: { templates } });
+        await assert.rejects(fixture.client.replaceProcessCopyTemplates(null), error =>
+            error.status === 400 && error.code === 'INVALID_PROCESS_COPY_TEMPLATES' && error.message === 'Expected templates array');
+    } finally { await fixture.close(); }
+});
+
+test('a command with no acknowledgement times out and releases pending state', async () => {
+    const fixture = await createApiFixture();
+    fixture.client.timeoutMs = 25;
+    try {
+        await fixture.client.connect();
+        await assert.rejects(fixture.client.applyConfiguration({}, 'close-pending'), /timed out/);
+        assert.equal(fixture.client.pending.size, 0);
+    } finally { fixture.client.close(); await fixture.close(); }
+});
+
+test('a WebSocket that never opens has a bounded connection timeout', async () => {
+    const { EventEmitter } = require('node:events');
+    let terminated = false;
+    class HungSocket extends EventEmitter {
+        static OPEN = 1;
+        terminate() { terminated = true; this.emit('close'); }
+    }
+    const client = new ApiClient({ baseUrl: 'http://127.0.0.1', webSocketUrl: 'ws://127.0.0.1', WebSocket: HungSocket, timeoutMs: 20 });
+    await assert.rejects(client.connect(), /timed out/);
+    assert.equal(terminated, true);
+    assert.equal(client.connecting, null);
 });
