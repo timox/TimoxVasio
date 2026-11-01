@@ -1,5 +1,8 @@
 # Caractériser un son géré par Windows
 
+**Statut : modèle de travail en cours lié aux préversions non publiées.** Ce
+document ne correspond à aucune release ou fonctionnalité stable publiée.
+
 État du 27 octobre 2026. Exemple : Firefox, sa sortie Windows et sa copie vers
 Timox. Ce document rassemble le modèle d'observation et les écarts de couverture ;
 il ne prétend pas que tous les champs sont déjà exposés par l'API.

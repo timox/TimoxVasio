@@ -1,5 +1,9 @@
 # Validation des dépendances et du moteur réellement actif
 
+**Statut : travail en cours lié aux préversions non publiées.** Les résultats
+ci-dessous concernent des essais locaux et des candidats alpha ; ils ne
+correspondent à aucune release GitHub, aucun tag de release ni version stable.
+
 ## Défaut observé
 
 Le portable ProcessCopy récent se raccordait au moteur PID 20088 lancé le

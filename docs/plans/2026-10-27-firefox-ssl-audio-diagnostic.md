@@ -1,5 +1,9 @@
 # Firefox vers SSL : son haché signalé le 27 octobre
 
+**Statut : diagnostic en cours lié aux préversions non publiées.** Ce document
+ne constitue ni une release, ni une qualification de version stable, ni une
+preuve qu'un correctif a été publié.
+
 **Retour utilisateur du 28 octobre :** le problème a été identifié en présence
 d'Ableton ouvert, même inactif. Le mécanisme précis (pilote, horloge, routage ou
 accès concurrent) n'a pas été mesuré. Les observations historiques suivantes

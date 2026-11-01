@@ -1,5 +1,9 @@
 # Ponts de processus : noms, catalogue et sorties d'origine
 
+**Statut : travail en cours lié aux préversions non publiées.** Ce document ne
+décrit pas une release correspondante ; aucune release, aucun tag et aucun
+livrable stable ne doit être créé à partir de ce lot.
+
 ## Comportement retenu
 
 - Nom humain éditable généré à la création : `ProcessCopy+firefox.exe`.
@@ -55,16 +59,18 @@ existants : deux contrôleurs concurrents peuvent écraser leurs modifications.
 Le signal sonore réel n'est pas qualifié par ce lot. Aucun redémarrage ni
 changement de configuration audio de la session utilisateur n'a été réalisé.
 
-## Livraison vérifiée
+## Transfert de travail vérifié localement — non publié
 
-52 fichiers sources/artefacts transférés vers les dépôts canoniques, avec
+52 fichiers sources/artefacts ont été transférés localement vers les dépôts
+canoniques pour travail de préversion, avec
 sauvegarde et vérification SHA-256 (`build_processcopy_20261027/transfer-result.json`).
-Les modifications restent locales, sans nouveau commit ni push pour ce lot.
+Le code source du lot n'est pas intégré ici comme fonctionnalité publiée ; ce
+document et ses artefacts restent uniquement le suivi du travail de préversion.
 
 - Moteur : `../TimoxVAudioEngine/build/Release/TimoxVirtualAsioEngine.exe`,
   1 527 296 octets, SHA-256
   `4a5b8efc404648be905a7a12b899f449fa5f86598477f46211e5ff8250eb7c9c`.
-- Portable : `../TimoxVSSC/dist/TimoxVSSC-0.1.0-processcopy.exe`,
+- Portable local non publié : `../TimoxVSSC/dist/TimoxVSSC-0.1.0-processcopy.exe`,
   71 577 054 octets, SHA-256
   `7bbbd22c80eec629620c533327c48ff2e2e7551699afa678a2bf2245b5e5cfa3`.
 - Moteur, PWAR, OpenAPI et schéma extraits du portable comparés aux entrées
@@ -74,4 +80,5 @@ Les modifications restent locales, sans nouveau commit ni push pour ce lot.
   et les six cibles C++ API profils/catalogue, API ponts, persistance,
   contrôleur WASAPI, conversion PCM et rééchantillonnage : réussis.
 
-Le portable n'a pas été lancé ; il ne remplace pas le moteur déjà actif.
+Le portable n'a pas été lancé ; il ne remplace pas le moteur déjà actif et ne
+constitue aucune release.
