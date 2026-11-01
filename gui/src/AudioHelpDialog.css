@@ -38,6 +38,24 @@
 .audio-help-content .audio-help-intro { margin-top: 0; color: var(--text-primary); }
 .audio-help-content section + section { margin-top: 24px; }
 .audio-help-content h3 { margin: 0 0 8px; font-size: 14px; font-weight: 650; color: var(--text-primary); }
+.audio-adhesion-diagram { margin: 16px 0 22px; padding: 12px; overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-card); background: var(--surface-inset); }
+.audio-adhesion-diagram svg { display: block; width: 100%; min-width: 680px; height: auto; font-family: 'Segoe UI Variable Text', 'Segoe UI', Arial, sans-serif; }
+.audio-adhesion-diagram figcaption { margin-top: 8px; color: var(--text-secondary); font-size: 12px; }
+.audio-adhesion-diagram .adhesion-section-title { fill: var(--text-primary); font-size: 13px; font-weight: 700; }
+.audio-adhesion-diagram .adhesion-node { fill: var(--surface-card); stroke: var(--border-strong); stroke-width: 1.5; }
+.audio-adhesion-diagram .adhesion-driver { fill: var(--accent-surface); stroke: var(--accent); }
+.audio-adhesion-diagram .adhesion-graph { fill: #e7f0eb; stroke: var(--success); }
+.audio-adhesion-diagram .adhesion-windows { fill: #f2f4f5; }
+.audio-adhesion-diagram .adhesion-device { fill: #fff8e8; stroke: var(--warning); }
+.audio-adhesion-diagram .adhesion-copy, .audio-adhesion-diagram .adhesion-source { fill: #eef0f8; stroke: #685397; }
+.audio-adhesion-diagram .adhesion-node-title { fill: var(--text-primary); font-size: 12px; font-weight: 650; }
+.audio-adhesion-diagram .adhesion-node-subtitle { fill: var(--text-secondary); font-size: 10px; }
+.audio-adhesion-diagram .adhesion-link { stroke: var(--accent); stroke-width: 2; }
+.audio-adhesion-diagram .adhesion-original-link { stroke: var(--success); stroke-width: 2; }
+.audio-adhesion-diagram .adhesion-copy-link { fill: none; stroke: #685397; stroke-width: 2; }
+.audio-adhesion-diagram marker path { fill: currentColor; }
+.audio-adhesion-diagram #adhesion-arrow path { fill: var(--accent); }
+.audio-adhesion-diagram #adhesion-copy-arrow path { fill: #685397; }
 .audio-help-dialog :focus-visible { outline: 2px solid var(--focus); outline-offset: -3px; }
 @media (max-width: 600px) {
     .audio-help-backdrop { padding: 10px; }

@@ -6,8 +6,9 @@
     --routing-text: #263644;
     --routing-muted-text: #536573;
     --routing-asio: #326984;
-    --routing-process: #695582;
+    --routing-process: #285a91;
     --routing-wasapi: #28736b;
+    --routing-copy: #8c4e0e;
     --routing-profile: #87652f;
     --routing-saved: #687884;
     --routing-selection: #155d76;
@@ -20,17 +21,20 @@
 .patchbay .patchbay-interface-title { color: var(--routing-text); border-bottom-color: #c7d1da; }
 .patchbay .patchbay-interface.physical { border-left-color: var(--routing-asio); }
 .patchbay .patchbay-interface.process { border-left-color: var(--routing-process); }
-.patchbay .patchbay-interface.wasapi { border-color: #83aaa5; }
+.patchbay .patchbay-interface.wasapi { border-color: #83aaa5; border-left: 4px solid var(--routing-wasapi); }
+.patchbay .patchbay-interface.wasapiApp { border-color: #d6bd98; border-left: 4px dashed var(--routing-copy); }
 .patchbay .patchbay-interface.profile { border-color: #b79d73; }
 .patchbay .patchbay-interface.saved { border-color: #a0acb5; }
 .patchbay .patchbay-interface.physical .patchbay-interface-title { background: #e5eef4; }
-.patchbay .patchbay-interface.process .patchbay-interface-title { background: #eeeaf3; }
+.patchbay .patchbay-interface.process .patchbay-interface-title { background: #e8eff8; }
 .patchbay .patchbay-interface.wasapi .patchbay-interface-title { background: #e4f0ed; }
+.patchbay .patchbay-interface.wasapiApp .patchbay-interface-title { background: #fbf1e2; }
 .patchbay .patchbay-interface.profile .patchbay-interface-title { background: #f5f0e5; }
 .patchbay .patchbay-interface.saved .patchbay-interface-title { background: #eef1f3; }
 .patchbay .patchbay-object-icon.physical, .patchbay .patchbay-legend b.physical { color: var(--routing-asio); }
 .patchbay .patchbay-object-icon.process, .patchbay .patchbay-legend b.process { color: var(--routing-process); }
 .patchbay .patchbay-object-icon.wasapi { color: var(--routing-wasapi); }
+.patchbay .patchbay-object-icon.wasapiApp { color: var(--routing-copy); }
 .patchbay .patchbay-object-icon.profile, .patchbay .patchbay-legend b.profile { color: var(--routing-profile); }
 .patchbay .patchbay-object-icon.saved, .patchbay .patchbay-legend b.saved { color: var(--routing-saved); }
 .patchbay .patchbay-capacity { color: var(--routing-muted-text); background: #f8fafb; border-bottom-color: #e0e6eb; }
@@ -56,6 +60,7 @@
 .patchbay .patchbay-flow-handle.physical-output { border-color: var(--routing-asio); }
 .patchbay .patchbay-flow-handle.wasapi-capture,
 .patchbay .patchbay-flow-handle.wasapi-render { border-color: var(--routing-wasapi); }
+.patchbay .patchbay-flow-handle.wasapiApp { border-color: var(--routing-copy); border-style: dashed; }
 .patchbay .patchbay-port.selected .patchbay-flow-handle { border-color: var(--routing-selection); background: var(--routing-selection); }
 .patchbay .patchbay-port.route-selected .patchbay-flow-handle { border-color: var(--selected-route-color); background: var(--selected-route-color); }
 .patchbay .patchbay-flow-handle:hover { background: #dcebf3; }
@@ -70,11 +75,18 @@
 .patchbay .patchbay-legend .line.muted { border-top-color: #89919a; }
 
 /* Type labels occupy the existing title row; node dimensions and ports stay put. */
-.patchbay .routing-type-badge { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 2px 5px; border: 1px solid currentColor; border-radius: 3px; color: var(--routing-process); background: #fff9; font-size: 10px; line-height: 16px; font-weight: 700; white-space: nowrap; }
-.patchbay .routing-type-badge svg { display: block; flex: 0 0 16px; width: 16px; height: 16px; }
+.patchbay .routing-type-badge { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; min-height: 28px; padding: 2px 6px; border: 1px solid currentColor; border-radius: 4px; color: var(--routing-process); background: #fff; font-size: 11px; line-height: 16px; font-weight: 700; white-space: nowrap; }
+.patchbay .routing-type-badge > svg:first-child { display: block; flex: 0 0 18px; width: 18px; height: 18px; }
 .patchbay .routing-type-badge > span { margin: 0; color: inherit; font-size: inherit; }
+.patchbay .routing-flow-direction { display: inline-flex; align-items: center; gap: 4px; font-size: 11px !important; letter-spacing: .01em; }
+.patchbay .routing-flow-direction .audio-flow-icon { display: block; flex: 0 0 20px; width: 20px; height: 20px; padding: 1px; border-radius: 3px; background: #fff; }
+.patchbay .routing-flow-direction.copy { color: #7b460d; }
+.patchbay .routing-flow-direction.input { color: #135b70; }
+.patchbay .routing-flow-direction.output { color: #236445; }
+.patchbay .routing-flow-direction.duplex { color: #334f79; }
 .patchbay .routing-type-badge.physical { color: var(--routing-asio); }
 .patchbay .routing-type-badge.wasapi { color: var(--routing-wasapi); }
+.patchbay .routing-type-badge.wasapiApp { color: var(--routing-copy); border-style: dashed; }
 .patchbay .routing-type-badge.profile { color: var(--routing-profile); }
 .patchbay .routing-type-badge.saved { color: var(--routing-saved); }
 .routing-view-tabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
@@ -90,6 +102,8 @@
 .routing-help dd { margin: 0; max-width: 68ch; line-height: 1.6; color: var(--routing-muted-text); }
 .routing-help .routing-type-badge { font-size: 12px; }
 .routing-help-line { display: inline-block; flex: 0 0 28px; border-top: 3px solid #2c6572; }
+.routing-help-line.flowing { height: 3px; border: 0; background: linear-gradient(90deg, #2c6572 0 24%, transparent 24% 48%, #2c6572 48% 72%, transparent 72%); background-size: 20px 3px; animation: routing-help-flow 0.7s linear infinite; }
+@keyframes routing-help-flow { to { background-position-x: 20px; } }
 .routing-help-line.saved { border-top-width: 2px; }
 .routing-help-line.pending { border-top-style: dashed; }
 .routing-help-line.muted { border-top-style: dotted; border-top-color: #89919a; }

@@ -40,6 +40,11 @@ DWORD ObserveProcessIdentity(ChannelIdentity& output) noexcept {
     Token token;if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&token.value))return GetLastError();
     return ReadIdentity(token.value,output);
 }
+DWORD ObserveProcessHandleIdentity(HANDLE process,ChannelIdentity& output) noexcept {
+    if(!process||process==INVALID_HANDLE_VALUE||!GetProcessId(process))return ERROR_INVALID_HANDLE;
+    Token token;if(!OpenProcessToken(process,TOKEN_QUERY,&token.value))return GetLastError();
+    return ReadIdentity(token.value,output);
+}
 DWORD ObservePipeIdentity(HANDLE pipe,ChannelIdentity& output) noexcept {
     Token previous;
     if(OpenThreadToken(GetCurrentThread(),TOKEN_QUERY,TRUE,&previous.value))return ERROR_INVALID_STATE;

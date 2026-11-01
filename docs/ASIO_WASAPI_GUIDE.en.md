@@ -45,9 +45,7 @@ flowchart LR
 
 The intended virtual branch uses our `TimoxWindowsAudio.sys` driver and a private transport to the engine. The backend receives Windows render data and supplies Windows capture data to the driver. It does not attempt to write to a microphone through WASAPI. This transport is separate from WASAPI bridges to existing devices.
 
-**Third-party virtual cables already allow graph testing.** In that arrangement, the bridge reads a cable capture endpoint to receive application audio, and writes another cable render endpoint to feed a virtual microphone. Our native driver removes that detour. Its prototype and private transport compile, but loading and real transfers still require qualification on a test target; the engine backend is in development. Installation, signing and distribution remain separate work packages. See the [native driver design](superpowers/specs/2026-10-22-native-windows-audio-driver.md).
-
-The engine does not need this new driver to use a USB microphone, speakers or a virtual cable that is already present. It needs it to offer **its own** Windows devices to other applications.
+The per-process audio-copy bridge (*process loopback*) creates a new source from an application's shared Windows audio. Sending graph audio to a microphone selectable by another Windows application requires Timox to provide its own virtual recording endpoint. The native driver prototype and private transport compile, but loading and real transfers still require qualification on a test target; the engine backend is in development. Installation, signing and distribution remain separate work packages. See the [native driver design](superpowers/specs/2026-10-22-native-windows-audio-driver.md).
 
 ### Where do FlexASIO and ASIO2WASAPI fit?
 
@@ -64,17 +62,17 @@ They depend on the point of view:
 | “Virtual audio output” | The application **writes** its audio to this output. | A **source** entering the graph. |
 | “Virtual microphone” | The application **reads** audio from this microphone. | A **destination** fed by the graph. |
 
-**Loopback** is something else: it captures audio played on a Windows output. It creates neither an output nor a virtual microphone. Shared endpoint loopback can contain several applications mixed together; per-process capture is a separate feature. [Microsoft loopback documentation](https://learn.microsoft.com/en-gb/windows/win32/coreaudio/loopback-recording).
+**Loopback** copies shared audio playing on a Windows output into a new graph source. It creates neither an output nor a virtual microphone. Endpoint loopback can contain several applications mixed together; process loopback creates a separate source for the selected process tree. [Microsoft loopback documentation](https://learn.microsoft.com/en-gb/windows/win32/coreaudio/loopback-recording).
 
 ## Three practical uses
 
-**Send a browser to an ASIO application:** browser → virtual cable output → WASAPI capture from the cable → engine → TimoxVasio → ASIO application. Another option is to capture a Windows output through loopback, which may also capture other sounds played on that output.
+**Copy browser audio into a Timox ASIO application:** Firefox keeps playing through its normal Windows output; Timox creates an independent graph source from a copy of its shared-mode audio → graph → TimoxVasio → ASIO application. No Windows output change is needed. The copy covers the process and its children. Routing it back to the original output may play the sound twice. ASIO and WASAPI-exclusive output are not included.
 
-**Send an ASIO application to a videoconferencing application:** ASIO application → TimoxVasio → engine → WASAPI render to the virtual cable → cable microphone selected in the videoconferencing application.
+**Send a Timox ASIO application's sound to Windows:** ASIO application → TimoxVasio → engine → WASAPI render to a physical Windows output. Feeding that audio into another Windows application's microphone requires a Windows virtual recording endpoint, which is not shipped yet.
 
 **Connect two ASIO applications without a physical ASIO card:** application A → TimoxVasio → engine driven by the software clock → TimoxVasio → application B. This path needs no WASAPI bridge.
 
-With our future Windows driver, its devices will replace the third-party cable devices in the first two examples.
+The planned Windows virtual driver is needed to create software playback and recording endpoints for workflows that require them.
 
 ## What a bridge actually needs to solve
 
@@ -153,8 +151,9 @@ If capture is denied, check Windows microphone access for the device and desktop
 | WASAPI ports in the runtime | Transfer tests, including virtual transport, have passed. |
 | Adaptive worker and bridge persistence | Implemented; hardware qualification is ongoing, particularly priming and drift control. |
 | Control/API activation and reconnection | Implemented; GUI visually checked with simulation. A first real ASIO→WASAPI→loopback→ASIO path detects the expected signal. Extended measurements and the complete Electron workflow remain to qualify. |
-| Our virtual Windows driver | Design and initial packet validation are available; no endpoint or kernel driver has shipped yet. A third-party cable supports initial uses. |
-| Exclusive mode, WASAPI hardware master, per-process loopback | Later work, not delivered in this increment. |
+| Our virtual Windows driver | Design and initial packet validation are available; no endpoint or kernel driver has shipped yet. |
+| App audio copy (process loopback) from shared Windows playback | Implemented in this branch; it creates an independent graph source from a copy of the target process tree's shared audio. Runtime qualification remains. It does not include ASIO or WASAPI-exclusive streams, and the process list does not identify which API an application selected. |
+| Exclusive mode, WASAPI hardware master | Later work, not delivered in this increment. |
 
 The requirement remains a GUI, an API and performance at least on par with TimoxVasio. **That parity has not yet been demonstrated.** The ASIO path without bridges must be compared separately: it must not incur SRC processing for unused bridges.
 

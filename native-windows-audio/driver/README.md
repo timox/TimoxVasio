@@ -67,10 +67,20 @@ Preuve locale N2 du 22 octobre 2026 à 15:54:16 UTC : 76 288 octets, SHA-256
 Le journal conservé est `build_native_audio_wdk/timox-driver-n2-eos-final.log`.
 Cette empreinte décrit le build observé ; un rebuild peut la changer.
 
+Après ajout du SID exact `TimoxNativeAudioBroker` à la DACL du contrôle privé,
+le build Release/x64 du 24 octobre 2026 à 18:00 UTC a réussi avec InfVerif et
+Inf2Cat sans erreur. Le `.sys` de 76 800 octets a le SHA-256
+`932426BE6C03217194122033B1C1276AAD561D60BC651F21CEE35E8E6AD6E5B4` ; le
+catalogue de 1 190 octets a le SHA-256
+`CBBE55604327B29165D2E11A68115B1CAA0C323585CEAA26C562C95E84D695E8`.
+Les deux sont `NotSigned`. Ce build confirme la compilation de la DACL, pas son
+comportement sur un périphérique chargé ; aucun fichier n'a été installé.
+
 ## Contrôle privé N2
 
 `control.cpp` crée un device distinct de l'audio public, classe GUID propre,
-ACL laboratoire SYSTEM/Administrateurs, accessible via
+ACL réservée à SYSTEM, aux administrateurs et au SID exact du service
+`TimoxNativeAudioBroker` (LocalService avec SID de service activé), accessible via
 `\\.\Global\TimoxWindowsAudioControl`. Un seul adaptateur est permis, comme
 dans le sous-ensemble SysVAD retenu. Tous les majors privés passent par le
 dispatch Timox ; les majors audio conservent leurs handlers d'origine.

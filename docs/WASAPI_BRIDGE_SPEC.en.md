@@ -2,8 +2,14 @@
 
 [Français](WASAPI_BRIDGE_SPEC.md) | **English**
 
-Status: design proposal, not implemented. Target version: 1.3.
-Date: 21 October 2026.
+Status as of 25 October 2026: shared WASAPI bridges (capture, render,
+endpoint loopback and per-process audio copy) are present in the engine and
+API. Qualification of the complete path with a real application and output
+is still outstanding. The exclusive WASAPI master clock in phase 2 and the
+Windows virtual endpoint in phase 3 are not declared delivered. This remains
+the target design; see the implementation plan and `docs/API.en.md` for the
+current contract and status.
+Target version: 1.3. Design date: 21 October 2026.
 Implementation plan for a coding agent (French): [superpowers/plans/2026-10-21-wasapi-bridge.md](superpowers/plans/2026-10-21-wasapi-bridge.md).
 
 This document specifies the interface that lets ASIO applications connected
@@ -24,7 +30,7 @@ closes that gap.
 |---|---|---|
 | Record or process a browser's sound in a DAW | Loopback capture of a Windows render device, or of a single process | TimoxVasio virtual inputs of an ASIO application |
 | Hear a video call on the ASIO card's monitors | Loopback capture | Physical ASIO card outputs |
-| Send a DAW mix into a video call | TimoxVasio virtual outputs | WASAPI render device (third-party virtual cable or, in phase 3, the TimoxVasio virtual endpoint) |
+| Send a DAW mix into a video call | TimoxVasio virtual outputs | TimoxVasio virtual endpoint (phase 3, once qualified) |
 | Use a USB headset microphone that has no ASIO driver | WASAPI capture device | TimoxVasio virtual inputs |
 | Run TimoxVasio on a PC without an ASIO card | WASAPI device in exclusive mode as master clock | The whole graph |
 
@@ -38,11 +44,11 @@ Delivery happens in three independent phases. Each phase is usable alone.
 | 2 | Exclusive WASAPI bridge as master clock. TimoxVasio runs without a physical ASIO driver. | Exclusive WASAPI | None |
 | 3 | TimoxVasio virtual audio endpoint visible to Windows as a playback and a recording device. | Unchanged | Signed KS/PortCls driver |
 
-This document fully specifies phases 1 and 2. Phase 3 is outlined in
-section 12 because it requires a kernel-mode driver signed by Microsoft,
-which is a separate project. Meanwhile a third-party virtual audio cable
-(VB-Cable, Virtual Audio Cable) seen as an ordinary WASAPI device covers the
-"ASIO to Windows application" need.
+This document describes the target design for phases 1 and 2. The current
+phase 1 implementation includes per-process audio copy, but real-route
+qualification remains outstanding. Phase 2 and the phase 3 endpoint are
+separate work; the TimoxVasio architecture does not require a third-party
+virtual audio device.
 
 Out of scope: network transport, MIDI, Windows spatial audio, per-application
 volume control in the Windows mixer, compressed formats.
@@ -101,6 +107,29 @@ graph's only cadence in phase 1.
 
 ## 5. Concepts
 
+### Direct membership and audio copies
+
+Timox routes only streams that explicitly enter its graph. Audio can enter
+in two different ways:
+
+| Path | Who opens the stream? | What Timox controls | What this does not prove |
+|---|---|---|---|
+| TimoxVasio ASIO client | The application opens `TimoxVasio.dll` | The client, its ports, buffers and callback exchanges with the driver | That every buffer contains audible signal |
+| WASAPI device bridge | The Timox engine opens an existing Windows device | The bridge stream and its copy into the graph | That the source app is a Timox client or that its audio passes through this bridge |
+| App audio copy | Timox asks Windows for a shared copy of the selected process | The copy, tied to the selected process identity | Whether the app chose WASAPI rather than DirectSound, or its ASIO or exclusive stream |
+| Endpoint mix copy | Timox reads the shared mix from one Windows output | The mix from that endpoint | The identity or separation of apps in the mix |
+| Timox virtual endpoint (future) | The application selects a Timox endpoint in Windows | Streams that explicitly open that endpoint, subject to isolation qualification | That the endpoint and per-session attribution are production-qualified today |
+
+**Membership** means an explicit connection to an interface owned or exposed
+by Timox: an ASIO client opens the Timox driver, or an application selects a
+Timox virtual endpoint once it is available and qualified. An **app audio
+copy** is different: Timox opens a WASAPI source and adds the copied signal as
+a new graph node. This copy does not create a direct ASIO driver connection or redirect
+original playback. The same process may also open `TimoxVasio.dll` and appear
+as a separate ASIO client. The interface must therefore distinguish the
+copied source from that client, even when both come from the same Windows
+process.
+
 ### 5.1 Bridge
 
 A bridge is the configuration object that connects a WASAPI device to the
@@ -110,18 +139,17 @@ and synchronisation parameters.
 | Field | Type | Values | Role |
 |---|---|---|---|
 | `id` | string | `[A-Za-z0-9_-]{1,64}` | Stable identifier, reused in endpoint identifiers |
-| `kind` | enum | `capture`, `loopback`, `render` | Direction on the Windows side |
-| `device` | selector | see 5.2 | Target device |
+| `kind` | enum | `capture`, `render`, `endpointLoopback`, `processLoopback` | Windows source type and direction |
+| `endpointId` / `defaultRole` | selector | see 5.2 | Target for endpoint bridges |
 | `shareMode` | enum | `shared` (default), `exclusive` | WASAPI open mode |
 | `channels` | integer or `null` | 1 to 64 | Exposed channels; `null` takes the device format |
 | `targetLatencyMs` | number or `null` | 1 to 500 | Target latency in the ring; `null` applies the default (6.3) |
-| `processFilter` | object or `null` | see 5.3 | Loopback limited to one process |
+| `processId`, `processCreationTime`, `processImagePath` | identity | see 5.3 | Required for `processLoopback` |
 | `clockRole` | enum | `slave` (default), `master` | Phase 2: `master` makes the bridge the engine clock |
 | `enabled` | boolean | | A disabled bridge keeps its configuration and routes but opens nothing |
 
-A `capture` or `loopback` bridge exposes endpoints with direction `input`
-(it feeds signal into the graph). A `render` bridge exposes endpoints with
-direction `output`.
+`capture`, `endpointLoopback` and `processLoopback` bridges expose `input`
+endpoints to the graph. A `render` bridge exposes `output` endpoints.
 
 ### 5.2 Device selector
 
@@ -144,20 +172,30 @@ identifiers carry the bridge `id`, not the device's.
 
 ### 5.3 Per-process loopback
 
-Windows 10 2004 and later can capture the output of a single process tree
-(`AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`). The filter mirrors
-TimoxVasio's per-executable profile logic:
+Audio setup lists processes with an active Windows playback session; it does
+not claim to know whether the application called WASAPI, DirectSound or
+another API that uses the shared mixer. The user explicitly selects an entry
+and Timox creates an independent copy of its shared-mode audio, including its
+child processes. Original playback continues. The copy is bound to the PID,
+process creation time and image path. All three values are checked before and
+after `ActivateAudioInterfaceAsync`; no packet is read if the identity
+changes. Capture does not redirect the original stream. ASIO and
+WASAPI-exclusive outputs are not captured. This feature requires Windows 10
+build 20348 or later.
+
+Current configuration uses an explicit process identity, without a device
+selector:
 
 ```json
-{ "processName": "chrome.exe", "mode": "include" }
-{ "processId": 4321, "mode": "exclude" }
+{
+  "id": "browser-copy",
+  "kind": "processLoopback",
+  "processId": 4321,
+  "processCreationTime": "134000000000000000",
+  "processImagePath": "C:\\Program Files\\Browser\\browser.exe",
+  "enabled": true
+}
 ```
-
-With `processName`, the bridge resolves the process at start and on every
-change of the process list, as `VasioClientManager` does for ASIO clients.
-If several instances share the name, the bridge captures the oldest one's
-tree and reports the ambiguity in its status. On an older Windows the engine
-rejects the configuration with `WASAPI_PROCESS_LOOPBACK_UNSUPPORTED`.
 
 ### 5.4 Endpoint families and link rules
 
@@ -167,7 +205,7 @@ The graph gains two endpoint types.
 enum class RoutingEndpointType {
     PhysicalInput, PhysicalOutput,
     VirtualInput, VirtualOutput,
-    WasapiInput,   // capture or loopback bridge
+    WasapiInput,   // capture, endpoint loopback or process copy
     WasapiOutput,  // render bridge
 };
 ```
@@ -329,7 +367,7 @@ device period.
 
 No third-party dependency: `mmdeviceapi.h`, `audioclient.h`,
 `audiopolicy.h`, `avrt.lib`. Per-process activation uses
-`ActivateAudioInterfaceAsync` (`mmdeviceapi.h`, Windows 10 2004).
+`ActivateAudioInterfaceAsync` (`mmdeviceapi.h`; process capture requires Windows 10 build 20348 or later).
 
 ### 7.2 C++ interface of a bridge
 
@@ -342,20 +380,20 @@ struct WasapiDeviceSelector {
     enum class Role { Console, Multimedia, Communications } role = Role::Console;
 };
 
-struct WasapiProcessFilter {
-    std::optional<std::wstring> processName;
-    std::optional<std::uint32_t> processId;
-    bool include = true;
+struct WasapiProcessIdentity {
+    std::uint32_t processId;
+    std::uint64_t processCreationTime;
+    std::wstring processImagePath;
 };
 
 struct WasapiBridgeConfiguration {
     std::string id;
-    enum class Kind { Capture, Loopback, Render } kind = Kind::Loopback;
-    WasapiDeviceSelector device;
+    enum class Kind { Capture, Render, EndpointLoopback, ProcessLoopback } kind = Kind::EndpointLoopback;
+    std::optional<WasapiDeviceSelector> device;
     bool exclusive = false;
     std::optional<std::uint32_t> channels;
     std::optional<double> targetLatencyMs;
-    std::optional<WasapiProcessFilter> processFilter;
+    std::optional<WasapiProcessIdentity> processIdentity;
     bool clockMaster = false;              // phase 2
     bool enabled = true;
 };
@@ -463,12 +501,11 @@ additions, existing commands keep their shape, and a client that omits
   "wasapiBridges": [
     {
       "id": "browser",
-      "kind": "loopback",
+      "kind": "endpointLoopback",
       "device": { "kind": "default", "flow": "render", "role": "console" },
       "shareMode": "shared",
       "channels": 2,
       "targetLatencyMs": 12,
-      "processFilter": { "processName": "chrome.exe", "mode": "include" },
       "clockRole": "slave",
       "enabled": true,
       "status": {
@@ -511,14 +548,14 @@ opening a stream (`IsFormatSupported`, `GetSharedModeEnginePeriod`); they are
     "sampleRate": 48000,
     "bufferFrames": 256,
     "wasapiBridges": [
-      { "id": "browser", "kind": "loopback",
+      { "id": "browser", "kind": "endpointLoopback",
         "device": { "kind": "default", "flow": "render", "role": "console" },
         "shareMode": "shared", "channels": 2, "targetLatencyMs": null,
-        "processFilter": null, "clockRole": "slave", "enabled": true },
+        "clockRole": "slave", "enabled": true },
       { "id": "teams-out", "kind": "render",
         "device": { "kind": "id", "id": "{0.0.0.00000000}.{cable-input-...}" },
         "shareMode": "shared", "channels": 2, "targetLatencyMs": 20,
-        "processFilter": null, "clockRole": "slave", "enabled": true }
+        "clockRole": "slave", "enabled": true }
     ],
     "routes": [
       { "id": "r1", "sourceEndpointId": "wasapi:browser:input:1",
@@ -544,7 +581,7 @@ Phase 2, without an ASIO card:
     { "id": "usb-headset", "kind": "render",
       "device": { "kind": "id", "id": "{0.0.0.00000000}.{headset-...}" },
       "shareMode": "exclusive", "channels": 2, "targetLatencyMs": null,
-      "processFilter": null, "clockRole": "master", "enabled": true }
+      "clockRole": "master", "enabled": true }
   ],
   "routes": [ "..." ]
 }
@@ -556,9 +593,9 @@ Validation rules, in order:
 |---|---|
 | Bridge `id` well-formed and unique | `INVALID_BRIDGE` |
 | `kind`, `shareMode`, `clockRole`, `device` well-formed | `INVALID_BRIDGE` |
-| `kind: "loopback"` with `flow: "capture"`, or `clockRole: "master"` with loopback or `shared` | `INVALID_BRIDGE` |
+| `kind: "endpointLoopback"` with a capture endpoint, or `clockRole: "master"` with loopback or `shared` | `INVALID_BRIDGE` |
 | Several `master` bridges, or `master` with a non-null `physicalDriverId`, or neither while routes exist | `INVALID_CONFIGURATION` |
-| `processFilter` on a Windows older than 10 2004 | `WASAPI_PROCESS_LOOPBACK_UNSUPPORTED` |
+| `processLoopback` on an unsupported Windows version | The bridge remains unavailable with a visible error; capture never starts |
 | Endpoint `wasapi:<id>:...` whose bridge is not in `wasapiBridges` | `UNKNOWN_BRIDGE` |
 | Channel beyond the bridge's `channels` | `UNKNOWN_ENDPOINT` |
 | Link outside table 5.4 | `INVALID_ROUTE_DIRECTION` |
@@ -650,7 +687,7 @@ The interface rule in `AGENTS.md` applies without exception.
 | Feature | Prerequisite |
 |---|---|
 | Shared bridges, device loopback, render, capture | Windows 10 1703 or Windows 11 (`IAudioClient3` for small periods; `IAudioClient` fallback on earlier Windows 10) |
-| Per-process loopback | Windows 10 2004 (build 19041) or Windows 11 |
+| Per-process loopback | Windows 10 build 20348 or later |
 | Exclusive mode | Allowed in the Windows device properties ("Allow applications to take exclusive control") |
 | Master bridge (phase 2) | Same as exclusive mode; no physical ASIO driver selected |
 
@@ -689,8 +726,10 @@ Probes and manual checks on a Windows machine:
   exclusive mode at 48 kHz and 192 frames; Renoise and Mixxx open TimoxVasio
   and route to each other and to the headset.
 
-Phase 1 acceptance criteria: the first four use cases of section 1 work
-from Control and from a WebSocket script, the tests above pass, the existing
+Phase 1 acceptance criteria: use cases 1, 2 and 4 of section 1 work from
+Control and from a WebSocket script. Use case 3 depends on the TimoxVasio
+virtual endpoint in phase 3; a third-party cable is outside the product scope.
+The tests above pass, the existing
 performance measurements show no callback-time increase beyond the cost of
 the ring copies, and `API.md`, `ARCHITECTURE.md` and `FONCTIONS.md` are
 updated.
@@ -704,9 +743,9 @@ portal. The driver would do no processing: it exposes cyclic buffers that a
 `kind: "virtual"` bridge in the engine reads and writes like any other ring,
 with the engine clock as reference, which removes drift for that bridge. The
 endpoint identifiers, API and interface of this document apply unchanged;
-only the selector gains `{ "kind": "virtual" }`. This phase depends on a
-decision about signing cost and the installer, and is not required by
-phases 1 and 2.
+only the selector gains `{ "kind": "virtual" }`. This phase depends on
+implementation, qualification, and a driver signing and installation path;
+it remains necessary for TimoxVasio to appear directly as a Windows device.
 
 ## 13. Decisions made and open questions
 
@@ -721,14 +760,18 @@ Decisions:
 - WASAPI to WASAPI is refused in phase 1.
 - Bridges absent from the request are kept (8.3).
 
-Open questions, to settle before implementation:
+Decision made since this design was written:
 
-1. Should the inventory of Windows audio sessions
-   (`IAudioSessionEnumerator`) be exposed to populate the process list of
-   the loopback filter, or should the executable name stay free text?
-2. Should `targetLatencyMs` be allowed below one WASAPI period, with the
+1. The inventory lists active Windows audio sessions by process. Selecting
+   one explicitly creates a loopback copy bound to its PID, creation time and
+   image path. It does not claim to identify the API used by the application.
+   See the [process-loopback plan](superpowers/plans/2026-10-25-wasapi-process-loopback.md).
+
+Open design questions:
+
+1. Should `targetLatencyMs` be allowed below one WASAPI period, with the
    documented underrun risk, or be bounded to one period?
-3. Is a per-bridge gain needed on top of the per-route gain, to compensate
+2. Is a per-bridge gain needed on top of the per-route gain, to compensate
    the Windows mixer volume in loopback?
 
 ## 14. WASAPI references

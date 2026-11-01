@@ -182,6 +182,9 @@ private:
 std::unique_ptr<INativeAudioTransport> CreateDirectNativeAudioLabTransport(std::shared_ptr<INativeAudioWin32> api) {
     return std::make_unique<DirectTransport>(std::move(api));
 }
-std::unique_ptr<INativeAudioTransport> CreateDirectNativeAudioLabTransport() {
+std::unique_ptr<INativeAudioTransport> CreateNativeAudioDriverTransport() {
     return CreateDirectNativeAudioLabTransport(std::make_shared<SystemApi>());
+}
+std::unique_ptr<INativeAudioTransport> CreateDirectNativeAudioLabTransport() {
+    return CreateNativeAudioDriverTransport();
 }

@@ -62,7 +62,7 @@ test.each([
     ['wasapi', 'audio disabled', 'not bit-perfect'],
     ['asio', 'autonomous virtual ASIO driver', 'opens ASIO again'],
     ['performance', 'all logical processors', 'End-to-end latency is not measured'],
-    ['wasapi-mode', 'endpoint loopback', 'does not isolate one application'],
+    ['wasapi-mode', 'output mix copy', 'does not isolate one application'],
     ['wasapi-buffer', '0 to let Windows choose the system default', 'does not change the graph master clock'],
     ['wasapi-endpoint', 'Console, Multimedia and Communications', 'Enabled turned off'],
     ['wasapi-status', 'not necessarily lost', 'capture buffer'],

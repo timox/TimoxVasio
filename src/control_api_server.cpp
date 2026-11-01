@@ -9,8 +9,10 @@
 #include "vasio_client_manager.h"
 #include "engine_diagnostics.h"
 #include "pwar_configuration_store.h"
+#include "pwar_client_supervisor.h"
 
 #include <windows.h>
+#include <winternl.h>
 
 #include <algorithm>
 #include <array>
@@ -34,6 +36,30 @@ namespace {
 using Json = nlohmann::json;
 constexpr std::uint32_t kVasioId = 1;
 constexpr char kSubprotocol[] = "vasio.api.v1";
+
+bool supportsWasapiProcessLoopback() noexcept {
+    using RtlGetVersionFn = LONG (WINAPI*)(PRTL_OSVERSIONINFOW);
+    const auto ntdll = GetModuleHandleW(L"ntdll.dll");
+    const auto getVersion = ntdll ? reinterpret_cast<RtlGetVersionFn>(
+        GetProcAddress(ntdll, "RtlGetVersion")) : nullptr;
+    if (!getVersion) return false;
+    RTL_OSVERSIONINFOW version{};
+    version.dwOSVersionInfoSize = sizeof(version);
+    if (getVersion(&version) != 0) return false;
+    return version.dwMajorVersion > 10 ||
+        (version.dwMajorVersion == 10 && version.dwBuildNumber >= 20348);
+}
+
+const char* asioClientStateName(AudioClientMapping::ClientState state) noexcept {
+    switch (state) {
+    case AudioClientMapping::ClientState::Initialized: return "initialized";
+    case AudioClientMapping::ClientState::BuffersReady: return "buffers-ready";
+    case AudioClientMapping::ClientState::Running: return "running";
+    case AudioClientMapping::ClientState::Stopped: return "stopped";
+    case AudioClientMapping::ClientState::Detached: return "detached";
+    }
+    return "unknown";
+}
 
 std::string utf8(const std::wstring& value) {
     if (value.empty()) return {};
@@ -141,9 +167,21 @@ Json wasapiDevicesJson(const AudioControllerSnapshot& state) {
     Json result = Json::array();
     for (const auto& device : state.wasapiDevices)
         result.push_back({{"id", utf8(device.id)}, {"name", utf8(device.name)},
+            {"containerId", device.containerId.empty() ? Json(nullptr) : Json(utf8(device.containerId))},
             {"flow", device.flow == WasapiDataFlow::Capture ? "capture" : "render"}, {"state", device.state},
             {"mixFormat", device.mixFormat ? wasapiFormat(*device.mixFormat) : Json(nullptr)},
             {"error", device.formatError.empty() ? Json(nullptr) : Json(device.formatError)}});
+    return result;
+}
+Json windowsAudioApplicationsJson(const AudioControllerSnapshot& state) {
+    Json result = Json::array();
+    for (const auto& process : state.wasapiProcesses) {
+        Json endpoints = Json::array();
+        for (const auto& endpoint : process.renderEndpoints) endpoints.push_back(utf8(endpoint));
+        result.push_back({{"processId", process.processId}, {"creationTime", std::to_string(process.creationTime)},
+            {"imagePath", utf8(process.imagePath)}, {"displayName", utf8(process.displayName)},
+            {"renderEndpoints", std::move(endpoints)}});
+    }
     return result;
 }
 Json wasapiConfigurationsJson(const std::vector<WasapiBridgeConfiguration>& bridges) {
@@ -154,7 +192,11 @@ Json wasapiConfigurationsJson(const std::vector<WasapiBridgeConfiguration>& brid
         if (bridge.open.defaultRole)
             item["defaultRole"] = *bridge.open.defaultRole == WasapiDefaultRole::Console ? "console" :
                 *bridge.open.defaultRole == WasapiDefaultRole::Multimedia ? "multimedia" : "communications";
-        else item["endpointId"] = utf8(bridge.open.endpointId);
+        else if (bridge.open.kind == WasapiStreamKind::ProcessLoopback) {
+            item["processId"] = bridge.open.processId;
+            item["processCreationTime"] = std::to_string(bridge.open.processCreationTime);
+            item["processImagePath"] = utf8(bridge.open.processImagePath);
+        } else item["endpointId"] = utf8(bridge.open.endpointId);
         result.push_back(std::move(item));
     }
     return result;
@@ -164,25 +206,39 @@ bool parseWasapiConfigurations(const Json& value, std::vector<WasapiBridgeConfig
     std::vector<WasapiBridgeConfiguration> decoded;
     for (const auto& item : value) {
         if (!item.is_object() || !item.contains("id") || !item["id"].is_string() ||
-            !item.contains("kind") || !item["kind"].is_string() ||
-            item.contains("endpointId") == item.contains("defaultRole")) return false;
+            !item.contains("kind") || !item["kind"].is_string()) return false;
         for (auto field = item.begin(); field != item.end(); ++field)
             if (field.key() != "id" && field.key() != "kind" && field.key() != "enabled" &&
-                field.key() != "endpointId" && field.key() != "defaultRole" && field.key() != "bufferDuration100ns") return false;
+                field.key() != "endpointId" && field.key() != "defaultRole" && field.key() != "bufferDuration100ns" &&
+                field.key() != "processId" && field.key() != "processCreationTime" && field.key() != "processImagePath") return false;
         WasapiBridgeConfiguration bridge;
         bridge.id = item["id"].get<std::string>();
         if (item["kind"] == "capture") bridge.open.kind = WasapiStreamKind::Capture;
         else if (item["kind"] == "render") bridge.open.kind = WasapiStreamKind::Render;
         else if (item["kind"] == "endpointLoopback") bridge.open.kind = WasapiStreamKind::EndpointLoopback;
+        else if (item["kind"] == "processLoopback") bridge.open.kind = WasapiStreamKind::ProcessLoopback;
         else return false;
         if (item.contains("enabled")) {
             if (!item["enabled"].is_boolean()) return false;
             bridge.enabled = item["enabled"].get<bool>();
         }
-        if (item.contains("endpointId")) {
+        if (bridge.open.kind == WasapiStreamKind::ProcessLoopback) {
+            if (item.contains("endpointId") || item.contains("defaultRole") || !item.contains("processId") ||
+                !item["processId"].is_number_unsigned() || item["processId"].get<std::uint64_t>() == 0 ||
+                item["processId"].get<std::uint64_t>() > UINT32_MAX || !item.contains("processCreationTime") ||
+                !item["processCreationTime"].is_string() || !item.contains("processImagePath") ||
+                !item["processImagePath"].is_string()) return false;
+            const auto creation = item["processCreationTime"].get<std::string>();
+            if (creation.empty() || creation.size() > 20 || !std::all_of(creation.begin(), creation.end(), [](unsigned char c) { return c >= '0' && c <= '9'; })) return false;
+            try { bridge.open.processCreationTime = std::stoull(creation); } catch (...) { return false; }
+            bridge.open.processId = item["processId"].get<std::uint32_t>();
+            if (!WasapiEndpointFromUtf8(item["processImagePath"].get<std::string>(), bridge.open.processImagePath)) return false;
+        } else if (item.contains("endpointId")) {
+            if (item.contains("defaultRole") || item.contains("processId") || item.contains("processCreationTime") || item.contains("processImagePath")) return false;
             if (!item["endpointId"].is_string() ||
                 !WasapiEndpointFromUtf8(item["endpointId"].get<std::string>(), bridge.open.endpointId)) return false;
         } else {
+            if (item.contains("endpointId") || !item.contains("defaultRole") || item.contains("processId") || item.contains("processCreationTime") || item.contains("processImagePath")) return false;
             if (!item["defaultRole"].is_string()) return false;
             if (item["defaultRole"] == "console") bridge.open.defaultRole = WasapiDefaultRole::Console;
             else if (item["defaultRole"] == "multimedia") bridge.open.defaultRole = WasapiDefaultRole::Multimedia;
@@ -315,6 +371,8 @@ Json meterEvent(const AudioMeterSnapshot& meter) {
         : -120.0;
     return Json{{"event", "audio.meter"},
         {"payload", {{"endpointId", meter.endpointId}, {"peakDbfs", peakDbfs},
+            {"shortTermLufs", meter.shortTermLufsReady ? Json(meter.shortTermLufs) : Json(nullptr)},
+            {"lufsWindowSeconds", 3.0},
             {"underruns", meter.underruns}, {"overruns", meter.overruns}}}};
 }
 
@@ -385,6 +443,7 @@ struct ControlApiServer::Impl {
     VasioClientManager& clients;
     AudioController& controller;
     PwarConfigurationStore pwarConfiguration;
+    PwarClientSupervisor pwarClient;
     EngineDiagnostics& diagnostics;
     std::function<void()> stopRequest;
     std::vector<PhysicalAsioDriverInfo> physicalInventory;
@@ -483,12 +542,40 @@ struct ControlApiServer::Impl {
                         "output", apiChannel));
                 }
             }
+            AudioClientMapping::StatusSnapshot clientStatus;
+            const bool clientStatusMapped = AudioClientMapping::ReadStatusReadOnly(
+                kVasioId, client.info.processId, clientStatus);
+            const bool activityAvailable = clientStatusMapped && clientStatus.available;
+            const bool activityStable = activityAvailable && clientStatus.stableExchange;
+            Json lastCallbackAgeMs = nullptr;
+            if (activityStable && clientStatus.callbackCount && clientStatus.qpcFrequency) {
+                LARGE_INTEGER now{};
+                if (QueryPerformanceCounter(&now) && now.QuadPart >=
+                    static_cast<LONG64>(clientStatus.lastCallbackQpc)) {
+                    lastCallbackAgeMs = static_cast<std::uint64_t>(
+                        (static_cast<long double>(now.QuadPart -
+                            static_cast<LONG64>(clientStatus.lastCallbackQpc)) * 1000.0L) /
+                        clientStatus.qpcFrequency);
+                }
+            }
+            Json activity{
+                {"available", activityAvailable},
+                {"stable", activityStable},
+                {"state", activityAvailable ? Json(asioClientStateName(clientStatus.state)) : Json(nullptr)},
+                {"callbackCount", activityStable ? Json(clientStatus.callbackCount) : Json(nullptr)},
+                {"successfulExchangeCount", activityStable ? Json(clientStatus.successfulExchangeCount) : Json(nullptr)},
+                {"exchangedFrames", activityStable ? Json(clientStatus.exchangedFrames) : Json(nullptr)},
+                {"lastCallbackAgeMs", std::move(lastCallbackAgeMs)},
+                {"requestedSampleRate", activityAvailable ? Json(clientStatus.requestedSampleRate) : Json(nullptr)},
+                {"requestedBufferFrames", activityAvailable ? Json(clientStatus.requestedBufferFrames) : Json(nullptr)}
+            };
             clientArray.push_back({{"pid", client.info.processId},
                 {"processName", utf8(client.info.processName)},
                 {"processCpuPercent", cpu.percent ? Json(*cpu.percent) : Json(nullptr)},
                 {"processCpuWindowMs", cpu.windowMs ? Json(*cpu.windowMs) : Json(nullptr)},
                 {"inputChannels", std::move(inputChannels)},
-                {"outputChannels", std::move(outputChannels)}});
+                {"outputChannels", std::move(outputChannels)},
+                {"activity", std::move(activity)}});
         }
         processCpu.Retain(activePids);
         Json rate = state.sampleRate ? Json(*state.sampleRate) : Json(nullptr);
@@ -595,6 +682,7 @@ struct ControlApiServer::Impl {
         for (const auto& route : state.configuredRoutes)
             configuredRoutes.push_back(routeJson(route));
         return Json{{"apiVersion", "1.1"}, {"configurationRevision", state.configurationRevision},
+            {"capabilities", {{"wasapiProcessLoopback", supportsWasapiProcessLoopback()}}},
             {"engine", {{"state", state.state}, {"clockSource", clockSourceJson(state)},
                          {"clockCapabilities", clockCapabilitiesJson(state)}, {"physicalDriverId", std::move(physicalId)},
                          {"sampleRate", std::move(sampleRate)}, {"bufferFrames", std::move(bufferFrames)},
@@ -620,6 +708,35 @@ struct ControlApiServer::Impl {
             !request.contains("command") || !request["command"].is_string())
             return errorEnvelope(id, "INVALID_CONFIGURATION", "Invalid request envelope", "validate");
         diagnostics.Write(EngineDiagnostics::Level::Debug, "api", "Received command " + request["command"].get<std::string>());
+        if (request["command"] == "pwar.client.start") {
+            if (request.size() != 3 || !request.contains("payload") || !request["payload"].is_object() ||
+                request["payload"].size() != 2 || !request["payload"].contains("peerAddress") ||
+                !request["payload"]["peerAddress"].is_string() || !request["payload"].contains("maxQueueMs") ||
+                !(request["payload"]["maxQueueMs"].is_number_integer() ||
+                  request["payload"]["maxQueueMs"].is_number_unsigned()) ||
+                request["payload"]["maxQueueMs"].get<std::uint64_t>() < 1 ||
+                request["payload"]["maxQueueMs"].get<std::uint64_t>() > 2000)
+                return errorEnvelope(id, "INVALID_PWAR_CLIENT_CONFIGURATION",
+                    "Expected payload.peerAddress and payload.maxQueueMs", "validate");
+            if (controller.Snapshot().state != "running")
+                return errorEnvelope(id, "AUDIO_ENGINE_NOT_RUNNING",
+                    "Start the Timox audio engine before starting the PWAR ASIO client", "start");
+            std::string error;
+            if (!pwarClient.Start(request["payload"]["peerAddress"].get<std::string>(),
+                    request["payload"]["maxQueueMs"].get<std::uint32_t>(), error))
+                return errorEnvelope(id, "PWAR_CLIENT_START_FAILED", error, "start");
+            diagnostics.Write(EngineDiagnostics::Level::Info, "pwar-client", "Supervised PWAR ASIO client started");
+            return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}, {"client", pwarClient.Snapshot()}}}};
+        }
+        if (request["command"] == "pwar.client.stop") {
+            if (request.size() != 2)
+                return errorEnvelope(id, "INVALID_PWAR_CLIENT_COMMAND", "pwar.client.stop accepts only id and command", "validate");
+            std::string error;
+            if (!pwarClient.Stop(error))
+                return errorEnvelope(id, "PWAR_CLIENT_STOP_FAILED", error, "stop");
+            diagnostics.Write(EngineDiagnostics::Level::Info, "pwar-client", "Supervised PWAR ASIO client stopped");
+            return Json{{"id", id}, {"success", true}, {"result", {{"accepted", true}, {"client", pwarClient.Snapshot()}}}};
+        }
         if (request["command"] == "performance.measurements.set") {
             if (request.size() != 3 || !request.contains("payload") ||
                 !request["payload"].is_object() || request["payload"].size() != 1 ||
@@ -970,6 +1087,10 @@ struct ControlApiServer::Impl {
                 response.set_content(Json{{"code", "INVALID_PWAR_CONFIGURATION"}, {"message", "Expected an IPv4 address and an integer port from 1 to 65535"}}.dump(), "application/json; charset=utf-8");
             }
         });
+        server.Get("/api/v1/pwar/client", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            response.set_content(Json{{"client", pwarClient.Snapshot()}}.dump(), "application/json; charset=utf-8");
+        });
         server.Get("/api/v1/state", [this](const httplib::Request& request, httplib::Response& response) {
             setCors(request, response);
             response.set_content(stateJson().dump(), "application/json; charset=utf-8");
@@ -984,6 +1105,14 @@ struct ControlApiServer::Impl {
             const auto state = controller.Snapshot();
             response.set_content(Json{{"wasapiDevices", wasapiDevicesJson(state)},
                 {"wasapiInventoryError", state.wasapiInventoryError.empty() ? Json(nullptr) : Json(state.wasapiInventoryError)}}.dump(),
+                "application/json; charset=utf-8");
+        });
+        server.Get("/api/v1/windows-audio-applications", [this](const httplib::Request& request, httplib::Response& response) {
+            setCors(request, response);
+            controller.EnumerateWasapiProcesses();
+            const auto state = controller.Snapshot();
+            response.set_content(Json{{"windowsAudioApplications", windowsAudioApplicationsJson(state)},
+                {"windowsAudioApplicationInventoryError", state.wasapiProcessInventoryError.empty() ? Json(nullptr) : Json(state.wasapiProcessInventoryError)}}.dump(),
                 "application/json; charset=utf-8");
         });
         server.Get("/api/v1/openapi.json", [this](const httplib::Request& request, httplib::Response& response) {
@@ -1079,6 +1208,9 @@ struct ControlApiServer::Impl {
                 auto initialState = controller.Snapshot();
                 websocket.send(statusEvent(initialState).dump());
                 auto lastRevision = initialState.revision;
+                auto lastPwarRevision = pwarClient.Revision();
+                websocket.send(Json{{"event", "pwar.client.status"},
+                    {"payload", pwarClient.Snapshot()}}.dump());
                 auto lastMeterTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(500);
                 auto lastCorrelationTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(100);
                 const auto sendAudioMeters = [&] {
@@ -1090,6 +1222,12 @@ struct ControlApiServer::Impl {
                     for (const auto& change : controller.EventsSince(lastRevision)) {
                         if (!websocket.send(statusEvent(change).dump())) return false;
                         lastRevision = change.revision;
+                    }
+                    const auto pwarRevision = pwarClient.Revision();
+                    if (pwarRevision != lastPwarRevision) {
+                        if (!websocket.send(Json{{"event", "pwar.client.status"},
+                                {"payload", pwarClient.Snapshot()}}.dump())) return false;
+                        lastPwarRevision = pwarRevision;
                     }
                     return true;
                 };

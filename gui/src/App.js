@@ -11,6 +11,9 @@ import RoutingPatchbay from './RoutingPatchbay';
 import NativeAudioDialog from './NativeAudioDialog';
 import PwarDialog from './PwarDialog';
 import WasapiDeviceTree from './WasapiDeviceTree';
+import WasapiProcessList from './WasapiProcessList';
+import WasapiEndpointPicker from './WasapiEndpointPicker';
+import AudioFlowIcon from './AudioFlowIcon';
 import QuickRouting from './QuickRouting';
 import BufferTimingDiagram from './BufferTimingDiagram';
 import AnalysisTimeline from './AnalysisTimeline';
@@ -20,6 +23,7 @@ import { transferProcessConnections } from './process-connection-transfer';
 const { configurationFromState } = require('./api-contract');
 const { mergeConfigurationDraft } = require('./configuration-merge');
 const openApiDocument = require('./openapi-spec.generated');
+const applicationProductName = process.env.REACT_APP_PRODUCT_NAME || 'Timox VASIO Control';
 const migrationLogKey = 'timoxvasio.connection-migrations.v1';
 const readMigrationLog = () => {
     try { return JSON.parse(window.localStorage.getItem(migrationLogKey)) || []; }
@@ -27,6 +31,7 @@ const readMigrationLog = () => {
 };
 
 function App() {
+    useEffect(() => { document.title = applicationProductName; }, []);
     const [connectionError, setConnectionError] = useState('Connecting to engine…');
     const [apiState, setApiState] = useState(null);
     const connectionGeneration = useRef(0);
@@ -39,6 +44,7 @@ function App() {
         !Number.isInteger(configuration.bufferFrames) || configuration.bufferFrames < 16 || configuration.bufferFrames > 8192);
     const [applicationProfiles, setApplicationProfiles] = useState(null);
     const [confirmedProfiles, setConfirmedProfiles] = useState([]);
+    const [shownProfileNames, setShownProfileNames] = useState(() => new Set());
     const [profilesLoading, setProfilesLoading] = useState(true);
     const [profilesSaving, setProfilesSaving] = useState(false);
     const [profilesError, setProfilesError] = useState('');
@@ -47,10 +53,13 @@ function App() {
     const [applying, setApplying] = useState(false);
     const [selectedRouteId, setSelectedRouteId] = useState(null);
     const [routingDialog, setRoutingDialog] = useState(null);
+    const [profileCatalogOpen, setProfileCatalogOpen] = useState(false);
     const [bridgeDialog, setBridgeDialog] = useState(null);
     const [nativeDialogOpen, setNativeDialogOpen] = useState(false);
     const [pwarDialogOpen, setPwarDialogOpen] = useState(false);
     const [bridgeInventoryBusy, setBridgeInventoryBusy] = useState(false);
+    const [processInventoryBusy, setProcessInventoryBusy] = useState(false);
+    const [processInventoryError, setProcessInventoryError] = useState('');
     const [migrationLog, setMigrationLog] = useState(readMigrationLog);
     const pendingMigrations = useRef([]);
     const [routeVisuals, setRouteVisuals] = useState(readRouteVisuals);
@@ -100,6 +109,12 @@ function App() {
         document.addEventListener('keydown', closeOnEscape);
         return () => document.removeEventListener('keydown', closeOnEscape);
     }, [routingDialog]);
+    useEffect(() => {
+        if (!profileCatalogOpen) return undefined;
+        const closeOnEscape = event => { if (event.key === 'Escape') setProfileCatalogOpen(false); };
+        document.addEventListener('keydown', closeOnEscape);
+        return () => document.removeEventListener('keydown', closeOnEscape);
+    }, [profileCatalogOpen]);
 
     const updateManyRouteVisuals = (routes, changes) => setRouteVisuals(current => {
         const next = { ...current };
@@ -177,7 +192,11 @@ function App() {
         recordPerformanceState(state);
         const confirmedConfiguration = configurationFromState(state);
         const previousConfirmed = lastConfirmedConfiguration.current;
-        setApiState(state);
+        setApiState(current => ({
+            ...state,
+            windowsAudioApplications: current?.windowsAudioApplications || [],
+            windowsAudioApplicationInventoryError: current?.windowsAudioApplicationInventoryError || null
+        }));
         setEngine(state.engine);
         setConfiguration(current => {
             if (resetDraft || !current || !previousConfirmed ||
@@ -213,7 +232,7 @@ function App() {
         let disconnectListener;
         let diagnosticListener;
         if (!window.vasio || typeof window.vasio.subscribeEvents !== 'function') {
-            setConnectionError('Launch Timox VASIO Control to access the audio engine.');
+            setConnectionError(`Launch ${applicationProductName} to access the audio engine.`);
             return undefined;
         }
         const unsubscribeEvents = window.vasio.subscribeEvents(message => {
@@ -301,7 +320,11 @@ function App() {
             window.vasio.getState().then(state => {
                 if (generation !== connectionGeneration.current) return;
                 recordPerformanceState(state);
-                setApiState(state);
+                setApiState(current => ({
+                    ...state,
+                    windowsAudioApplications: current?.windowsAudioApplications || [],
+                    windowsAudioApplicationInventoryError: current?.windowsAudioApplicationInventoryError || null
+                }));
                 setEngine(state.engine);
                 setConnectionError('');
             }).catch(error => { if (generation === connectionGeneration.current) setConnectionError(error.message); });
@@ -363,6 +386,9 @@ function App() {
             ]
         };
     }, [apiState, confirmedProfiles, softwareClock]);
+    const activeProfileNames = useMemo(() => new Set((apiState?.virtualDrivers || [])
+        .flatMap(driver => driver.clients || [])
+        .map(client => client.processName.trim().toLocaleLowerCase())), [apiState]);
     const bridgeGroups = useMemo(() => (configuration?.wasapiBridges || []).map(bridge => {
         const runtime = apiState?.wasapiBridges?.find(item => item.id === bridge.id);
         const capture = bridge.kind !== 'render';
@@ -374,10 +400,26 @@ function App() {
             if (id.startsWith(prefix) && !ports.has(id)) ports.set(id, { id, name: `${bridge.id} ${direction} ${id.slice(prefix.length)} (saved)`,
                 direction, channel: Number(id.slice(prefix.length)) });
         }
-        return { id: `wasapi:${bridge.id}`, bridgeId: bridge.id, kind: capture ? 'wasapi-capture' : 'wasapi-render',
-            label: `${bridge.id} · ${bridge.enabled === false ? 'disabled' : runtime?.state || 'pending'}`,
+        // Process loopback is deliberately exposed as a stereo draft source so
+        // it can be routed before Apply opens the Windows capture stream.
+        if (bridge.kind === 'processLoopback' && ports.size === 0) {
+            for (const channel of [1, 2]) {
+                const id = `wasapi:${bridge.id}:input:${channel}`;
+                ports.set(id, { id, name: `${bridge.id} input ${channel} (draft)`, direction: 'input', channel });
+            }
+        }
+        const process = bridge.kind === 'processLoopback'
+            ? (apiState?.windowsAudioApplications || []).find(item => item.processId === bridge.processId &&
+                item.creationTime === bridge.processCreationTime) : null;
+        const appName = process?.displayName || (bridge.kind === 'processLoopback'
+            ? (bridge.processImagePath || '').split(/[\\/]/).pop() : '');
+        const endpointId = runtime?.effectiveInfo?.endpointId || bridge.endpointId;
+        const deviceName = (apiState?.wasapiDevices || []).find(item => item.id === endpointId)?.name;
+        return { id: `wasapi:${bridge.id}`, bridgeId: bridge.id,
+            badgeType: bridge.kind === 'processLoopback' ? 'wasapiApp' : 'wasapi', kind: capture ? 'wasapi-capture' : 'wasapi-render',
+            label: `${appName || deviceName || bridge.id} · ${bridge.enabled === false ? 'disabled' : runtime?.state || 'pending'}`,
             bridgeKind: bridge.kind, enabled: bridge.enabled !== false,
-            resolvedEndpointId: runtime?.effectiveInfo?.endpointId || bridge.endpointId || null,
+            resolvedEndpointId: endpointId || null,
             endpoints: [...ports.values()] };
     }), [configuration, apiState]);
     const bridgeConnectionAllowed = (sourceId, destinationId) => {
@@ -395,6 +437,21 @@ function App() {
         } catch (error) { setNotice(error.message); }
         finally { setBridgeInventoryBusy(false); }
     };
+    const refreshWasapiProcesses = async () => {
+        if (!window.vasio.getWindowsAudioApplications) return;
+        setProcessInventoryBusy(true);
+        try {
+            const inventory = await window.vasio.getWindowsAudioApplications();
+            setApiState(current => ({ ...current, ...inventory }));
+            setProcessInventoryError(inventory.windowsAudioApplicationInventoryError || '');
+        } catch (error) {
+            const unsupported = error.status === 404 || /HTTP 404\b/.test(error.message || '');
+            setProcessInventoryError(unsupported
+                ? 'The connected engine does not support Windows application discovery. Save your audio work, stop the old engine, then reopen this application to start its bundled engine.'
+                : error.message);
+        }
+        finally { setProcessInventoryBusy(false); }
+    };
     const patchbayGroups = useMemo(() => {
         if (!apiState) return { sources: [], destinations: [] };
         const physical = softwareClock ? [] : apiState.physicalDrivers || [];
@@ -404,13 +461,16 @@ function App() {
             return {
                 id: `${driver.id}:${client.pid}:${direction}`,
                 label: `${client.processName} · PID ${client.pid}`,
+                activity: client.activity,
                 kind: direction === 'output' ? 'virtual-output' : 'virtual-input',
                 endpoints: (direction === 'output' ? driver.outputEndpoints : driver.inputEndpoints)
                     .filter(endpoint => endpoint.id.startsWith(prefix))
             };
-        })).filter(group => group.endpoints.length);
+        }));
         const profileGroups = direction => endpoints.profiled.filter(group =>
-            group.direction === direction && group.endpoints.length).map(group => ({
+            group.direction === direction && group.endpoints.length &&
+            (activeProfileNames.has(group.processName.trim().toLocaleLowerCase()) ||
+                shownProfileNames.has(group.processName.trim().toLocaleLowerCase()))).map(group => ({
             id: `profile:${group.processName}:${direction}`,
             label: `${group.processName} · Saved profile (available when channels open)`,
             kind: direction === 'output' ? 'virtual-output' : 'virtual-input',
@@ -424,6 +484,8 @@ function App() {
                 const id = direction === 'output' ? route.sourceEndpointId : route.destinationEndpointId;
                 const match = /^virtual:TimoxVasio:app:(.+):(input|output):(\d+)$/.exec(id);
                 if (!match || match[2] !== direction || known.has(id)) continue;
+                const name = match[1].trim().toLocaleLowerCase();
+                if (!activeProfileNames.has(name) && !shownProfileNames.has(name)) continue;
                 if (!byName.has(match[1])) byName.set(match[1], new Map());
                 byName.get(match[1]).set(id, { id, name: `${match[1]} ${direction === 'input' ? 'In' : 'Out'} ${match[3]}`,
                     direction, channel: Number(match[3]) });
@@ -478,7 +540,8 @@ function App() {
                 ...applicationGroups('input')
             ]
         };
-    }, [apiState, endpoints.profiled, configuration?.routes, softwareClock, bridgeGroups]);
+    }, [apiState, endpoints.profiled, configuration?.routes, softwareClock, bridgeGroups,
+        activeProfileNames, shownProfileNames]);
     const confirmedRoutes = apiState ? configurationFromState(apiState).routes : [];
 
     const configurationLocked = applying || engine?.state === 'reconfiguring';
@@ -929,7 +992,7 @@ function App() {
     return (
         <div className={`App view-${activeView}`}>
             <header className="App-header">
-                <div className="brand"><h1><a href="https://github.com/timox/TimoxVasio" target="_blank" rel="noopener noreferrer" title="Open the TimoxVasio GitHub repository">Timox VASIO Control</a></h1></div>
+                <div className="brand"><h1><a href="https://github.com/timox/TimoxVasio" target="_blank" rel="noopener noreferrer" title="Open the TimoxVasio GitHub repository">{applicationProductName}</a></h1></div>
                 <div className="status"><span className={`status-light ${engine?.state || 'disconnected'}`} />
                     {connectionError || `Engine: ${engine?.state || 'pending'}`}</div>
             </header>
@@ -937,7 +1000,7 @@ function App() {
                 <div className="view-tabs-heading">Sections</div>
                 {[['configuration', 'Audio setup'], ['channels', 'Routing'], ['analysis', 'Analysis'], ['performance', 'Performance'], ['api', 'API and Swagger'], ['diagnostics', 'Logs']].map(([id, label]) =>
                     <button key={id} type="button" className={activeView === id ? 'selected' : ''} aria-current={activeView === id ? 'page' : undefined}
-                        onClick={() => { setRoutingDialog(null); setActiveView(id); if (id === 'diagnostics') refreshDiagnostics(); }}>{label}</button>)}
+                        onClick={() => { setRoutingDialog(null); setProfileCatalogOpen(false); setActiveView(id); if (id === 'diagnostics') refreshDiagnostics(); }}>{label}</button>)}
                 {activeView === 'channels' && <div className="view-tabs-actions">
                     <span className={configurationDirty ? 'draft-indicator pending' : 'draft-indicator'}>
                         {configurationDirty ? 'Changes pending' : 'Configuration applied'}</span>
@@ -1030,6 +1093,8 @@ function App() {
                     <h2>{runningSoftwareClock ? 'Software clock callback' : 'Physical ASIO callback'}</h2>
                     {!bufferHealth ? <p>No callback observation yet. Open an ASIO application and wait for a five-second window.</p> : <>
                         <p role="status">{bufferHealth.state === 'warning' ? 'Callback timing incidents were observed.' :
+                            bufferHealth.state === 'insufficient' && bufferHealth.callbackCount === 0
+                                ? 'No callbacks arrived from the selected physical ASIO clock during this window. ASIO clients cannot receive timed blocks until that clock sends callbacks.' :
                             bufferHealth.state === 'insufficient' ? 'Insufficient callback data for this window.' :
                                 'No repeated timing incidents in the observed window.'}</p>
                         <div className="performance-metrics">
@@ -1143,7 +1208,8 @@ function App() {
                 </section>
             </main> : <main className="main-content api-console">
                 {engine?.lastError && <div className="error-panel">{engine.lastError.message}</div>}
-                {notice && <div className="notice" role="status">{notice}</div>}
+                {notice && !(activeView === 'channels' && notice.startsWith('Configuration applied')) &&
+                    <div className="notice" role="status">{notice}</div>}
                 {!connectionError && apiState?.apiVersion === '1.0' && <div className="notice" role="status" aria-label="Engine compatibility">
                     Older engine connected (API 1.0). Windows audio bridges require the newer engine included with this application.
                     {' '}Closing this window does not stop the background engine. Save your audio work, stop audio, then exit the old engine before reopening the updated application.
@@ -1291,21 +1357,22 @@ function App() {
                 </div>}
 
                 {activeView === 'configuration' && apiState?.apiVersion === '1.1' && <section className="section setup-panel" id="setup-wasapi" role="tabpanel" aria-labelledby="setup-tab-wasapi" hidden={setupTab !== 'wasapi'} aria-label="Windows audio bridges">
-                    <h2>Windows audio devices (WASAPI)</h2>
-                    <p className="setup-description">Add Windows inputs and outputs to the routing graph.</p><SectionTabs id="wasapi" label="Windows audio topics" value={wasapiTab} onChange={setWasapiTab} tabs={[{id:'devices',label:'Devices and bridges'},{id:'status',label:'Live status'},{id:'help',label:'Help'}]} />
+                    <h2>Windows audio</h2>
+                    <p className="setup-description">Connect Windows devices or audio playing in Windows applications.</p><SectionTabs id="wasapi" label="Windows audio topics" value={wasapiTab} onChange={setWasapiTab} tabs={[{id:'devices',label:'Devices and applications'},{id:'status',label:'Live status'},{id:'help',label:'Help'}]} />
                     <div className="subtopic-panel" id="wasapi-panel-devices" role="tabpanel" aria-labelledby="wasapi-tab-devices" hidden={wasapiTab !== 'devices'}>
-                    <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'add' })}>Add Windows audio bridge…</button>
+                    <div className="analysis-actions">
                         <button type="button" onClick={() => setActiveView('channels')}>Open Routing for Windows audio</button>
+                        <button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'add' })}>Create bridge</button>
                         <button type="button" disabled={bridgeInventoryBusy || !window.vasio.getWasapiDevices} onClick={refreshBridgeInventory}>Refresh Windows endpoints</button></div>
                     {apiState.wasapiInventoryError && <p role="alert">Windows endpoint discovery: {apiState.wasapiInventoryError}</p>}
                     {!(configuration?.wasapiBridges || []).length && <p>No Windows audio bridges configured.</p>}
                     {(configuration?.wasapiBridges || []).map(bridge => <article className="application-channel-card" key={bridge.id}>
-                        <h3>{bridge.id} · {bridge.kind}</h3><BridgeStatus compact bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} />
+                        <h3>{bridge.id} · {wasapiBridgeLabel(bridge.kind)}</h3><BridgeStatus compact bridge={bridge} runtime={apiState.wasapiBridges?.find(item => item.id === bridge.id)} devices={apiState.wasapiDevices || []} />
                         <div className="analysis-actions"><button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'edit', bridge })}>Configure {bridge.id}</button>
                             <button type="button" disabled={configurationLocked || !!hardwareTransfer} onClick={() => setBridgeDialog({ kind: 'remove', bridge })}>Remove {bridge.id}</button></div>
                     </article>)}
                     <h3 className="inventory-heading">Available devices</h3>
-                    <WasapiDeviceTree devices={apiState.wasapiDevices || []} disabled={configurationLocked || !!hardwareTransfer}
+                    <WasapiDeviceTree devices={apiState.wasapiDevices || []} bridges={configuration?.wasapiBridges || []} disabled={configurationLocked || !!hardwareTransfer}
                         onAdd={(device, kind) => {
                             let number = 1;
                             const ids = new Set((configuration?.wasapiBridges || []).map(bridge => bridge.id));
@@ -1313,6 +1380,18 @@ function App() {
                             setBridgeDialog({ kind: 'add', bridge: { id: `${kind}_${number}`, kind, endpointId: device.id,
                                 enabled: device.state === 1, bufferDuration100ns: 0 } });
                         }} />
+                    {apiState.capabilities?.wasapiProcessLoopback === true
+                        ? <WasapiProcessList processes={apiState.windowsAudioApplications || []} bridges={configuration?.wasapiBridges || []}
+                            busy={processInventoryBusy} disabled={configurationLocked || !!hardwareTransfer} error={processInventoryError}
+                            onRefresh={refreshWasapiProcesses} onAdd={process => {
+                                let number = 1;
+                                const ids = new Set((configuration?.wasapiBridges || []).map(bridge => bridge.id));
+                                while (ids.has(`app_${number}`)) number++;
+                                setBridgeDialog({ kind: 'add', bridge: { id: `app_${number}`, kind: 'processLoopback', enabled: true,
+                                    processId: process.processId, processCreationTime: process.creationTime,
+                                    processImagePath: process.imagePath, bufferDuration100ns: 0 } });
+                            }} />
+                        : <div className="notice" role="status"><strong>Process copies are unavailable in the connected engine.</strong> This engine does not advertise Windows process-copy support. Save audio work, stop the older engine, then reopen this application to start its bundled engine.</div>}
                     </div>
                     <div className="subtopic-panel" id="wasapi-panel-status" role="tabpanel" aria-labelledby="wasapi-tab-status" hidden={wasapiTab !== 'status'}>
                         <div className="section-heading"><h3>Stream monitoring</h3><ContextHelp topic="wasapi-status" onOpen={setHelpTopic} label="Read the stream counters" /></div>
@@ -1322,8 +1401,6 @@ function App() {
                     <div className="subtopic-panel topic-help" id="wasapi-panel-help" role="tabpanel" aria-labelledby="wasapi-tab-help" hidden={wasapiTab !== 'help'}><AudioHelpContent topic="wasapi" /></div>
                 </section>}
                 {activeView === 'channels' && <section className="section routing-workspace-section">
-                    <h2>Routing</h2>
-                    <p className="hint">Right-click the background, a process, or a cable for its actions. Details open in a dialog.</p>
                     <RoutingPatchbay sourceGroups={patchbayGroups.sources}
                         destinationGroups={patchbayGroups.destinations} routes={configuration?.routes || []}
                         confirmedRoutes={confirmedRoutes} activeRoutes={apiState?.routes || []}
@@ -1332,6 +1409,7 @@ function App() {
                         onBulkChangeRouteVisuals={updateManyRouteVisuals}
                         onSelectRoute={setSelectedRouteId} onEditRoute={editRoute}
                         profiles={confirmedProfiles} onAssignProfile={assignProfileToProcess}
+                        onShowProfiles={() => setProfileCatalogOpen(true)}
                         onRemoveProcessConfiguration={removeProcessConfiguration}
                         onTransferProcessConnections={moveProcessConnections}
                         onCreateConnection={processName => setRoutingDialog({ kind: 'add', processName })}
@@ -1374,22 +1452,49 @@ function App() {
 
 
 
-                {activeView === 'channels' && pwarDialogOpen && <PwarDialog drivers={physicalDrivers}
-                    activeDriver={runningPhysical} running={engine?.state === 'running'} connected={!connectionError}
-                    locked={configurationLocked || !!engineAction || !!hardwareTransfer}
-                    canReopen={!configurationDirty} onSelect={selectPhysicalDriver}
-                    onClose={() => setPwarDialogOpen(false)} onReopen={async () => {
-                        setEngineAction('reset');
-                        try {
-                            await window.vasio.executeCommand({ id: `pwar-reset-${Date.now()}`, command: 'engine.reset' });
-                            await refreshState();
-                        } finally { setEngineAction(''); }
-                    }} />}
+                {activeView === 'channels' && profileCatalogOpen && createPortal(<div className="routing-dialog-backdrop profile-catalog-backdrop" onMouseDown={event => {
+                    if (event.target === event.currentTarget) setProfileCatalogOpen(false);
+                }}><section className="routing-dialog profile-catalog-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-catalog-title" tabIndex="-1">
+                    <div className="routing-dialog-heading"><div><h2 id="profile-catalog-title">Saved profiles</h2>
+                        <p className="profile-catalog-description">Add or remove saved application blocks from the routing graph. Connected applications stay visible.</p></div>
+                        <button type="button" autoFocus onClick={() => setProfileCatalogOpen(false)}>Close</button></div>
+                    {profilesLoading ? <p className="profile-catalog-empty">Loading profiles…</p> : confirmedProfiles.length ?
+                        <ul className="profile-catalog-list">{confirmedProfiles.map(profile => {
+                            const key = profile.processName.trim().toLocaleLowerCase();
+                            const active = activeProfileNames.has(key);
+                            const shown = shownProfileNames.has(key);
+                            return <li key={key}>
+                                <div className="profile-catalog-entry">
+                                    <span className={`profile-catalog-state ${active ? 'connected' : 'inactive'}`} aria-hidden="true" />
+                                    <span className="profile-catalog-name" title={profile.processName}>{profile.processName}</span>
+                                    <span className={`profile-catalog-status ${active ? 'connected' : 'inactive'}`}>{active ? 'Connected' : 'Inactive'}</span>
+                                </div>
+                                <button type="button" className="profile-catalog-action" disabled={active}
+                                    aria-pressed={active || shown}
+                                    onClick={() => setShownProfileNames(current => {
+                                        const next = new Set(current);
+                                        if (next.has(key)) next.delete(key); else next.add(key);
+                                        return next;
+                                    })}>
+                                    {active ? 'Always shown' : shown ? 'Remove from routing' : 'Add to routing'}
+                                </button>
+                            </li>;
+                        })}</ul> : <p className="profile-catalog-empty">No saved profiles</p>}
+                </section></div>, document.body)}
+
+                {activeView === 'channels' && pwarDialogOpen && <PwarDialog
+                    clients={(apiState?.virtualDrivers || []).flatMap(driver => driver.clients || [])}
+                    activeRoutes={apiState?.routes || []}
+                    connected={!connectionError} locked={configurationLocked || !!hardwareTransfer}
+                    onClose={() => setPwarDialogOpen(false)} />}
                 {activeView === 'channels' && nativeDialogOpen && <NativeAudioDialog status={apiState?.nativeAudio}
                     connected={!connectionError} onClose={() => setNativeDialogOpen(false)} />}
                 {bridgeDialog && <BridgeDialog key={`${bridgeDialog.kind}:${bridgeDialog.bridge?.id || ''}`} dialog={bridgeDialog}
                     bridges={configuration?.wasapiBridges || []} routes={configuration?.routes || []}
                     devices={apiState?.wasapiDevices || []} runtime={apiState?.wasapiBridges?.find(item => item.id === bridgeDialog.bridge?.id)}
+                    processes={apiState?.windowsAudioApplications || []} processInventoryBusy={processInventoryBusy}
+                    processLoopbackSupported={apiState?.capabilities?.wasapiProcessLoopback === true}
+                    processInventoryError={processInventoryError} onRefreshProcesses={refreshWasapiProcesses}
                     inventoryError={apiState?.wasapiInventoryError} onHelp={setHelpTopic} disabled={configurationLocked || !!hardwareTransfer}
                     onClose={() => setBridgeDialog(null)} onSave={bridge => {
                         updateDraft(current => ({ ...current, wasapiBridges: [...(current.wasapiBridges || []).filter(item => item.id !== bridge.id), bridge] }));
@@ -1411,12 +1516,18 @@ function App() {
     );
 }
 
+function wasapiBridgeLabel(kind) {
+    return ({ capture: 'Windows input', render: 'Timox to Windows output', endpointLoopback: 'Output mix copy', processLoopback: 'Process copy' })[kind] || kind;
+}
+
 function BridgeStatus({ bridge, runtime, devices, compact = false, onHelp }) {
+    const processLoopback = bridge.kind === 'processLoopback';
+    const processName = processLoopback ? (bridge.processImagePath || '').split(/[\\/]/).pop() : '';
     const device = devices.find(item => item.id === (runtime?.effectiveInfo?.endpointId || bridge.endpointId));
     const format = runtime?.effectiveInfo?.format;
     const health = runtime?.health;
     return <div className={compact ? 'bridge-summary' : 'bridge-live-status'}>
-        <p>{device?.name || bridge.endpointId || ('Windows default: ' + bridge.defaultRole)}</p>
+        <p>{processLoopback ? `Process copy · ${processName || `PID ${bridge.processId}`} and child processes` : device?.name || bridge.endpointId || ('Windows default: ' + bridge.defaultRole)}</p>
         <div className="bridge-state-line"><span>{bridge.enabled === false ? 'Audio disabled' : 'Audio enabled'}</span><span>Stream: {runtime?.state || 'not opened'}</span></div>
         {device?.error && <p role="alert">{device.error}</p>}
         {!compact && <>
@@ -1432,12 +1543,13 @@ function BridgeStatus({ bridge, runtime, devices, compact = false, onHelp }) {
             {health?.error ? <p role="alert">Stream error: {health.error}</p> : null}
             {health?.mmcssError ? <p role="alert">Scheduling error: {health.mmcssError}</p> : null}
             {health?.primingTimedOut && <p role="status">Priming timed out</p>}
-            {runtime?.effectiveInfo?.endpointId && <details className="bridge-technical"><summary>Device identifier</summary><code>{runtime.effectiveInfo.endpointId}</code></details>}
+            {processLoopback && <details className="bridge-technical"><summary>Process identity</summary><code>{bridge.processImagePath} · PID {bridge.processId}</code></details>}
+            {!processLoopback && runtime?.effectiveInfo?.endpointId && <details className="bridge-technical"><summary>Device identifier</summary><code>{runtime.effectiveInfo.endpointId}</code></details>}
         </>}
     </div>;
 }
 
-function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryError, disabled, onClose, onSave, onRemove, onHelp }) {
+function BridgeDialog({ dialog, bridges, routes, devices, runtime, processes, processInventoryBusy, processLoopbackSupported, processInventoryError, onRefreshProcesses, inventoryError, disabled, onClose, onSave, onRemove, onHelp }) {
     const [draft, setDraft] = useState(() => ({ id: '', kind: 'capture', enabled: true, bufferDuration100ns: 0, endpointId: '', ...dialog.bridge }));
     const [selection, setSelection] = useState(dialog.bridge?.defaultRole ? 'default' : 'endpoint');
     const dialogRef = useRef(null);
@@ -1461,14 +1573,25 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryErro
     const choices = devices.filter(item => item.flow === (draft.kind === 'capture' ? 'capture' : 'render'));
     const selected = choices.find(item => item.id === draft.endpointId);
     const usedRoutes = routes.filter(route => [route.sourceEndpointId, route.destinationEndpointId].some(id => id.startsWith(`wasapi:${draft.id}:`)));
+    const processLoopback = draft.kind === 'processLoopback';
+    const modeLocked = dialog.kind !== 'add' && usedRoutes.length > 0;
+    const canUseProcessLoopback = processLoopbackSupported || dialog.bridge?.kind === 'processLoopback';
+    const deviceModes = [
+        { id: 'capture', title: 'Windows input → Timox', description: 'Microphone or line input enters the graph.', icon: 'input' },
+        { id: 'endpointLoopback', title: 'Copy Windows output → Timox', description: 'Duplicate all shared playback from one output.', icon: 'copy' },
+        { id: 'render', title: 'Timox → Windows output', description: 'Send graph audio to a Windows playback device.', icon: 'output' }
+    ];
+    const selectKind = kind => setDraft(current => ({ ...current, kind, endpointId: '',
+        ...(kind === 'processLoopback' ? {} : { processId: undefined, processCreationTime: undefined, processImagePath: undefined }) }));
     const valid = /^[A-Za-z0-9_-]{1,128}$/.test(draft.id) &&
         (dialog.kind !== 'add' || (bridges.length < 32 && !bridges.some(item => item.id === draft.id))) &&
         Number.isInteger(draft.bufferDuration100ns) && draft.bufferDuration100ns >= 0 && draft.bufferDuration100ns <= 10000000 &&
-        (selection === 'default' || (!!draft.endpointId && (!draft.enabled || selected?.state === 1)));
+        (processLoopback ? Number.isInteger(draft.processId) && draft.processId > 0 && !!draft.processCreationTime && !!draft.processImagePath
+            : selection === 'default' || (!!draft.endpointId && (!draft.enabled || selected?.state === 1)));
     const save = () => {
         if (!valid || disabled) return;
         const { endpointId, defaultRole, ...common } = draft;
-        onSave({ ...common, ...(selection === 'default' ? { defaultRole: defaultRole || 'console' } : { endpointId }) });
+        onSave({ ...common, ...(processLoopback ? {} : selection === 'default' ? { defaultRole: defaultRole || 'console' } : { endpointId }) });
     };
     return createPortal(<div className="routing-dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
         <div className="routing-dialog" role="dialog" aria-modal="true" aria-label={dialog.kind === 'remove' ? 'Remove Windows audio bridge' : 'Configure Windows audio bridge'} ref={dialogRef}>
@@ -1477,36 +1600,77 @@ function BridgeDialog({ dialog, bridges, routes, devices, runtime, inventoryErro
                 <button type="button" disabled={disabled} onClick={() => onRemove(draft.id)}>Remove bridge and its connections</button></> : <>
                 <label className="field">Bridge ID<input aria-label="Bridge ID" maxLength="128" disabled={disabled || dialog.kind !== 'add'} value={draft.id} onChange={event => set('id', event.target.value)} /></label>
                 <p className="hint">Use letters, digits, underscores or hyphens. The ID stays fixed so saved channel connections remain stable.</p>
-                <div className="field-help-heading"><span>Audio direction</span><ContextHelp topic="wasapi-mode" onOpen={onHelp} label="Choose the audio direction" /></div>
-                <label className="field"><span className="sr-only">Mode</span><select aria-label="Bridge kind" disabled={disabled || (dialog.kind !== 'add' && usedRoutes.length > 0)} value={draft.kind}
-                    onChange={event => setDraft(current => ({ ...current, kind: event.target.value, endpointId: '' }))}>
-                    <option value="capture">Capture Windows input</option><option value="render">Play to Windows output</option><option value="endpointLoopback">Capture Windows output (endpoint loopback)</option>
-                </select></label>
-                {usedRoutes.length > 0 && <p className="hint">Mode is fixed while this bridge has saved connections. Disabling the bridge keeps those connections.</p>}
+                <div className="field-help-heading"><span>Choose a scope</span><ContextHelp topic="wasapi-mode" onOpen={onHelp} label="How do the bridge scopes differ?" /></div>
+                <fieldset className="wasapi-mode-picker" disabled={disabled || modeLocked} aria-label="Bridge scope">
+                    <legend className="sr-only">Select a device scope or process copy</legend>
+                    <div className="wasapi-scope-options">
+                        <label className={`wasapi-scope-option${!processLoopback ? ' selected' : ''}`}>
+                            <input type="radio" name="wasapi-bridge-scope" checked={!processLoopback} onChange={() => selectKind('capture')} />
+                            <AudioFlowIcon kind="device" /><span><strong>Windows device</strong><small>Choose an input, copy an output, or send Timox audio to it.</small></span>
+                        </label>
+                        {canUseProcessLoopback && <label className={`wasapi-scope-option${processLoopback ? ' selected' : ''}`}>
+                            <input type="radio" name="wasapi-bridge-scope" checked={processLoopback} onChange={() => selectKind('processLoopback')} />
+                            <AudioFlowIcon kind="copy" /><span><strong>Process copy → Timox</strong><small>Duplicate rendered audio from one process and its children. Microphone input is not copied.</small></span>
+                        </label>}
+                    </div>
+                </fieldset>
+                {!processLoopback && <fieldset className="wasapi-mode-picker wasapi-device-mode-picker" disabled={disabled || modeLocked} aria-label="Windows device operation">
+                    <legend>What should Timox do with this device?</legend>
+                    <div className="wasapi-mode-options">{deviceModes.map(mode =>
+                        <label key={mode.id} className={`wasapi-mode-option${draft.kind === mode.id ? ' selected' : ''}`}>
+                            <input type="radio" name="wasapi-device-mode" value={mode.id} checked={draft.kind === mode.id}
+                                onChange={() => selectKind(mode.id)} />
+                            <AudioFlowIcon kind={mode.icon} /><span><strong>{mode.title}</strong><small>{mode.description}</small></span>
+                        </label>
+                    )}</div>
+                </fieldset>}
+                {!canUseProcessLoopback && !processLoopback && <p className="hint">Process copies are unavailable in the connected engine version.</p>}
+                {usedRoutes.length > 0 && <p className="hint">Scope and device operation are fixed while this bridge has saved connections. Disabling the bridge keeps those connections.</p>}
+                {processLoopback ? <div className="wasapi-process-identity">
+                    <div className="field-help-heading"><span>Process to copy</span><ContextHelp topic="wasapi-process" onOpen={onHelp} label="What audio does this copy include?" /></div>
+                    <label className="field"><span className="sr-only">Process with active Windows audio</span><select aria-label="Process to copy" disabled={disabled || processInventoryBusy}
+                        value={draft.processId && draft.processCreationTime ? `${draft.processId}:${draft.processCreationTime}` : ''}
+                        onChange={event => {
+                            const process = processes.find(item => `${item.processId}:${item.creationTime}` === event.target.value);
+                            setDraft(current => ({ ...current, processId: process?.processId, processCreationTime: process?.creationTime,
+                                processImagePath: process?.imagePath, enabled: process ? true : current.enabled }));
+                        }}>
+                        <option value="">Select a process with active audio</option>
+                        {draft.processId && !processes.some(item => item.processId === draft.processId && item.creationTime === draft.processCreationTime) &&
+                            <option value={`${draft.processId}:${draft.processCreationTime}`}>{(draft.processImagePath || '').split(/[\\/]/).pop()} · PID {draft.processId} (not detected)</option>}
+                        {processes.map(process => <option key={`${process.processId}:${process.creationTime}`} value={`${process.processId}:${process.creationTime}`}>
+                            {process.displayName} · PID {process.processId} · {process.renderEndpoints.join(', ')}
+                        </option>)}
+                    </select></label>
+                    <div className="analysis-actions"><button type="button" disabled={disabled || processInventoryBusy || !onRefreshProcesses}
+                        onClick={onRefreshProcesses}>{processInventoryBusy ? 'Scanning…' : 'Refresh active apps'}</button>
+                        {processInventoryError && <p role="alert">{processInventoryError}</p>}</div>
+                    {draft.processId && <details className="bridge-technical"><summary>Selected process identity</summary><code>{draft.processImagePath} · PID {draft.processId}</code></details>}
+                    <p className="hint">Timox creates a separate graph source by copying shared-mode audio from this process and its child processes. Original playback continues independently. ASIO and WASAPI-exclusive output cannot be copied.</p>
+                    <p className="hint">Save this bridge to the draft, then apply the audio configuration. The new source appears in Routing. Sending it to the same output as the original may play the audio twice.</p></div> : <>
                 <div className="field-help-heading"><span>Device selection</span><ContextHelp topic="wasapi-endpoint" onOpen={onHelp} label="Fixed device or Windows default?" /></div>
                 <label className="field"><span className="sr-only">Endpoint selection</span><select aria-label="Bridge selection" disabled={disabled} value={selection} onChange={event => setSelection(event.target.value)}>
                     <option value="endpoint">Always use this device</option><option value="default">Follow the Windows default</option></select></label>
                 {selection === 'default' ? <label className="field">Role<select aria-label="Default endpoint role" disabled={disabled} value={draft.defaultRole || 'console'} onChange={event => set('defaultRole', event.target.value)}>
                     <option value="console">Console</option><option value="multimedia">Multimedia</option><option value="communications">Communications</option></select></label> :
-                    <label className="field">Windows device<select aria-label="Windows endpoint" disabled={disabled} value={draft.endpointId || ''} onChange={event => {
-                        const endpoint = choices.find(item => item.id === event.target.value);
-                        setDraft(current => ({ ...current, endpointId: event.target.value, enabled: endpoint?.state === 1 ? current.enabled : false }));
-                    }}>
-                        <option value="">Select a Windows device</option>
-                        {draft.endpointId && !selected && <option value={draft.endpointId}>{draft.endpointId} (unavailable)</option>}
-                        {choices.map(item => <option key={item.id} value={item.id}>{item.name}{item.state === 1 ? '' : ' (unavailable)'}</option>)}
-                    </select></label>}
+                    <div className="field"><span>{draft.kind === 'endpointLoopback' ? 'Windows output to copy' : draft.kind === 'capture' ? 'Windows input device' : 'Windows output device'}</span><span className="hint">Choose an endpoint under its physical device.</span>
+                        <WasapiEndpointPicker devices={devices} selectableFlow={draft.kind === 'capture' ? 'capture' : 'render'} selectedId={draft.endpointId} disabled={disabled} onSelect={endpointId => {
+                            const endpoint = choices.find(item => item.id === endpointId);
+                            setDraft(current => ({ ...current, endpointId, enabled: endpoint?.state === 1 ? current.enabled : false }));
+                        }} />
+                    </div>}
                 {selected?.error && <p role="alert">{selected.error}</p>}
                 {inventoryError && <p role="alert">Windows endpoint discovery: {inventoryError}</p>}
                 <label className="bridge-enabled-field"><input type="checkbox" aria-label="Bridge enabled" disabled={disabled} checked={draft.enabled} onChange={event => set('enabled', event.target.checked)} /> Enabled</label>
                 {selection === 'endpoint' && draft.endpointId && selected?.state !== 1 && <p role={draft.enabled ? 'alert' : 'status'}>
                     {draft.enabled ? 'This endpoint is unavailable. Turn off Enabled to save it offline.' : 'Unavailable — audio disabled. You can save this endpoint offline and enable it when it becomes available.'}
                 </p>}
+                </>}
                 <div className="field-help-heading"><span>Requested buffer duration</span><ContextHelp topic="wasapi-buffer" onOpen={onHelp} label="How to choose the buffer duration" /></div>
                 <label className="field"><span>Milliseconds · 0 uses the Windows default</span><input aria-label="Bridge buffer duration (ms)" type="number" min="0" max="1000" step="0.0001" disabled={disabled} value={draft.bufferDuration100ns / 10000} onChange={event => set('bufferDuration100ns', Math.round(Number(event.target.value) * 10000))} /></label>
                 {runtime && <details className="bridge-runtime-disclosure"><summary>View current stream status (read-only)</summary><BridgeStatus bridge={dialog.bridge} runtime={runtime} devices={devices} onHelp={onHelp} /></details>}
 
-                {!valid && <p role="status">Choose a device or Windows default, a unique ID, and a duration between 0 and 1000 ms.</p>}
+                {!valid && <p role="status">Choose a valid audio source, a unique ID, and a duration between 0 and 1000 ms.</p>}
                 <button type="button" disabled={disabled || !valid} onClick={save}>Save bridge to draft</button>
             </>}
         </div></div>, document.body);

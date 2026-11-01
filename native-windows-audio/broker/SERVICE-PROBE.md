@@ -119,6 +119,9 @@ En erreur, WIN32_EXIT_CODE=1066 et le code spécifique identifie l'étape :
 L'outil tente aussi d'écrire l'étape et l'erreur Windows dans le journal
 Application, source TimoxNativeAudioServiceProbe ; ce journal est best effort et
 ne remplace pas le résultat SCM. Aucun enregistrement de source n'est installé.
+L'événement inclut les attributs bruts `serviceGroupAttributes`, l'erreur de
+lecture du jeton et le résultat du contrôle strict `eligible`, afin de trancher
+le comportement réel du SID sans assouplir le contrôle au préalable.
 
 Après l'arrêt, exécuter `--inspect` depuis un utilisateur non administrateur.
 Exiger les erreurs racine/publication/propriétaire à zéro et un epoch non nul,
@@ -138,6 +141,12 @@ la propriété, ainsi que création/publication/relecture sous ce jeton. Il ne
 qualifie ni CNG/Schannel, ni enrollment par logon, ni isolation du PCM, ni pilote,
 ni performances, ni démarrage du véritable broker. L'outil refuse l'impersonation
 et n'ajuste aucun privilège ou attribut de groupe pour faire passer le test.
+
+Build du probe après ajout de ces champs, Release du 2026-10-24 19:48:56 UTC :
+108032 octets, SHA-256
+`F5C5A1EC8388A7B8A08B8025D9BEAF8B2F26FD26BC4274756B6011DCC1A51B57`.
+Ce candidat n'a pas été exécuté ; aucun service ni fichier de qualification
+n'a été créé.
 
 Références : [SID de service](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_sid_info),
 [attributs de groupe](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_groups),

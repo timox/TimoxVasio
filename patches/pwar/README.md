@@ -1,5 +1,60 @@
 # PWAR : correctifs séparés et qualification
 
+## Réconciliation du 25 octobre 2026
+
+Le correctif additionnel `0014-linux-account-synthesized-silence.patch`
+s'applique après le backend expérimental et les files 0011 : il distingue les
+frames copiées des zéros produits par la chronologie de la file. Les valeurs
+historiques de `played_frames` avant ce correctif ne sont pas directement
+comparables aux nouvelles valeurs. Ce patch ne change pas les samples générés
+et ne résout pas à lui seul les débordements observés.
+
+Le périmètre autorisé est PWAR uniquement. Le contrat d'intégration cible est
+dans [TIMOX_INTERFACING.md](TIMOX_INTERFACING.md) : PWAR doit devenir un client
+ASIO de Timox, sans remplacer la carte ASIO physique du moteur. Une première
+implémentation en qualification est dans [client/README.md](client/README.md) ;
+les tests du pilote PWAR ne remplacent pas ceux de ce client.
+
+Les variantes ont été sauvegardées avec manifestes SHA-256 dans
+`build_pwar_isolated_20261025_134451` avant réconciliation. La source réunifiée
+est `build_pwar_reconciled_20261025` : patches 0001 à 0013, puis
+`windows-receive-burst-capacity.patch` et
+`experimental-pipewire-stream-backend.patch`. Les sources des mesures audio
+antérieures sont conservées séparément ; leurs résultats ne doivent pas être
+attribués automatiquement à la variante réunifiée.
+
+Le patch 0013 a été corrigé après deux échecs reproductibles : la fonction
+`pwar_router_process_streaming_packet` adapte les séquences de flux sans
+marqueur interne ; le récepteur Linux utilise `pwar_router_process_packet`
+pour les réponses fragmentées. Le marqueur `UINT32_MAX` de la première version
+est supprimé. SHA-256 du patch révisé :
+`2350BE779C64326FF4F25B6F04485AC2F8C7357B8D3066A7A882D9A75A3F7360`.
+
+Vérification : **39/39 tests Windows**, **26/26 tests Linux** avec ASan/UBSan
+sur le banc Linux. Le callback avec files est testé en C11 sous Linux avec
+son implémentation réelle de file ; l'ancien test C++ reste applicable à
+l'ancien callback. Aucun test de callback Linux n'est compté comme exécuté
+sous Windows pour cette variante. Les avertissements historiques de compilation
+ne sont pas tous résolus. La continuité, la dérive et l'intégration finale
+restent non qualifiées. Le bundle distribué à sept patches n'est pas mis à jour
+sur la seule foi de ces tests.
+
+## Consolidation du protocole en cours
+
+Le patch candidat `0008-router-preserve-fragment-integrity.patch` s'applique
+après les correctifs précédents. Il corrige les fragments de longueur finale
+réduite, les doublons, les séquences anciennes, les métadonnées incohérentes,
+le démarrage streaming à zéro et les octets non initialisés du routeur émetteur.
+La structure UDP reste inchangée. Réinitialiser explicitement le routeur après
+redémarrage d'un pair ; la détection réseau de ce redémarrage reste à réaliser.
+
+Les tests sont dans `protocol-audit` et inclus par le CMake de qualification.
+La passe consolidée rapporte **34/34** tests locaux. Les preuves, empreintes,
+limites et prochaines étapes sont dans
+[PWAR_PROTOCOL_REQUALIFICATION.md](../../docs/PWAR_PROTOCOL_REQUALIFICATION.md).
+Le bundle actuel à sept patches n'inclut pas encore ce candidat. Aucun résultat
+de latence ou de stabilité PipeWire réelle n'est revendiqué.
+
 Base amont : `ripxorip/PWAR`, commit
 `ed5b07c44c7635d006422d646d56368600504b3f`.
 Les patches modifient PWAR, pas TimoxVasio.dll. Ils conservent les structures
@@ -10,6 +65,58 @@ Timox, et la liaison avec PipeWire sur le réseau n'est pas encore qualifiée.
 Le code amont porte le copyright 2025 Philip K. Gisslow et sa licence est fournie
 dans `GPL-3.0.txt`. Les modifications du routeur sont proposées sous cette même
 licence. Aucun code PWAR n'est lié au moteur Timox par ce banc de tests.
+
+## 0011 : primitive de file SPSC (candidat, non qualifié)
+
+`0011-linux-frame-queue.patch` ajoute au protocole une file stéréo préallouée
+de 4096 frames, avec lecture/écriture SPSC sans attente, conservation des
+anciennes frames en cas de saturation et signalement explicite des frames
+perdues pour maintenir leur position temporelle par silence. Le banc
+`PwarAudioQueueTests` compile cette source et vérifie quanta variables, bornes,
+retour arrière, wrap et échange concurrent ; il n'a pas encore été exécuté ici.
+
+Ce patch ajoute la primitive ; son intégration au callback PipeWire et au
+worker UDP est proposée séparément en 0012. Aucun des deux n'est inclus dans le
+bundle qualifié ni dans `qualification-inputs.json`.
+
+Patch 0012 connects this primitive to the Linux PipeWire callback and UDP
+worker. It remains a candidate and is not included in the qualified bundle or
+`qualification-inputs.json`; the runtime path has not been built or qualified.
+
+## 0012 : intégration candidate du worker réseau
+
+`0012-linux-queue-network-worker.patch` moves UDP send/receive out of the
+PipeWire callback and uses the bounded SPSC queues on both directions. Its
+receive path passes fragments unchanged to the protocol router, which owns
+sequence and `packet_index` validation for complete blocks. The previous
+per-packet sequence check incorrectly rejected later fragments of one block.
+The worker uses `recvmsg` with truncation detection, validates fragment counts
+before multiplying frame sizes, and handles recoverable socket errors without
+spinning on a fatal poll result. The running-state query also follows the
+worker's atomic state, so a fatal worker exit is visible to the controller.
+
+Patch 0012 emits 64-frame Linux-to-Windows chunks so the Windows listener can
+assemble every supported ASIO block size (multiples of 64). The existing
+streaming router API was ambiguous: it inferred fragment indices from sequence
+numbers even when a PWAR packet already carried an explicit `packet_index`.
+Patch 0013 reserves `UINT32_MAX` as an in-process marker for the ASIO stream
+adapter; explicit grouped PWAR fragments keep their protocol indices. The
+marker is never sent over UDP, so the wire format stays unchanged.
+
+The Windows listener also checks that a completed router block contains exactly
+`blockFrames`. A positive but short or oversized result is replaced with a
+silent full block and counted as an xrun, so stale or partial router samples are
+never copied as a complete ASIO input block.
+
+When a newer response block arrives, patch 0012 accounts for an incomplete
+previous block and any missing 64-frame sequence units by advancing the queue's
+timeline with silence and incrementing the xrun counter. A single discontinuity
+adds at most 4096 silent frames; late fragments from the old block are rejected
+by the router. The Windows listener can still miss a host callback when an
+incoming Linux block's final chunk is lost; the next full sequence boundary is
+needed before the router can discard that incomplete block and resume.
+These candidates are not built, tested, or qualified, and make no claim of
+end-to-end audio operation.
 
 ## 0001 : contrôles de bornes du routeur
 

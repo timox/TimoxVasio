@@ -122,9 +122,10 @@ const graphNodes = (sources, destinations, sourceGroups, destinationGroups) => {
     const nodes = new Map();
     const add = (group, side) => {
         const key = nodeKey(group);
-        if (!nodes.has(key)) nodes.set(key, { key, label: group.label, type: group.id.startsWith('profile:') ? 'profile' :
+        if (!nodes.has(key)) nodes.set(key, { key, label: group.label, activity: group.activity, type: group.id.startsWith('profile:') ? 'profile' :
             group.id.startsWith('saved:') ? 'saved' :
-            group.bridgeId ? 'wasapi' : group.kind.startsWith('physical') ? 'physical' : 'process', bridgeId: group.bridgeId, inputs: [], outputs: [] });
+            group.bridgeId ? (group.badgeType || 'wasapi') : group.kind.startsWith('physical') ? 'physical' : 'process',
+            bridgeId: group.bridgeId, bridgeKind: group.bridgeKind, inputs: [], outputs: [] });
         const node = nodes.get(key);
         if ((node.type === 'profile' || node.type === 'saved') && !group.id.startsWith('profile:') && !group.id.startsWith('saved:')) {
             node.type = 'process'; node.label = group.label;
@@ -147,6 +148,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
     selectedRouteId = null, onSelectRoute = () => {}, routeVisuals = {}, onChangeRouteVisual = () => {},
     onBulkChangeRouteVisuals = () => {}, onEditRoute = () => {}, confirmedRoutes = [], activeRoutes = [],
     meters = {}, disabled = false, profiles = emptyProfiles, onAssignProfile = async () => {},
+    onShowProfiles = () => {},
     onRemoveProcessConfiguration = async () => {}, onTransferProcessConnections = () => {},
     onCreateConnection = () => {}, onShowProcessDetail = () => {},
     onCreateBridge, onShowNativeAudio, onConfigurePwar, onEditBridge = () => {}, onRemoveBridge = () => {}, isConnectionAllowed = () => true }) {
@@ -430,6 +432,9 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
         const endpointIds = new Set(groups.flatMap(group => group.endpoints.map(endpoint => endpoint.id)));
         const linkCount = focusedRoutes.filter(route => endpointIds.has(route.sourceEndpointId) || endpointIds.has(route.destinationEndpointId)).length;
         const fullNode = allNodes.find(item => item.key === node.key) || node;
+        const hasVisiblePorts = groups.some(group => group.endpoints.length > 0);
+        const hasAllocatedAsioChannels = [...fullNode.inputs, ...fullNode.outputs].some(group =>
+            group.kind.startsWith('virtual') && !group.id.startsWith('profile:') && !group.id.startsWith('saved:') && group.endpoints.length > 0);
         const profile = profiles.find(item => item.processName.toLocaleLowerCase() === processName(fullNode));
         const capacity = (side, field, routeField) => {
             const endpoints = fullNode[side].flatMap(group => group.endpoints);
@@ -443,6 +448,13 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
         };
         const inputs = capacity('inputs', 'inputChannels', 'destinationEndpointId');
         const outputs = capacity('outputs', 'outputChannels', 'sourceEndpointId');
+        const activity = node.type === 'process' ? node.activity : null;
+        const callbackLine = !activity?.available ? null : !activity.stable
+            ? 'ASIO callback status updating' : activity.state === 'running'
+                ? activity.callbackCount === 0 ? 'ASIO running · no callbacks observed yet'
+                    : activity.lastCallbackAgeMs > 500 ? `ASIO callback last seen ${activity.lastCallbackAgeMs} ms ago`
+                        : `ASIO callbacks ${activity.callbackCount} · ${activity.exchangedFrames} frames exchanged`
+                : activity.state ? `ASIO ${activity.state}` : null;
         return <section className={`patchbay-interface ${node.type}`} data-node-key={nodeKey}>
         <div className="patchbay-interface-title"><div className="patchbay-group-toggle">
             <button type="button" className="patchbay-disclosure-button nodrag" aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${layout.label || node.label}`}
@@ -452,13 +464,19 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                 setCollapsedGroups(current => ({ ...current, [nodeKey]: !collapsed }));
                 if (!collapsed && endpointIds.has(selectedSourceId)) selectSource(null);
             }}>{collapsed ? '▸' : '▾'}</button>
-            <RoutingTypeBadge type={node.type} />
+            <RoutingTypeBadge type={node.type} direction={node.type === 'wasapiApp' ? 'copyIntoTimox' :
+                node.type === 'wasapi' ? node.bridgeKind === 'render' ? 'outOfTimox' :
+                    node.bridgeKind === 'endpointLoopback' ? 'copyIntoTimox' : 'inputIntoTimox' :
+                    ['physical', 'process'].includes(node.type) ? 'duplex' : undefined} />
             <strong title={layout.label || node.label}>{layout.label || node.label}</strong>
             <span>{linkCount} {linkCount === 1 ? 'link' : 'links'}</span>
         </div>
         </div>
-        <div className="patchbay-capacity" title="Connected channels / available channel capacity. Independent of graph filters.">
-            In {inputs.used}/{inputs.available} · Out {outputs.used}/{outputs.available} used
+        <div className="patchbay-capacity" title="Connected channels / available channel capacity. ASIO callback counts are observations, not proof of non-silent audio.">
+            {node.type === 'process' && !hasAllocatedAsioChannels ? 'ASIO client connected · no channels allocated' :
+                node.type === 'process' && !hasVisiblePorts ? 'ASIO client connected · channels allocated, no linked ports shown' :
+                    node.type === 'process' && callbackLine ? callbackLine :
+                    `In ${inputs.used}/${inputs.available} · Out ${outputs.used}/${outputs.available} used`}
         </div>
         {editingNodeKey === nodeKey && createPortal(<div className="routing-dialog-backdrop"><div className="routing-dialog" role="dialog" aria-modal="true" aria-label="Rename block">
         <h2>Rename block</h2><form className="patchbay-node-editor" onSubmit={event => {
@@ -470,7 +488,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                 onChange={event => setRenameDraft(event.target.value)} />
             <button type="submit">Save</button><button type="button" onClick={() => setEditingNodeKey(null)}>Cancel</button>
         </form></div></div>, document.body)}
-        {!collapsed && <div className={`patchbay-node-ports${node.inputs.length && node.outputs.length ? '' : ' single-sided'}`}>
+        {!collapsed && hasVisiblePorts && <div className={`patchbay-node-ports${node.inputs.length && node.outputs.length ? '' : ' single-sided'}`}>
             {node.inputs.length > 0 && <div className="patchbay-node-inputs"><span className="patchbay-port-heading">Inputs</span>{renderPorts(node.inputs, 'destination')}</div>}
             {node.outputs.length > 0 && <div className="patchbay-node-outputs"><span className="patchbay-port-heading">Outputs</span>{renderPorts(node.outputs, 'source')}</div>}
         </div>}
@@ -479,7 +497,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
 
     const columnY = [30, 30, 30];
     const flowNodes = nodes.map(node => {
-        const column = !['physical', 'wasapi'].includes(node.type) ? 1 : node.outputs.length ? 0 : 2;
+        const column = !['physical', 'wasapi', 'wasapiApp'].includes(node.type) ? 1 : node.outputs.length ? 0 : 2;
         const groups = [...node.inputs, ...node.outputs];
         const portCount = groups.reduce((total, group) => total + group.endpoints.length, 0);
         const collapsed = groups.length && isCollapsed(groups[0], node.inputs.length ? 'destination' : 'source');
@@ -548,9 +566,12 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
         </div>
         <div className="routing-view-panel" role="tabpanel" id={`${routingTabsId}-graph-panel`} aria-labelledby={`${routingTabsId}-graph-tab`} hidden={routingTab !== 'graph'}>
         <div className="patchbay-toolbar">
-            <p>{connectedOnly ? 'Saved connections and pending changes' :
-                'Select an output, then an input. Apply configuration to activate the change.'}</p>
             <div className="patchbay-toolbar-actions">
+                <button type="button" className="patchbay-profile-button" onClick={onShowProfiles}
+                    aria-haspopup="dialog" title="Show or hide saved application profiles">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5" /><circle cx="7" cy="8" r="2" /><path d="M4.5 13c.4-1.5 1.3-2.2 2.5-2.2s2.1.7 2.5 2.2M12 7h3M12 10h3M12 13h2" /></svg>
+                    <span>Profiles</span><span className="patchbay-profile-count">{profiles.length}</span>
+                </button>
                 {connectedOnly && connectionPairs.length > 0 && <label className="patchbay-focus">Connection pair
                     <select value={effectiveFocusPairId} onChange={event => { setFocusPairId(event.target.value); setMatrixOpen(false); selectSource(null); }}>
                         <option value="">All saved connections</option>
@@ -573,10 +594,14 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                 </div></details>
             </div>
         </div>
-        <div className="patchbay-search">
-            <label>Search sources<input value={sourceSearch} onChange={event => setSourceSearch(event.target.value)} placeholder="Interface or channel" /></label>
-            <label>Search destinations<input value={destinationSearch} onChange={event => setDestinationSearch(event.target.value)} placeholder="Interface or channel" /></label>
-        </div>
+        <details className="patchbay-search-disclosure">
+            <summary><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg>Search channels
+                {(sourceSearch.trim() || destinationSearch.trim()) && <span className="patchbay-search-active">Filters active</span>}</summary>
+            <div className="patchbay-search">
+                <label>Search sources<input value={sourceSearch} onChange={event => setSourceSearch(event.target.value)} placeholder="Interface or channel" /></label>
+                <label>Search destinations<input value={destinationSearch} onChange={event => setDestinationSearch(event.target.value)} placeholder="Interface or channel" /></label>
+            </div>
+        </details>
         <div className="patchbay-workspace">
         <div className="patchbay-flow" role="region" aria-label="Graphical connections"
             ref={graphRef}
@@ -831,7 +856,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
             {contextMenu.kind === 'pane' && onCreateBridge && <button type="button" role="menuitem" disabled={disabled}
                 onClick={() => menuAction(onCreateBridge)}>Add Windows audio bridge…</button>}
             {contextMenu.kind === 'pane' && onConfigurePwar && <button type="button" role="menuitem"
-                onClick={() => menuAction(onConfigurePwar)}>Configure PWAR / PipeWire…</button>}
+                onClick={() => menuAction(onConfigurePwar)}>Manage PWAR client…</button>}
             {contextMenu.kind === 'pane' && onShowNativeAudio && <button type="button" role="menuitem"
                 onClick={() => menuAction(onShowNativeAudio)}>Native Windows audio status…</button>}
             {contextMenu.kind === 'pane' && <button type="button" role="menuitem"
@@ -846,7 +871,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                     setEditingNodeKey(contextNode.key);
                     setRenameDraft(layout.label || contextNode.label);
                 })}>Rename block…</button>
-                {!['physical', 'wasapi'].includes(contextNode.type) && <>
+                {!['physical', 'wasapi', 'wasapiApp'].includes(contextNode.type) && <>
                 <button type="button" role="menuitem" onClick={() => menuAction(() => {
                     setSelectedNodeKey(contextNode.key); setConnectionDialogOpen(false);
                     setBulkOpen(false); setConfirmProcessRemoval(false); setProcessNotice('');
@@ -866,7 +891,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                 </>}
                 {contextNode.type === 'physical' && <button type="button" role="menuitem"
                     onClick={() => menuAction(onCreateConnection)}>Add a connection…</button>}
-                {contextNode.type === 'wasapi' && <>
+                {['wasapi', 'wasapiApp'].includes(contextNode.type) && <>
                     <button type="button" role="menuitem" disabled={disabled} onClick={() => menuAction(() => onEditBridge(contextNode.bridgeId))}>Configure Windows audio bridge…</button>
                     <button type="button" role="menuitem" disabled={disabled} onClick={() => menuAction(() => onRemoveBridge(contextNode.bridgeId))}>Remove Windows audio bridge…</button>
                     <button type="button" role="menuitem" disabled={disabled} onClick={() => menuAction(onCreateConnection)}>Add a connection…</button>

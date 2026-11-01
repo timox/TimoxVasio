@@ -4,6 +4,9 @@
 #include "vasio_client_manager.h"
 #include "engine_diagnostics.h"
 #include "engine_instance_guard.h"
+#include "native_audio_installed_transport_win32.h"
+#include "audio_configuration_store.h"
+#include "application_profile_store.h"
 
 #include <windows.h>
 #if defined(VASIO_ENABLE_CRASH_DUMP)
@@ -109,7 +112,9 @@ int wmain(int argc, wchar_t** argv) {
         std::fprintf(stderr, "Impossible de démarrer la découverte des clients VASIO.\n");
         return 1;
     }
-    AudioController controller(clients);
+    AudioController controller(clients,
+        AudioConfigurationStore::DefaultPath(),ApplicationProfileStore::DefaultPath(),
+        {},{},{},[] {return CreateInstalledNativeAudioTransport();});
     if (!controller.Start()) {
         diagnostics.Write(EngineDiagnostics::Level::Error, "audio", "Unable to start the audio controller");
         clients.Stop();

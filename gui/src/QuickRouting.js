@@ -23,15 +23,17 @@ const pickStart = (starts, selected, used, group, stereo, preferredChannel, reso
 
 export default function QuickRouting({ sourceGroups = [], destinationGroups = [], routes = [], onAddRoutes,
     resolveEndpointId = id => id, disabled = false, preferredProcessName = '', isConnectionAllowed = () => true }) {
-    const preferredSource = sourceGroups.find(group => group.label.split(' · ')[0].toLocaleLowerCase() === preferredProcessName.toLocaleLowerCase());
-    const preferredDestination = destinationGroups.find(group => group.label.split(' · ')[0].toLocaleLowerCase() === preferredProcessName.toLocaleLowerCase());
+    const usableSources = sourceGroups.filter(group => group.endpoints.length > 0);
+    const usableDestinations = destinationGroups.filter(group => group.endpoints.length > 0);
+    const preferredSource = usableSources.find(group => group.label.split(' · ')[0].toLocaleLowerCase() === preferredProcessName.toLocaleLowerCase());
+    const preferredDestination = usableDestinations.find(group => group.label.split(' · ')[0].toLocaleLowerCase() === preferredProcessName.toLocaleLowerCase());
     const [sourceGroupId, setSourceGroupId] = useState(preferredSource?.id || '');
     const [destinationGroupId, setDestinationGroupId] = useState(preferredSource ? '' : preferredDestination?.id || '');
     const [sourceStartId, setSourceStartId] = useState('');
     const [destinationStartId, setDestinationStartId] = useState('');
     const [stereo, setStereo] = useState(true);
-    const sourceGroup = sourceGroups.find(group => group.id === sourceGroupId) || sourceGroups[0];
-    const destinations = destinationGroups.filter(group => sourceGroup && compatible(sourceGroup.kind, group.kind) &&
+    const sourceGroup = usableSources.find(group => group.id === sourceGroupId) || preferredSource || usableSources[0];
+    const destinations = usableDestinations.filter(group => sourceGroup && compatible(sourceGroup.kind, group.kind) &&
         sourceGroup.endpoints.some(source => group.endpoints.some(destination => isConnectionAllowed(source.id, destination.id))));
     const destinationGroup = destinations.find(group => group.id === destinationGroupId) || destinations[0];
     const usedSources = new Set(routes.map(route => route.sourceEndpointId));
@@ -64,12 +66,14 @@ export default function QuickRouting({ sourceGroups = [], destinationGroups = []
             <label className="field">Source
                 <select aria-label="Quick route source" value={sourceGroup?.id || ''}
                     onChange={event => { setSourceGroupId(event.target.value); setDestinationGroupId(''); setSourceStartId(''); setDestinationStartId(''); }}>
-                    {sourceGroups.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}
+                    {!usableSources.length && <option value="">No source available</option>}
+                    {usableSources.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}
                 </select>
             </label>
             <label className="field">Destination
                 <select aria-label="Quick route destination" value={destinationGroup?.id || ''}
                     onChange={event => { setDestinationGroupId(event.target.value); setDestinationStartId(''); }}>
+                    {!destinations.length && <option value="">No compatible destination available</option>}
                     {destinations.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}
                 </select>
             </label>
@@ -82,16 +86,20 @@ export default function QuickRouting({ sourceGroups = [], destinationGroups = []
             <label className="field">Source {stereo ? 'pair' : 'channel'}
                 <select aria-label="Quick route source channels" value={sourceStart?.id || ''}
                     onChange={event => setSourceStartId(event.target.value)}>
+                    {!sourceStarts.length && <option value="">No source channels available</option>}
                     {sourceStarts.map(start => <option key={start.id} value={start.id}>{channelLabel(pair(sourceGroup, start, stereo))}</option>)}
                 </select>
             </label>
             <label className="field">Destination {stereo ? 'pair' : 'channel'}
                 <select aria-label="Quick route destination channels" value={destinationStart?.id || ''}
                     onChange={event => setDestinationStartId(event.target.value)}>
+                    {!destinationStarts.length && <option value="">No destination channels available</option>}
                     {destinationStarts.map(start => <option key={start.id} value={start.id}>{channelLabel(pair(destinationGroup, start, stereo))}</option>)}
                 </select>
             </label>
         </div>
+        {!usableSources.length && <p className="hint" role="status">No active source channels. Save a process copy or connect an audio client first.</p>}
+        {!!usableSources.length && !destinations.length && <p className="hint" role="status">This source has no compatible destination channels. Choose another source, or add a Windows output bridge.</p>}
         {proposed.length ? <p className="quick-routing-preview" role="status">
             Proposal: {sourceGroup.label} {channelLabel(sources)} → {destinationGroup.label} {channelLabel(targets)}
             {missing.length < proposed.length ? ' · Existing connections will be kept.' : ''}

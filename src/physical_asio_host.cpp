@@ -35,8 +35,11 @@ void asioSampleRateChanged(ASIOSampleRate) {
     if (gRateChanged) gRateChanged->store(true, std::memory_order_release);
 }
 
-long asioMessage(long selector, long, void*, double*) {
-    if (selector == kAsioSelectorSupported) return 0;
+long asioMessage(long selector, long value, void*, double*) {
+    if (selector == kAsioSelectorSupported)
+        return value == kAsioSupportsTimeInfo || value == kAsioEngineVersion ? 1 : 0;
+    if (selector == kAsioSupportsTimeInfo) return 1;
+    if (selector == kAsioEngineVersion) return 2;
     return 0;
 }
 

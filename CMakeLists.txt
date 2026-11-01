@@ -138,6 +138,8 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
             native-windows-audio/broker/socket_publication_win32.cpp
             native-windows-audio/broker/socket_server_win32.cpp
             native-windows-audio/broker/socket_session_win32.cpp
+            native-windows-audio/broker/socket_enrollment_registry_win32.cpp
+            native-windows-audio/broker/session_observation_win32.cpp
             native-windows-audio/broker/broker_dispatcher.cpp
             native-windows-audio/broker/broker_session.cpp src/native_audio_access_policy.cpp)
         target_include_directories(NativeAudioWindowsBroker PUBLIC include native-windows-audio/include native-windows-audio/broker)
@@ -145,7 +147,7 @@ if(VASIO_BUILD_NATIVE_PRODUCTION_TESTS_ONLY)
         if(MSVC)
             target_compile_options(NativeAudioWindowsBroker PRIVATE /W4 /WX /EHsc)
         endif()
-        target_link_libraries(NativeAudioWindowsBroker PUBLIC NativeAudioWindowsChannel PRIVATE bcrypt advapi32)
+        target_link_libraries(NativeAudioWindowsBroker PUBLIC NativeAudioWindowsChannel PRIVATE bcrypt advapi32 ntdll wtsapi32)
         add_executable(TimoxNativeAudioServiceProbe native-windows-audio/broker/service_probe_win32.cpp
             native-windows-audio/broker/service_identity_win32.cpp)
         target_compile_definitions(TimoxNativeAudioServiceProbe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -326,7 +328,9 @@ include_directories(${ASIO_SDK_PATH}/host/pc)
 set(SOURCES
     ${SRC_DIR}/main.cpp
     ${SRC_DIR}/control_api_server.cpp
+    ${SRC_DIR}/pwar_client_supervisor.cpp
     ${SRC_DIR}/audio_transport.cpp
+    ${SRC_DIR}/audio_transport_status_reader.cpp
     ${SRC_DIR}/physical_asio_host.cpp
     ${SRC_DIR}/vasio_client_manager.cpp
     ${SRC_DIR}/asio_sample_conversion.cpp
@@ -342,11 +346,34 @@ set(SOURCES
 
 # Windows-specific
 if(WIN32)
+    # Kernel IOCTL ownership belongs to the future broker service. This library
+    # is not linked into TimoxVirtualAsioEngine or TimoxVasio.dll.
+    add_library(NativeAudioWindowsDriverTransport STATIC ${SRC_DIR}/native_audio_transport_win32.cpp)
+    target_include_directories(NativeAudioWindowsDriverTransport PUBLIC ${INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/native-windows-audio/include)
+    target_compile_definitions(NativeAudioWindowsDriverTransport PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    if(MSVC)
+        target_compile_options(NativeAudioWindowsDriverTransport PRIVATE /W4 /WX /EHsc)
+    endif()
+
     set(SOURCES ${SOURCES}
         ${ASIO_SDK_PATH}/host/pc/asiolist.cpp
+        ${SRC_DIR}/native_audio_installed_transport_win32.cpp
+        ${SRC_DIR}/native_audio_broker_transport.cpp
+        ${SRC_DIR}/native_audio_socket_channel_win32.cpp
+        ${CMAKE_SOURCE_DIR}/native-windows-audio/broker/unix_socket_stream_win32.cpp
+        ${CMAKE_SOURCE_DIR}/native-windows-audio/broker/channel_binding.cpp
+        ${CMAKE_SOURCE_DIR}/native-windows-audio/broker/pipe_identity_win32.cpp
+        ${CMAKE_SOURCE_DIR}/native-windows-audio/broker/schannel_stream_win32.cpp
+        ${CMAKE_SOURCE_DIR}/native-windows-audio/broker/socket_discovery.cpp
+        ${CMAKE_SOURCE_DIR}/native-windows-audio/broker/socket_discovery_win32.cpp
+        ${CMAKE_SOURCE_DIR}/native-windows-audio/broker/socket_discovery_root_win32.cpp
     )
 
     add_executable(TimoxVirtualAsioEngine ${SOURCES})
+    if(MSVC)
+        target_compile_options(TimoxVirtualAsioEngine PRIVATE /EHsc)
+    endif()
     add_executable(EngineInstanceGuardTests tests/engine_instance_guard_tests.cpp)
     target_include_directories(EngineInstanceGuardTests PRIVATE ${SRC_DIR})
     add_executable(PwarConfigurationStoreTests tests/pwar_configuration_store_tests.cpp)
@@ -377,21 +404,21 @@ if(WIN32)
         src/wasapi_backend.cpp src/wasapi_device_enumerator.cpp)
     target_include_directories(WasapiBackendTests PRIVATE ${INCLUDE_DIR})
     target_compile_definitions(WasapiBackendTests PRIVATE NOMINMAX)
-    target_link_libraries(WasapiBackendTests PRIVATE ole32 propsys uuid)
+    target_link_libraries(WasapiBackendTests PRIVATE mmdevapi ole32 propsys uuid)
 
     add_executable(WasapiBridgeTests tests/wasapi_bridge_tests.cpp
         src/wasapi_bridge.cpp src/wasapi_sample_conversion.cpp src/drift_resampler.cpp
         src/wasapi_backend.cpp src/wasapi_device_enumerator.cpp)
     target_include_directories(WasapiBridgeTests PRIVATE ${INCLUDE_DIR} ${SRC_DIR})
     target_compile_definitions(WasapiBridgeTests PRIVATE NOMINMAX)
-    target_link_libraries(WasapiBridgeTests PRIVATE avrt ole32 propsys uuid)
+    target_link_libraries(WasapiBridgeTests PRIVATE avrt mmdevapi ole32 propsys uuid)
 
     add_executable(WasapiBridgeProbe tests/wasapi_bridge_probe.cpp
         src/wasapi_bridge.cpp src/wasapi_sample_conversion.cpp src/drift_resampler.cpp
         src/wasapi_backend.cpp src/wasapi_device_enumerator.cpp src/software_clock_host.cpp)
     target_include_directories(WasapiBridgeProbe PRIVATE ${INCLUDE_DIR} ${SRC_DIR})
     target_compile_definitions(WasapiBridgeProbe PRIVATE NOMINMAX)
-    target_link_libraries(WasapiBridgeProbe PRIVATE avrt ole32 propsys uuid)
+    target_link_libraries(WasapiBridgeProbe PRIVATE avrt mmdevapi ole32 propsys uuid)
 
     # Opt-in hosts load the real virtual ASIO DLL; they never emulate its transport.
     add_executable(AsioEngineSignalProbe tests/asio_engine_signal_probe.cpp)
@@ -432,10 +459,23 @@ if(WIN32)
     target_link_libraries(TimoxVirtualAsioEngine PRIVATE
         ole32
         oleaut32
+        mmdevapi
         winmm
         user32
         ws2_32
+        secur32
+        crypt32
+        ncrypt
+        bcrypt
+        advapi32
+        ntdll
+        shell32
     )
+    target_include_directories(TimoxVirtualAsioEngine PRIVATE
+        ${CMAKE_SOURCE_DIR}/native-windows-audio/include
+        ${CMAKE_SOURCE_DIR}/native-windows-audio/broker
+    )
+    target_compile_definitions(TimoxVirtualAsioEngine PRIVATE SECURITY_WIN32)
     if(VASIO_ENABLE_CRASH_DUMP)
         target_link_libraries(TimoxVirtualAsioEngine PRIVATE dbghelp)
     endif()
@@ -763,7 +803,7 @@ if(WIN32)
             src/native_audio_manager.cpp src/native_audio_backend.cpp)
         target_include_directories(${clock_consumer} PRIVATE ${CMAKE_SOURCE_DIR}/native-windows-audio/include)
         target_compile_definitions(${clock_consumer} PRIVATE NOMINMAX)
-        target_link_libraries(${clock_consumer} PRIVATE avrt propsys uuid)
+        target_link_libraries(${clock_consumer} PRIVATE avrt mmdevapi propsys uuid)
     endforeach()
     foreach(store_consumer TimoxVirtualAsioEngine AudioConfigurationStoreTests
             AudioControllerClockTests AudioControllerPersistenceTests ApplicationProfilesApiTests

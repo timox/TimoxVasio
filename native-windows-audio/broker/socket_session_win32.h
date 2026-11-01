@@ -4,6 +4,7 @@
 #include "schannel_stream_win32.h"
 #include "unix_socket_stream_win32.h"
 #include <atomic>
+#include <functional>
 
 namespace timox_broker {
 // Trusted host input, never enrollment from the wire. Production creation must
@@ -21,19 +22,26 @@ public:
 private:
     std::atomic<bool> revoked_{false};
 };
+// Host resolver runs on the per-connection worker after the OS peer token is
+// observed and before TLS. It may return only a pin provisioned for that
+// observed user and an enrollment bound to that exact logon identity.
+using SocketEnrollmentResolver = std::function<std::shared_ptr<const SocketEnrollment>(const ChannelIdentity&)>;
 // One accepted AF_UNIX connection, one TLS stream, one dispatcher registration.
 // Run once on a dedicated I/O worker; RequestCancel and CheckDeadline may run concurrently.
 // Host bounds handlers to four and joins all calls before destruction. Dispatcher
-// outlives sessions. No listener, provisioning, or physical peer-token assertion.
+// outlives sessions. No listener or provisioning; admission cross-checks the peer
+// process token and WTS console observation, but does not bind socket ownership.
 // Socket reads/handshake/confirmation use absolute deadlines; host cancellation
 // or periodic CheckDeadline is needed for a backend blocked in the dispatcher.
 class SocketSession final {
 public:
     SocketSession(BrokerDispatcher&,std::unique_ptr<UnixSocketStream>,PCCERT_CONTEXT,
         std::shared_ptr<const SocketEnrollment>);
+    SocketSession(BrokerDispatcher&,std::unique_ptr<UnixSocketStream>,PCCERT_CONTEXT,
+        SocketEnrollmentResolver);
     ~SocketSession();
-    // Own fixed objects/buffers including TLS and socket. Excludes shared
-    // enrollment/dispatcher/backend, handshake token, stack and OS allocations.
+// Own fixed objects/buffers including TLS and socket. Excludes the per-connection
+// enrollment/dispatcher/backend, handshake token, stack and OS allocations.
     static std::size_t FixedStorageBytes() noexcept;
     NativeChannelResult Run() noexcept;
     void RequestCancel() noexcept;

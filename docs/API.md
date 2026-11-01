@@ -20,6 +20,11 @@ Les messages sont encodés en JSON UTF-8. Les schémas normatifs sont dans [`sch
 
 Le moteur écoute uniquement sur l’interface loopback `127.0.0.1`. Le port peut être demandé à son démarrage ; le port `0` demande un port disponible. Le processus client récupère le port sélectionné dans l’information de démarrage du moteur.
 
+Le contrôle depuis Linux n’est pas disponible : aucun accès API distant n’est
+ouvert. L’appairage par certificats et la passerelle TLS décrits dans la
+[proposition de contrôle distant](superpowers/specs/2026-10-24-remote-timox-api-pairing.md)
+ne sont pas implémentés.
+
 | Requête | Réponse |
 |---|---|
 | `GET /api/v1/state` | État courant confirmé du moteur, sélection matérielle, configuration TimoxVasio, routes, inventaires et paires stéréo actives |
@@ -28,7 +33,19 @@ Le moteur écoute uniquement sur l’interface loopback `127.0.0.1`. Le port peu
 | `GET /api/v1/schemas/api-v1.json` | Schéma JSON partagé référencé par le document OpenAPI |
 | `GET /api/v1/application-profiles` | Profils de capacité de canaux ASIO appliqués selon le nom de l’exécutable |
 | `PUT /api/v1/application-profiles` | Remplacement complet et persistant des profils de capacité |
+| `GET /api/v1/pwar` | Adresse réseau PWAR enregistrée dans `pwarASIO.cfg` |
+| `PUT /api/v1/pwar` | Enregistre l’adresse et le port de destination PWAR sous Windows |
 | `ws://127.0.0.1:<port>/api/v1/ws` | Commandes de configuration et événements d’état/audio |
+
+Ces deux routes gèrent uniquement les paramètres réseau Windows enregistrés.
+`PUT` renvoie `reopenRequired` : il faut redémarrer le client PWAR Windows pour
+qu'il recharge ces paramètres. Timox ne démarre pas ce client et ces routes ne
+signalent ni sa connexion ASIO, ni l'activité réseau ou audio. Quand le client
+ouvre `TimoxVasio.dll`, il apparaît dans `virtualDrivers[].clients` comme une
+application ASIO ordinaire. Dans le graphe, route une source vers ses entrées
+pour envoyer le son vers Linux ; routez ses sorties vers une destination pour
+recevoir le son depuis Linux. La carte ASIO physique locale reste sélectionnée
+indépendamment.
 
 Les deux routes HTTP sont appelées sous le même préfixe `http://127.0.0.1:<port>`.
 
@@ -37,7 +54,7 @@ Le déroulé API puis redémarrage d'hôte est schématisé dans
 Le document [OpenAPI](../api/openapi-v1.json) est la définition utilisée pour
 présenter ces routes dans Swagger UI.
 
-Les réponses HTTP sont des objets JSON conformes à `definitions.state` ou `definitions.drivers`. Un pilote matériel contient ses ports d’entrée et de sortie, les taux annoncés par son pilote ainsi que ses capacités de buffer. TimoxVasio expose les clients détectés et seulement les canaux alloués par chacun via `createBuffers`, avec leurs ports actifs.
+Les réponses HTTP sont des objets JSON conformes à `definitions.state` ou `definitions.drivers`. Un pilote matériel contient ses ports d’entrée et de sortie, les taux annoncés par son pilote ainsi que ses capacités de buffer. TimoxVasio expose les processus directement attachés via ASIO et leurs canaux alloués par `createBuffers`. Un client reste listé si ses tableaux `inputChannels` et `outputChannels` sont vides : il a ouvert le pilote, mais n’a pas encore créé de ports routables. Cette adhésion directe ne prouve pas à elle seule que des buffers contiennent un signal audible.
 
 Le snapshot expose aussi `nativeAudio` en lecture seule. `enabled` décrit
 l'intention du contrôleur ; `state` vaut `disabled`, `starting`, `running`,
@@ -231,12 +248,12 @@ Chaque événement a la forme `{ "event": "<nom>", "payload": { ... } }` et n’
 | `engine.status` | État complet `state`, `physicalDriverId`, `sampleRate`, `bufferFrames`, `lastError` |
 | `devices.changed` | Inventaires `physicalDrivers` et `virtualDrivers` conformes à `/api/v1/drivers` |
 | `routes.changed` | Liste complète et confirmée `routes` |
-| `audio.meter` | `endpointId`, `peakDbfs`, compteurs cumulatifs `underruns` et `overruns` |
+| `audio.meter` | `endpointId`, `peakDbfs`, `shortTermLufs` (null pendant la mesure initiale de 3 s), `lufsWindowSeconds`, compteurs cumulatifs `underruns` et `overruns` |
 | `engine.error` | Erreur structurée avec `code`, `message` et, si disponible, opération, pilote et code ASIO |
 | `audio.stereoPairs.changed` | `{ "stereoPairs": [...] }`, liste complète des paires L/R ouvertes et routées |
 | `audio.correlation` | `stereoPairId`, identifiants L/R, coefficient borné à `[-1, 1]` ou `null`, et `state` (`measuring`, `no_signal` ou `stopped`) |
 
-Les événements de mesure sont émis pour les extrémités présentes dans une route, à la cadence de lecture de l'API (environ deux fois par seconde). `peakDbfs` décrit le bloc audio le plus récent observé à cette extrémité. Les compteurs des endpoints virtuels sont cumulatifs par sens pendant la vie du client, y compris lors du remplacement d'une génération du transport audio; ils sont remis à zéro à la création d'un nouveau contrôle client. Ceux des endpoints physiques valent zéro. Ces événements ne servent pas de transport audio. La mesure est publiée par le serveur hors du callback temps réel.
+Les événements de mesure sont émis pour les extrémités présentes dans une route, à la cadence de lecture de l'API (environ deux fois par seconde). `peakDbfs` décrit la crête du bloc audio le plus récent. `shortTermLufs` est la mesure de loudness court terme BS.1770, filtrée K et calculée sur une fenêtre glissante de 3 secondes; elle vaut `null` tant que cette fenêtre n'est pas remplie. `lufsWindowSeconds` indique la durée de cette fenêtre. Les compteurs des endpoints virtuels sont cumulatifs par sens pendant la vie du client, y compris lors du remplacement d'une génération du transport audio; ils sont remis à zéro à la création d'un nouveau contrôle client. Ceux des endpoints physiques valent zéro. Ces événements ne servent pas de transport audio. La mesure est publiée par le serveur hors du callback temps réel.
 
 La corrélation compare les échantillons synchrones des deux sorties du client
 sur des fenêtres de 100 ms. Le calcul est un coefficient de corrélation
@@ -279,12 +296,20 @@ Le moteur ne se lie pas aux interfaces réseau externes. Il accepte les connexio
 
 ## Ponts WASAPI — contrat 1.1
 
-Les chemins `/api/v1` et le sous-protocole WebSocket `vasio.api.v1` restent inchangés. L'état annonce `apiVersion: "1.1"`. `GET /api/v1/wasapi-devices` rafraîchit l'inventaire des endpoints ; l'état courant utilise un inventaire en cache.
+Les chemins `/api/v1` et le sous-protocole WebSocket `vasio.api.v1` restent inchangés. L'état annonce `apiVersion: "1.1"`. `GET /api/v1/wasapi-devices` rafraîchit l'inventaire des endpoints ; l'état courant utilise un inventaire en cache. Chaque endpoint peut aussi publier son `containerId` Windows (facultatif), qui permet de regrouper les entrées et sorties du même périphérique matériel.
 
-`configuration.apply.payload.wasapiBridges` contient la configuration souhaitée : `id`, `kind` (`capture`, `render`, `endpointLoopback`), exactement un sélecteur `endpointId` ou `defaultRole` (`console`, `multimedia`, `communications`), et les options `enabled` et `bufferDuration100ns`. Omettre le tableau conserve les ponts existants ; `[]` les supprime. Les routes associées doivent être retirées explicitement lors d'une suppression.
+Les moteurs qui prennent en charge la copie audio par processus exposent `capabilities.wasapiProcessLoopback: true` dans `/api/v1/state`. Ce champ facultatif permet aux clients de distinguer cette capacité des autres fonctions WASAPI ; son absence signifie qu'elle n'est pas annoncée par le moteur connecté.
+
+`GET /api/v1/windows-audio-applications` actualise explicitement les sessions audio Windows actives associées à un seul processus. La réponse contient le PID, l'heure de création, le chemin de l'exécutable, le nom affiché et les sorties Windows utilisées, ainsi que `windowsAudioApplicationInventoryError`. Si ce champ n'est pas `null`, l'énumération a échoué : un tableau vide ne signifie alors pas qu'aucune session n'existe. Cela atteste une lecture par le mixeur audio partagé de Windows, pas l'API appelée par l'application. Les clients ASIO Timox restent visibles séparément dans l'inventaire des pilotes virtuels ; un processus peut apparaître dans les deux.
+
+Dans le graphe, un client ASIO Timox est une adhésion directe : l'application a ouvert `TimoxVasio.dll` et lui remet ses buffers. Un pont `processLoopback` est une copie audio créée par Timox : il ajoute l'audio partagé du processus comme source distincte. Cette copie ne raccorde pas l'application au pilote, ne redirige pas sa lecture et ne prouve pas quel pilote audio elle a choisi. Les deux sources restent distinctes même si elles correspondent au même processus.
+
+Chaque client ASIO expose aussi `activity` : état du pilote, nombre de callbacks reçus depuis le dernier démarrage, échanges de blocs complets, frames échangées et âge du dernier callback. `available` indique si le statut partagé du pilote a pu être lu ; `stable` précise si les compteurs forment un instantané cohérent. Ces compteurs prouvent qu'un callback ou un échange de bloc a eu lieu, pas qu'il contenait un signal audible. Dans `bufferHealth`, `callbackCount: 0` avec un état `insufficient` signifie qu'aucun callback du pilote ASIO physique maître n'est arrivé pendant cette fenêtre : les clients ASIO ne peuvent alors pas recevoir de blocs cadencés, même si l'état général du moteur est `running`.
+
+`configuration.apply.payload.wasapiBridges` contient la configuration souhaitée : `id`, `kind` (`capture`, `render`, `endpointLoopback`, `processLoopback`), exactement un sélecteur `endpointId` ou `defaultRole` (`console`, `multimedia`, `communications`) pour les périphériques, et les options `enabled` et `bufferDuration100ns`. `processLoopback` demande plutôt `processId`, `processCreationTime` sous forme de chaîne décimale et `processImagePath`. Il est uniquement en capture et l’identité du processus est vérifiée avant et après l’activation asynchrone. Le moteur garde un handle vers le processus vérifié et refuse de démarrer ou de lire un paquet de capture si ce processus s’est terminé ; un nouveau processus ayant réutilisé le PID ne remplace pas ce handle. Le pont crée dans le graphe une source indépendante à partir d’une copie du flux audio partagé du processus cible **et de ses processus enfants** ; la lecture d’origine continue séparément. La capture Windows couvre leurs sorties audio partagées, pas uniquement un périphérique. Raccorder la copie à la même sortie que l’original peut produire un doublon. Les flux ASIO et WASAPI exclusifs ne sont pas capturés. Omettre le tableau conserve les ponts existants ; `[]` les supprime. Les routes associées doivent être retirées explicitement lors d'une suppression.
 
 L'état distingue `configuredWasapiBridges` de `wasapiBridges` : ce dernier expose le format effectif, la génération, la reprise et les compteurs `health` (pertes, silence, dérive et erreurs). Les ports du graphe utilisent `wasapi:<id>:input:<canal>` ou `wasapi:<id>:output:<canal>`, avec des canaux à partir de 1. La configuration d'un pont précède la découverte de ses ports.
 
 `health.controlBacklogUpdates` compte les observations de régulation forcées après 100 ms de traitement inachevé des données en attente. Cumulatif pour la génération courante, ce diagnostic signale une mesure sur une portion du traitement ; il ne compte pas les pertes audio. Son absence sur un ancien moteur API 1.1 signifie « non disponible », pas zéro. `correctionPpm` inclut la réaction au remplissage et ne mesure pas directement la dérive de l'horloge matérielle.
 
-Cette étape prend en charge le mode partagé et le loopback d'endpoint. Elle ne fournit pas de pilote Windows virtuel natif, de mode exclusif ou de loopback par processus. Voir le [guide ASIO/WASAPI](ASIO_WASAPI_GUIDE.md) et le schéma JSON pour les champs et limites exacts.
+Cette étape prend en charge le mode partagé, le loopback d'endpoint et le loopback par processus du son partagé. Elle ne fournit pas de pilote Windows virtuel natif et ne capture pas les flux exclusifs ou ASIO. Voir le [guide ASIO/WASAPI](ASIO_WASAPI_GUIDE.md) et le schéma JSON pour les champs et limites exacts.

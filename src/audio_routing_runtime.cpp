@@ -11,6 +11,51 @@
 #include <unordered_set>
 
 namespace {
+std::array<double, 5> makeHighShelf(double sampleRate) {
+    constexpr double pi = 3.14159265358979323846;
+    constexpr double frequency = 1681.974450955533;
+    constexpr double gainDb = 3.999843853973347;
+    constexpr double q = 0.7071752369554196;
+    const double a = std::pow(10.0, gainDb / 40.0);
+    const double w = 2.0 * pi * frequency / sampleRate;
+    const double cosine = std::cos(w);
+    const double alpha = std::sin(w) / (2.0 * q);
+    const double sqrtA = std::sqrt(a);
+    const double a0 = (a + 1.0) - (a - 1.0) * cosine + 2.0 * sqrtA * alpha;
+    return {{
+        a * ((a + 1.0) + (a - 1.0) * cosine + 2.0 * sqrtA * alpha) / a0,
+        -2.0 * a * ((a - 1.0) + (a + 1.0) * cosine) / a0,
+        a * ((a + 1.0) + (a - 1.0) * cosine - 2.0 * sqrtA * alpha) / a0,
+        2.0 * ((a - 1.0) - (a + 1.0) * cosine) / a0,
+        ((a + 1.0) - (a - 1.0) * cosine - 2.0 * sqrtA * alpha) / a0
+    }};
+}
+
+std::array<double, 5> makeLufsHighPass(double sampleRate) {
+    constexpr double pi = 3.14159265358979323846;
+    constexpr double frequency = 38.13547087602444;
+    constexpr double q = 0.5003270373238773;
+    const double w = 2.0 * pi * frequency / sampleRate;
+    const double cosine = std::cos(w);
+    const double alpha = std::sin(w) / (2.0 * q);
+    const double a0 = 1.0 + alpha;
+    return {{
+        ((1.0 + cosine) * 0.5) / a0,
+        (-(1.0 + cosine)) / a0,
+        ((1.0 + cosine) * 0.5) / a0,
+        (-2.0 * cosine) / a0,
+        (1.0 - alpha) / a0
+    }};
+}
+
+double processBiquad(double input, const std::array<double, 5>& coefficients,
+                     double& z1, double& z2) noexcept {
+    const double output = coefficients[0] * input + z1;
+    z1 = coefficients[1] * input - coefficients[3] * output + z2;
+    z2 = coefficients[2] * input - coefficients[4] * output;
+    return output;
+}
+
 std::string virtualPrefix(std::uint32_t driverId, std::uint32_t processId) {
     (void)driverId;
     return "virtual:TimoxVasio:" + std::to_string(processId) + ":";
@@ -37,11 +82,20 @@ AudioRoutingRuntime::AudioRoutingRuntime(std::uint32_t frames, std::uint32_t sam
       sourceSamples_(endpointCount * frames, 0.0f),
       destinationSamples_(endpointCount * frames, 0.0f),
       sourceBlocks_(endpointCount, nullptr), destinationBlocks_(endpointCount, nullptr),
-      peakLinear_(std::make_unique<std::atomic<float>[]>(endpointCount)) {
+      peakLinear_(std::make_unique<std::atomic<float>[]>(endpointCount)),
+      shortTermLufs_(std::make_unique<std::atomic<float>[]>(endpointCount)),
+      shortTermLufsReady_(std::make_unique<std::atomic<bool>[]>(endpointCount)),
+      meterFilterStates_(endpointCount),
+      lufsBucketFrames_((std::max)(1u, sampleRate / 10u)) {
     static_assert(std::atomic<float>::is_always_lock_free,
         "Realtime peak meters require lock-free float atomics");
-    for (std::size_t index = 0; index < endpointCount_; ++index)
+    lufsShelf_ = makeHighShelf(static_cast<double>(sampleRate_));
+    lufsHighPass_ = makeLufsHighPass(static_cast<double>(sampleRate_));
+    for (std::size_t index = 0; index < endpointCount_; ++index) {
         peakLinear_[index].store(0.0f, std::memory_order_relaxed);
+        shortTermLufs_[index].store(-120.0f, std::memory_order_relaxed);
+        shortTermLufsReady_[index].store(false, std::memory_order_relaxed);
+    }
 }
 
 std::unique_ptr<AudioRoutingRuntime> AudioRoutingRuntime::Create(AudioRoutingLayout layout,
@@ -315,6 +369,8 @@ std::vector<AudioMeterSnapshot> AudioRoutingRuntime::ReadMeters() {
         AudioMeterSnapshot meter;
         meter.endpointId = binding.endpointId;
         meter.peakLinear = peakLinear_[binding.endpointIndex].load(std::memory_order_acquire);
+        meter.shortTermLufs = shortTermLufs_[binding.endpointIndex].load(std::memory_order_acquire);
+        meter.shortTermLufsReady = shortTermLufsReady_[binding.endpointIndex].load(std::memory_order_acquire);
         if (binding.clientMapping) {
             if (binding.clientOutput) {
                 meter.underruns = binding.clientMapping->ClientOutputUnderruns();
@@ -527,12 +583,53 @@ void AudioRoutingRuntime::Process(const float* const* physicalInputs, float* con
         const auto index = binding.endpointIndex;
         const float* samples = sourceBlocks_[index]
             ? sourceBlocks_[index] : destinationBlocks_[index];
-        if (!samples) continue;
+        auto& filter = meterFilterStates_[index];
+        if (!samples) {
+            peakLinear_[index].store(0.0f, std::memory_order_release);
+            filter = {};
+            shortTermLufs_[index].store(-120.0f, std::memory_order_relaxed);
+            shortTermLufsReady_[index].store(false, std::memory_order_release);
+            continue;
+        }
         float peak = 0.0f;
         for (std::uint32_t frame = 0; frame < frames; ++frame) {
-            const float sample = samples[frame];
-            if (std::isfinite(sample)) peak = (std::max)(peak, std::abs(sample));
+            const float rawSample = samples[frame];
+            const double sample = std::isfinite(rawSample) ? rawSample : 0.0;
+            peak = (std::max)(peak, static_cast<float>(std::abs(sample)));
+            const double shelfSample = processBiquad(sample, lufsShelf_,
+                filter.shelfZ1, filter.shelfZ2);
+            const double weightedSample = processBiquad(shelfSample, lufsHighPass_,
+                filter.highPassZ1, filter.highPassZ2);
+            filter.bucketEnergy += weightedSample * weightedSample;
+            if (++filter.bucketSamples >= lufsBucketFrames_) {
+                const double bucketMeanEnergy = filter.bucketEnergy /
+                    static_cast<double>(filter.bucketSamples);
+                filter.windowEnergy -= filter.energyBuckets[filter.bucketWriteIndex];
+                filter.energyBuckets[filter.bucketWriteIndex] = bucketMeanEnergy;
+                filter.windowEnergy += bucketMeanEnergy;
+                filter.bucketWriteIndex = (filter.bucketWriteIndex + 1) %
+                    static_cast<std::uint32_t>(filter.energyBuckets.size());
+                filter.bucketCount = (std::min)(filter.bucketCount + 1,
+                    static_cast<std::uint32_t>(filter.energyBuckets.size()));
+                filter.bucketEnergy = 0.0;
+                filter.bucketSamples = 0;
+                if (filter.bucketCount == filter.energyBuckets.size()) {
+                    const double meanEnergy = filter.windowEnergy /
+                        static_cast<double>(filter.bucketCount);
+                    const float lufs = meanEnergy > 0.0
+                        ? static_cast<float>(-0.691 + 10.0 * std::log10(meanEnergy))
+                        : -120.0f;
+                    shortTermLufs_[index].store((std::max)(-120.0f, lufs),
+                        std::memory_order_relaxed);
+                    shortTermLufsReady_[index].store(true, std::memory_order_release);
+                }
+            }
         }
+        constexpr double denormalFloor = 1.0e-30;
+        if (std::abs(filter.shelfZ1) < denormalFloor) filter.shelfZ1 = 0.0;
+        if (std::abs(filter.shelfZ2) < denormalFloor) filter.shelfZ2 = 0.0;
+        if (std::abs(filter.highPassZ1) < denormalFloor) filter.highPassZ1 = 0.0;
+        if (std::abs(filter.highPassZ2) < denormalFloor) filter.highPassZ2 = 0.0;
         peak = (std::min)(peak, 1.0f);
         peakLinear_[index].store(peak, std::memory_order_release);
     }

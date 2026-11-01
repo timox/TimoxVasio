@@ -19,16 +19,24 @@ struct SocketServer::Impl {
     struct Slot {std::unique_ptr<SocketSession> session;std::thread worker;bool done=true;};
     BrokerDispatcher& broker;
     Certificate certificate;
-    const std::shared_ptr<const SocketEnrollment> enrollment;
+    SocketEnrollmentResolver resolveEnrollment;
+    std::shared_ptr<const SocketEnrollment> fixedEnrollment;
     UnixSocketStream listener;
     mutable std::mutex mutex;std::condition_variable changed;
     std::array<Slot,4> slots{};
     std::atomic<bool> cancelled{false},started{false};bool listening=false;
-    Impl(BrokerDispatcher& b,PCCERT_CONTEXT c,std::shared_ptr<const SocketEnrollment> e)
-        :broker(b),certificate(c),enrollment(std::move(e)){
-        if(!enrollment)throw std::invalid_argument("server enrollment");
+    Impl(BrokerDispatcher& b,PCCERT_CONTEXT c,SocketEnrollmentResolver resolver)
+        :broker(b),certificate(c),resolveEnrollment(std::move(resolver)){
+        if(!resolveEnrollment)throw std::invalid_argument("server enrollment resolver");
     }
-    bool Active()const noexcept{return !cancelled.load(std::memory_order_acquire)&&enrollment->Active();}
+    Impl(BrokerDispatcher& b,PCCERT_CONTEXT c,std::shared_ptr<const SocketEnrollment> e)
+        :Impl(b,c,[e](const ChannelIdentity& observed){
+            return e&&SameChannelIdentity(observed,e->identity)?e:std::shared_ptr<const SocketEnrollment>{};
+        }){
+        if(!e)throw std::invalid_argument("server enrollment");
+        fixedEnrollment=std::move(e);
+    }
+    bool Active()const noexcept{return !cancelled.load(std::memory_order_acquire)&&(!fixedEnrollment||fixedEnrollment->Active());}
     void Cancel() noexcept {
         cancelled.store(true,std::memory_order_release);listener.RequestCancel();
         std::lock_guard<std::mutex> lock(mutex);
@@ -71,7 +79,7 @@ struct SocketServer::Impl {
             {
                 std::lock_guard<std::mutex> lock(mutex);
                 if(!Active())return {Code::Cancelled};
-                available->session=std::make_unique<SocketSession>(broker,std::move(socket),certificate.value,enrollment);
+                available->session=std::make_unique<SocketSession>(broker,std::move(socket),certificate.value,resolveEnrollment);
                 available->done=false;
                 available->worker=std::thread([this,available]{
                     available->session->Run();
@@ -84,10 +92,12 @@ struct SocketServer::Impl {
 };
 SocketServer::SocketServer(BrokerDispatcher& broker,PCCERT_CONTEXT certificate,std::shared_ptr<const SocketEnrollment> enrollment)
     :impl_(std::make_unique<Impl>(broker,certificate,std::move(enrollment))){}
+SocketServer::SocketServer(BrokerDispatcher& broker,PCCERT_CONTEXT certificate,SocketEnrollmentResolver resolver)
+    :impl_(std::make_unique<Impl>(broker,certificate,std::move(resolver))){}
 SocketServer::~SocketServer(){impl_->Drain();}
 std::size_t SocketServer::FixedStorageBytes() noexcept{
     return sizeof(SocketServer)+sizeof(Impl)+2*UnixSocketStream::FixedStorageBytes()-sizeof(UnixSocketStream)+
-        4*SocketSession::FixedStorageBytes()+sizeof(SocketEnrollment);
+        4*(SocketSession::FixedStorageBytes()+sizeof(SocketEnrollment));
 }
 NativeChannelResult SocketServer::Listen(const char* path) noexcept {
     if(impl_->started.load()||impl_->listening)return {Code::Failed};

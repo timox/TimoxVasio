@@ -102,6 +102,16 @@ private:
         AudioClientMapping* clientMapping = nullptr;
         bool clientOutput = false;
     };
+    struct MeterFilterState {
+        double shelfZ1 = 0.0, shelfZ2 = 0.0;
+        double highPassZ1 = 0.0, highPassZ2 = 0.0;
+        double bucketEnergy = 0.0;
+        std::array<double, 30> energyBuckets{};
+        double windowEnergy = 0.0;
+        std::uint32_t bucketSamples = 0;
+        std::uint32_t bucketCount = 0;
+        std::uint32_t bucketWriteIndex = 0;
+    };
 
     AudioRoutingRuntime(std::uint32_t frames, std::uint32_t sampleRate,
         std::size_t endpointCount,
@@ -128,6 +138,12 @@ private:
     StageTimingAccumulator clientReadTiming_;
     StageTimingAccumulator routingTiming_;
     std::unique_ptr<std::atomic<float>[]> peakLinear_;
+    std::unique_ptr<std::atomic<float>[]> shortTermLufs_;
+    std::unique_ptr<std::atomic<bool>[]> shortTermLufsReady_;
+    std::vector<MeterFilterState> meterFilterStates_;
+    std::array<double, 5> lufsShelf_{};
+    std::array<double, 5> lufsHighPass_{};
+    std::uint32_t lufsBucketFrames_ = 1;
     std::vector<MeterBinding> meterBindings_;
     std::atomic<std::size_t> correlationLeftIndex_{static_cast<std::size_t>(-1)};
     std::atomic<std::size_t> correlationRightIndex_{static_cast<std::size_t>(-1)};

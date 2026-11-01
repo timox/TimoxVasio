@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { launchEngine, releaseEngine } = require('./engine-process');
 const { discoverEngine } = require('./engine-discovery');
 const WebSocket = require('ws');
@@ -93,7 +94,8 @@ function startEngine() {
 }
 
 async function attachToExistingEngine() {
-    const port = await discoverEngine();
+    const requiredApiVersion = app.getVersion() === '0.1.0' ? '1.1' : null;
+    const port = await discoverEngine(fetch, { requiredApiVersion });
     if (port === null) return false;
     apiPort = port;
     apiReady.resolve(port);
@@ -126,6 +128,10 @@ function createWindow() {
             enableRemoteModule: false
         }
     });
+    mainWindow.on('page-title-updated', event => {
+        event.preventDefault();
+        mainWindow.setTitle(app.getName());
+    });
     const startUrl = isDev
         ? (process.env.VASIO_CONTROL_URL || `http://localhost:${process.env.PORT || 4000}`)
         : `file://${path.join(__dirname, '../build/index.html')}`;
@@ -137,6 +143,12 @@ function createWindow() {
 ipcMain.handle('api:get-state', async () => (await getApiClient()).getState());
 ipcMain.handle('api:get-drivers', async () => (await getApiClient()).getDrivers());
 ipcMain.handle('api:get-wasapi-devices', async () => (await getApiClient()).getWasapiDevices());
+ipcMain.handle('api:get-windows-audio-applications', async () => (await getApiClient()).getWindowsAudioApplications());
+ipcMain.handle('system:get-network-addresses', () => Object.entries(os.networkInterfaces())
+    .flatMap(([name, entries]) => (entries || []).map(entry => ({ name, ...entry })))
+    .filter(entry => (entry.family === 'IPv4' || entry.family === 4) && !entry.internal && !entry.address.startsWith('169.254.'))
+    .map(({ name, address }) => ({ name, address }))
+    .filter((entry, index, addresses) => addresses.findIndex(candidate => candidate.name === entry.name && candidate.address === entry.address) === index));
 ipcMain.handle('api:get-application-profiles', async () => (await getApiClient()).getApplicationProfiles());
 ipcMain.handle('api:replace-application-profiles', async (_event, profiles) =>
     (await getApiClient()).replaceApplicationProfiles(profiles));

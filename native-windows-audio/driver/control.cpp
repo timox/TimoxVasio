@@ -53,7 +53,10 @@ NTSTATUS TimoxControlCreate(PDRIVER_OBJECT driver,PDEVICE_OBJECT* device){
     *device=nullptr;
     UNICODE_STRING name=RTL_CONSTANT_STRING(L"\\Device\\TimoxWindowsAudioControl");
     UNICODE_STRING link=RTL_CONSTANT_STRING(L"\\DosDevices\\Global\\TimoxWindowsAudioControl");
-    UNICODE_STRING acl=RTL_CONSTANT_STRING(L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+    // The broker runs as LocalService with this exact service SID enabled.
+    // Keep the private IOCTL device closed to ordinary users and other services.
+    UNICODE_STRING acl=RTL_CONSTANT_STRING(
+        L"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;S-1-5-80-954356743-986487362-260697779-2273189862-4263205101)");
     PDEVICE_OBJECT created=nullptr;
     NTSTATUS status=IoCreateDeviceSecure(driver,sizeof(Control),&name,TIMOX_CONTROL_DEVICE_TYPE,
         FILE_DEVICE_SECURE_OPEN,FALSE,&acl,&ControlClass,&created);

@@ -112,7 +112,8 @@ void Probe() {
             if (FAILED(result)) {
                 ++unavailable;
                 std::cout << "Open unavailable kind=" << static_cast<int>(config.kind)
-                          << " HRESULT=0x" << std::hex << static_cast<unsigned long>(result) << std::dec << '\n';
+                          << " HRESULT=0x" << std::hex << static_cast<unsigned long>(result) << std::dec
+                          << " detail=" << backend->OpenErrorDetail() << '\n';
                 continue;
             }
             ++opened;
@@ -151,10 +152,58 @@ void Probe() {
     }
     std::cout << "Probe inventory=" << devices.size() << " opened=" << opened << " unavailable=" << unavailable << '\n';
 }
+
+int ProbeProcessLoopback() {
+    const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(apartment)) {
+        std::cout << "COM initialization failed (HRESULT 0x" << std::hex
+                  << static_cast<unsigned long>(apartment) << std::dec << ")\n";
+        return 2;
+    }
+    struct Apartment { ~Apartment() { CoUninitialize(); } } release;
+    WasapiDeviceEnumerator enumerator;
+    std::vector<WasapiProcessInfo> processes;
+    std::string error;
+    if (!enumerator.enumerateActiveRenderProcesses(processes, error)) {
+        std::cout << "Process inventory failed: " << error << '\n';
+        return 2;
+    }
+    bool opened = false;
+    for (const auto& process : processes) {
+        auto backend = CreateWasapiBackend();
+        WasapiOpenConfig config;
+        config.kind = WasapiStreamKind::ProcessLoopback;
+        config.processId = process.processId;
+        config.processCreationTime = process.creationTime;
+        config.processImagePath = process.imagePath;
+        const HRESULT result = backend->Open(config);
+        std::cout << "Process-loopback PID=" << process.processId << " HRESULT=0x"
+                  << std::hex << static_cast<unsigned long>(result) << std::dec
+                  << " detail=" << backend->OpenErrorDetail();
+        if (SUCCEEDED(result)) {
+            const auto* info = backend->Info();
+            std::cout << " rate=" << (info ? info->format.sampleRate : 0)
+                      << " channels=" << (info ? info->format.channels : 0)
+                      << " frames=" << (info ? info->bufferFrames : 0);
+            const HRESULT started = backend->Start();
+            std::cout << " start=0x" << std::hex << static_cast<unsigned long>(started) << std::dec;
+            const HRESULT stopped = SUCCEEDED(started) ? backend->Stop() : started;
+            std::cout << " stop=0x" << std::hex << static_cast<unsigned long>(stopped) << std::dec;
+            opened = SUCCEEDED(started) && SUCCEEDED(stopped);
+        }
+        std::cout << '\n';
+        backend->Close();
+    }
+    if (processes.empty()) std::cout << "No active shared-mode render processes found\n";
+    std::cout << "Probe starts then stops each stream without reading audio packets or changing saved routes.\n";
+    return opened ? 0 : 1;
+}
 }
 
 int main(int argc,char** argv) {
     try {
+        if (argc == 2 && std::strcmp(argv[1], "--probe-process-loopback") == 0)
+            return ProbeProcessLoopback();
         Validation(); ClosedState(); ResolverDiagnostic();
         if (argc>1 && std::strcmp(argv[1],"--probe")==0) Probe();
         std::cout << "WASAPI backend deterministic tests passed\n";

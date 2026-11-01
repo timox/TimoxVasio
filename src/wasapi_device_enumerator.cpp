@@ -1,15 +1,27 @@
 #include "wasapi_device_enumerator.h"
 #include <Windows.h>
 #include <audioclient.h>
+#include <audiopolicy.h>
 #include <mmdeviceapi.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <wrl/client.h>
+#include <wrl/implements.h>
+#include <algorithm>
 #include <cstring>
+#include <iterator>
 #include <limits>
+#include <mutex>
+#include <unordered_map>
 #include <sstream>
 
 namespace {
 using Microsoft::WRL::ComPtr;
+constexpr GUID kUnspecifiedContainerId = {0, 0, 0, {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}};
+// Success status: FAILED(hr) does not detect sessions that span processes.
+constexpr HRESULT kAudioClientNoSingleProcess = static_cast<HRESULT>(0x0889000D);
+bool IsUsableContainerId(const GUID& id) noexcept {
+    return !IsEqualGUID(id, GUID_NULL) && !IsEqualGUID(id, kUnspecifiedContainerId);
+}
 template<class T> struct TaskMemory {
     T* value = nullptr;
     ~TaskMemory() { CoTaskMemFree(value); }
@@ -20,6 +32,25 @@ template<class T> struct TaskMemory {
 struct PropertyValue {
     PROPVARIANT value{};
     ~PropertyValue() { PropVariantClear(&value); }
+};
+class SessionObserver final : public Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+    IAudioSessionNotification, Microsoft::WRL::FtmBase> {
+public:
+    STDMETHOD(OnSessionCreated)(IAudioSessionControl* session) noexcept override {
+        if (!session) return E_POINTER;
+        try { std::lock_guard<std::mutex> lock(mutex_); created_.emplace_back(session); return S_OK; }
+        catch (...) { return E_OUTOFMEMORY; }
+    }
+    std::vector<ComPtr<IAudioSessionControl>> TakeCreated() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto result = std::move(created_);
+        created_.clear();
+        return result;
+    }
+private:
+    std::mutex mutex_;
+    std::vector<ComPtr<IAudioSessionControl>> created_;
 };
 bool Fail(std::string& error, const char* message) {
     error = message;
@@ -147,12 +178,107 @@ bool WasapiDeviceEnumerator::enumerate(std::vector<WasapiDeviceInfo>& devices, s
                 if (SUCCEEDED(properties->GetValue(PKEY_Device_FriendlyName, &property.value)) &&
                     property.value.vt == VT_LPWSTR && property.value.pwszVal && *property.value.pwszVal)
                     info.name = property.value.pwszVal;
+                PropVariantClear(&property.value);
+                if (SUCCEEDED(properties->GetValue(PKEY_Device_ContainerId, &property.value)) &&
+                    property.value.vt == VT_CLSID && property.value.puuid) {
+                    wchar_t containerId[39]{};
+                    if (IsUsableContainerId(*property.value.puuid) &&
+                        StringFromGUID2(*property.value.puuid, containerId, ARRAYSIZE(containerId)) > 0)
+                        info.containerId = containerId;
+                }
             }
             ReadMixFormat(device.Get(), info);
             inventory.push_back(std::move(info));
         }
     }
     devices.swap(inventory);
+    return true;
+}
+
+bool WasapiDeviceEnumerator::enumerateActiveRenderProcesses(
+    std::vector<WasapiProcessInfo>& processes, std::string& error) const {
+    processes.clear(); error.clear();
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    if (!CreateEnumerator(enumerator, error)) return false;
+    ComPtr<IMMDeviceCollection> endpoints;
+    if (!Check(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, endpoints.GetAddressOf()),
+        "Enumerate active render endpoints", error)) return false;
+    UINT endpointCount = 0;
+    if (!Check(endpoints->GetCount(&endpointCount), "Count active render endpoints", error)) return false;
+    std::unordered_map<DWORD, std::size_t> byPid;
+    for (UINT endpointIndex = 0; endpointIndex < endpointCount; ++endpointIndex) {
+        ComPtr<IMMDevice> endpoint;
+        if (!Check(endpoints->Item(endpointIndex, endpoint.GetAddressOf()), "Read render endpoint", error)) return false;
+        std::wstring endpointId;
+        if (!DeviceId(endpoint.Get(), endpointId, error)) return false;
+        std::wstring endpointName = endpointId;
+        ComPtr<IPropertyStore> properties;
+        if (SUCCEEDED(endpoint->OpenPropertyStore(STGM_READ, properties.GetAddressOf()))) {
+            PropertyValue name;
+            if (SUCCEEDED(properties->GetValue(PKEY_Device_FriendlyName, &name.value)) &&
+                name.value.vt == VT_LPWSTR && name.value.pwszVal && *name.value.pwszVal)
+                endpointName = name.value.pwszVal;
+        }
+        ComPtr<IAudioSessionManager2> manager;
+        HRESULT hr = endpoint->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr,
+            reinterpret_cast<void**>(manager.GetAddressOf()));
+        if (FAILED(hr)) continue; // One broken endpoint must not hide other sessions.
+        auto observer = Microsoft::WRL::Make<SessionObserver>();
+        if (!observer) return Fail(error, "Cannot allocate Windows audio session observer");
+        if (FAILED(manager->RegisterSessionNotification(observer.Get()))) continue;
+        struct Registration {
+            IAudioSessionManager2* manager;
+            IAudioSessionNotification* observer;
+            ~Registration() { if (manager) manager->UnregisterSessionNotification(observer); }
+        } registration{manager.Get(), observer.Get()};
+        ComPtr<IAudioSessionEnumerator> sessions;
+        if (FAILED(manager->GetSessionEnumerator(sessions.GetAddressOf()))) continue;
+        int sessionCount = 0;
+        if (FAILED(sessions->GetCount(&sessionCount))) continue;
+        std::vector<ComPtr<IAudioSessionControl>> observed;
+        observed.reserve(static_cast<std::size_t>(sessionCount));
+        for (int sessionIndex = 0; sessionIndex < sessionCount; ++sessionIndex) {
+            ComPtr<IAudioSessionControl> control;
+            if (SUCCEEDED(sessions->GetSession(sessionIndex, control.GetAddressOf()))) observed.push_back(std::move(control));
+        }
+        auto duringSnapshot = observer->TakeCreated();
+        observed.insert(observed.end(), std::make_move_iterator(duringSnapshot.begin()), std::make_move_iterator(duringSnapshot.end()));
+        manager->UnregisterSessionNotification(observer.Get());
+        registration.manager = nullptr;
+        auto beforeUnregister = observer->TakeCreated();
+        observed.insert(observed.end(), std::make_move_iterator(beforeUnregister.begin()), std::make_move_iterator(beforeUnregister.end()));
+        for (const auto& control : observed) {
+            AudioSessionState state = AudioSessionStateInactive;
+            if (FAILED(control->GetState(&state)) || state != AudioSessionStateActive) continue;
+            ComPtr<IAudioSessionControl2> control2;
+            if (FAILED(control.As(&control2))) continue;
+            DWORD pid = 0;
+            hr = control2->GetProcessId(&pid);
+            if (hr == kAudioClientNoSingleProcess || FAILED(hr) || pid == 0) continue;
+            auto found = byPid.find(pid);
+            if (found != byPid.end()) {
+                auto& labels = processes[found->second].renderEndpoints;
+                if (std::find(labels.begin(), labels.end(), endpointName) == labels.end()) labels.push_back(endpointName);
+                continue;
+            }
+            HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            if (!process) continue;
+            struct Handle { HANDLE value; ~Handle() { if (value) CloseHandle(value); } } close{process};
+            std::wstring path(32768, L'\0'); DWORD pathLength = static_cast<DWORD>(path.size());
+            if (!QueryFullProcessImageNameW(process, 0, path.data(), &pathLength) || !pathLength) continue;
+            path.resize(pathLength);
+            FILETIME created{}, exited{}, kernel{}, user{};
+            if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) continue;
+            const auto ticks = (static_cast<std::uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+            const auto slash = path.find_last_of(L"\\/");
+            WasapiProcessInfo info;
+            info.processId = pid; info.creationTime = ticks; info.imagePath = path;
+            info.displayName = slash == std::wstring::npos ? path : path.substr(slash + 1);
+            info.renderEndpoints.push_back(endpointName);
+            byPid.emplace(pid, processes.size());
+            processes.push_back(std::move(info));
+        }
+    }
     return true;
 }
 

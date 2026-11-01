@@ -23,10 +23,19 @@ struct WasapiMixFormat {
 struct WasapiDeviceInfo {
     std::wstring id; // Opaque Windows endpoint ID; never derive an ID from its name.
     std::wstring name;
+    std::wstring containerId; // Windows PKEY_Device_ContainerId; empty when the driver does not publish one.
     WasapiDataFlow flow = WasapiDataFlow::Render;
     std::uint32_t state = 0; // DEVICE_STATE_* flags from the Windows endpoint.
     std::optional<WasapiMixFormat> mixFormat;
     std::string formatError; // Inactive, unsupported or invalidated during discovery.
+};
+
+struct WasapiProcessInfo {
+    std::uint32_t processId = 0;
+    std::uint64_t creationTime = 0; // FILETIME ticks, serialized as decimal text.
+    std::wstring imagePath;
+    std::wstring displayName;
+    std::vector<std::wstring> renderEndpoints;
 };
 
 // Bounded WAVEFORMATEX/WAVEFORMATEXTENSIBLE parsing, no COM or hardware access.
@@ -44,6 +53,10 @@ public:
     // Includes capture/render endpoints in all states. A missing mix format is
     // an endpoint-level observation, not a failure of the entire inventory.
     bool enumerate(std::vector<WasapiDeviceInfo>& devices, std::string& error) const;
+    // Active single-process Windows render sessions only. This reports use of
+    // the Windows shared audio engine, not which API the application called.
+    bool enumerateActiveRenderProcesses(std::vector<WasapiProcessInfo>& processes,
+        std::string& error) const;
     // Exactly one of a nonempty explicitId or defaultRole must be supplied.
     // Resolution verifies flow and active state; never silently falls back.
     bool resolve(WasapiDataFlow flow, const std::wstring& explicitId,

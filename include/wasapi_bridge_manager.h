@@ -25,7 +25,8 @@ public:
     static std::shared_ptr<WasapiBridgeManager> Prepare(
         const std::vector<WasapiBridgeConfiguration>& desired,std::uint32_t rate,std::uint32_t quantum,
         const std::shared_ptr<WasapiBridgeManager>& previous,const WasapiBridge::BackendFactory& factory,
-        std::string& error,bool allowUnavailable=false,const EndpointResolver& resolver={});
+        std::string& error,bool allowUnavailable=false,const EndpointResolver& resolver={},
+        const std::vector<std::string>& unavailableBridgeIds={});
     // Null means no change due. Failures detach the old generation first;
     // retries use monotonic deadlines (250/500/1000/2000/5000 ms), no sleeps.
     std::shared_ptr<WasapiBridgeManager> Reconcile(Clock::time_point now);

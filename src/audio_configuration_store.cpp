@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cmath>
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <utility>
@@ -65,9 +66,16 @@ Json encodeBridges(const std::vector<WasapiBridgeConfiguration>& bridges) {
         const auto& config = bridge.open;
         Json item{{"id", bridge.id}, {"enabled", bridge.enabled},
             {"kind", config.kind == WasapiStreamKind::Capture ? "capture" :
-                config.kind == WasapiStreamKind::Render ? "render" : "endpointLoopback"},
+                config.kind == WasapiStreamKind::Render ? "render" :
+                config.kind == WasapiStreamKind::ProcessLoopback ? "processLoopback" : "endpointLoopback"},
             {"bufferDuration100ns", config.bufferDuration100ns}};
-        if (config.defaultRole) {
+        if (config.kind == WasapiStreamKind::ProcessLoopback) {
+            std::string image;
+            WasapiEndpointToUtf8(config.processImagePath, image);
+            item["processId"] = config.processId;
+            item["processCreationTime"] = std::to_string(config.processCreationTime);
+            item["processImagePath"] = std::move(image);
+        } else if (config.defaultRole) {
             item["defaultRole"] = *config.defaultRole == WasapiDefaultRole::Console ? "console" :
                 *config.defaultRole == WasapiDefaultRole::Multimedia ? "multimedia" : "communications";
         } else {
@@ -85,26 +93,40 @@ bool decodeBridges(const Json& value, std::vector<WasapiBridgeConfiguration>& br
     std::vector<WasapiBridgeConfiguration> decoded;
     for (const auto& item : value) {
         if (!item.is_object() || !item.contains("id") || !item["id"].is_string() ||
-            !item.contains("kind") || !item["kind"].is_string() ||
-            item.contains("endpointId") == item.contains("defaultRole")) return false;
+            !item.contains("kind") || !item["kind"].is_string()) return false;
         for (auto field = item.begin(); field != item.end(); ++field)
             if (field.key() != "id" && field.key() != "enabled" && field.key() != "kind" &&
                 field.key() != "endpointId" && field.key() != "defaultRole" &&
-                field.key() != "bufferDuration100ns") return false;
+                field.key() != "bufferDuration100ns" && field.key() != "processId" &&
+                field.key() != "processCreationTime" && field.key() != "processImagePath") return false;
         WasapiBridgeConfiguration bridge;
         bridge.id = item["id"].get<std::string>();
         if (item["kind"] == "capture") bridge.open.kind = WasapiStreamKind::Capture;
         else if (item["kind"] == "render") bridge.open.kind = WasapiStreamKind::Render;
         else if (item["kind"] == "endpointLoopback") bridge.open.kind = WasapiStreamKind::EndpointLoopback;
+        else if (item["kind"] == "processLoopback") bridge.open.kind = WasapiStreamKind::ProcessLoopback;
         else return false;
         if (item.contains("enabled")) {
             if (!item["enabled"].is_boolean()) return false;
             bridge.enabled = item["enabled"].get<bool>();
         }
-        if (item.contains("endpointId")) {
+        if (bridge.open.kind == WasapiStreamKind::ProcessLoopback) {
+            if (item.contains("endpointId") || item.contains("defaultRole") || !item.contains("processId") ||
+                (!item["processId"].is_number_unsigned() && !item["processId"].is_number_integer()) ||
+                item["processId"].get<std::uint64_t>() == 0 || item["processId"].get<std::uint64_t>() > UINT32_MAX ||
+                !item.contains("processCreationTime") || !item["processCreationTime"].is_string() ||
+                !item.contains("processImagePath") || !item["processImagePath"].is_string()) return false;
+            const auto creation = item["processCreationTime"].get<std::string>();
+            if (creation.empty() || creation.size() > 20 || !std::all_of(creation.begin(), creation.end(), [](unsigned char c) { return c >= '0' && c <= '9'; })) return false;
+            try { bridge.open.processCreationTime = std::stoull(creation); } catch (...) { return false; }
+            bridge.open.processId = item["processId"].get<std::uint32_t>();
+            if (!WasapiEndpointFromUtf8(item["processImagePath"].get<std::string>(), bridge.open.processImagePath)) return false;
+        } else if (item.contains("endpointId")) {
+            if (item.contains("defaultRole") || item.contains("processId") || item.contains("processCreationTime") || item.contains("processImagePath")) return false;
             if (!item["endpointId"].is_string() ||
                 !WasapiEndpointFromUtf8(item["endpointId"].get<std::string>(), bridge.open.endpointId)) return false;
         } else {
+            if (item.contains("processId") || item.contains("processCreationTime") || item.contains("processImagePath")) return false;
             if (!item["defaultRole"].is_string()) return false;
             if (item["defaultRole"] == "console") bridge.open.defaultRole = WasapiDefaultRole::Console;
             else if (item["defaultRole"] == "multimedia") bridge.open.defaultRole = WasapiDefaultRole::Multimedia;
