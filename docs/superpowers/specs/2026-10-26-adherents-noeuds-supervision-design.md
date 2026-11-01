@@ -1,6 +1,6 @@
-# Timox — adhérents, nœuds de connexion et supervision du moteur
+# Timox — adhérents, nœuds et supervision du moteur
 
-**Statut :** formalisation des décisions de la conversation du 26 octobre 2026.
+**Statut :** formalisation des décisions des 26 et 27 octobre 2026.
 Les principes ci-dessous sont retenus pour le modèle cible. Les arbitrages
 explicitement ouverts ne sont pas des comportements déjà décidés ou implémentés.
 Cette spécification ne modifie ni le code ni le contrat API existant.
@@ -16,8 +16,8 @@ Le système suit un modèle mutualiste : le moteur ne promet que le service
 qu'il peut fournir avec les ressources disponibles et les participations en
 cours. Il organise les échanges et supervise leurs conditions d'exécution.
 
-Trois objets principaux structurent ce modèle : **adhérent**, **nœud de
-connexion**, **moteur**. Les ports, connexions, capacités, mesures et décisions
+Trois objets principaux structurent ce modèle : **adhérent**, **nœud**,
+**moteur**. Les ports, connexions, capacités, mesures et décisions
 restent des éléments nécessaires, rattachés à ces objets. Cela n'impose pas
 trois classes C++, trois tables ou trois endpoints HTTP.
 
@@ -30,7 +30,7 @@ les conditions de participation, puis rendre ses décisions explicables.
 | Objet | Responsabilité | Informations principales |
 |---|---|---|
 | Adhérent | Identifier qui participe | Identité, nature processus/périphérique, capacités connues, nœuds associés |
-| Nœud de connexion | Décrire comment l'adhérent participe | Adhérent propriétaire, accès technique, ports, configuration effective, état et mesures des échanges |
+| Nœud | Décrire un accès ou un traitement dans le graphe | Propriétaire unique (adhérent ou moteur), fonction, ports, paramètres, configuration effective, état et mesures |
 | Moteur | Fournir le cadre collectif | Horloge de référence, cadence, ressources, graphe de connexions, conditions de participation et supervision |
 
 ```mermaid
@@ -38,6 +38,7 @@ flowchart LR
     M[Moteur : cadence, ressources, supervision] --> A[Adhérent : processus ou périphérique]
     A --> N1[Nœud de connexion 1]
     A --> N2[Nœud de connexion 2]
+    M --> T[Nœud de traitement natif]
     N1 --> P1[Ports]
     N2 --> P2[Ports]
     P1 -->|Connexion organisée par le moteur| P3[Ports d'un autre nœud]
@@ -56,17 +57,24 @@ utiliser ASIO directement ou être représenté par un pont. Un périphérique
 peut fournir plusieurs accès. Le nombre de pistes internes d'une application
 n'est pas le nombre de ports qu'elle expose au moteur.
 
-### Nœud de connexion
+### Nœud : accès ou traitement
 
-**Un adhérent peut avoir plusieurs nœuds.** Chaque nœud appartient à un seul
-adhérent dans le cadre du moteur considéré. Un adhérent connu peut n'avoir
+**Un adhérent peut avoir plusieurs nœuds ; le moteur peut également posséder
+ses propres nœuds.** Chaque nœud a un propriétaire unique : un adhérent ou le
+moteur considéré. Un adhérent connu peut n'avoir
 aucun nœud actif, notamment après déconnexion ou éjection.
 
-Le nœud représente l'accès effectif : session via un pilote, pont WASAPI ou
+Un nœud d'accès représente l'accès effectif : session via un pilote, pont WASAPI ou
 autre adaptateur de transport. Un pilote installé est un moyen d'accès ; il
-ne constitue pas, à lui seul, un nœud actif. Les ports audio du nœud portent
-un sens explicite relativement au moteur, évitant l'ambiguïté entrée/sortie
-entre application, périphérique et graphe.
+ne constitue pas, à lui seul, un nœud actif. Les ports audio portent un sens
+explicite dans le graphe : entrée du nœud ou sortie du nœud. La correspondance
+avec les entrées/sorties du processus, du périphérique et du moteur est explicite.
+
+Un nœud de traitement natif appartient au moteur : égaliseur, gain ou délai,
+par exemple. Le moteur exécute ce traitement sans adhérent fictif ni processus
+externe supplémentaire. Ses paramètres et observations sont rattachés au nœud ;
+son coût de traitement compte dans les ressources consommées par le moteur.
+Cette possibilité du modèle n'affirme pas que ces effets sont déjà implémentés.
 
 Les connexions relient des ports de nœuds. Leur identité, gain et mute sont
 conservés dans le graphe organisé par le moteur. Une connexion configurée
@@ -76,6 +84,41 @@ peut exister alors que son nœud ou son adhérent n'est pas actif.
 possède ses nœuds ; le moteur établit, maintient et supprime les liens entre
 leurs ports. Un adhérent peut demander une connexion et consulter les liens
 qui le concernent, sans en devenir propriétaire.
+
+### Position et ordre des traitements
+
+**Les connexions entre les ports déterminent le circuit et l'ordre des
+traitements.** La propriété d'un nœud indique qui le fournit, pas où il agit.
+Déplacer son dessin dans la GUI ne modifie pas le circuit ; reconnecter ses
+ports peut modifier le résultat sonore. Par exemple, un égaliseur placé avant
+un compresseur modifie le signal qui déclenche la compression, contrairement
+au même égaliseur placé après. Toute permutation ne produit pas nécessairement
+une différence audible : certains traitements peuvent commuter.
+
+Les branches parallèles et leurs points de recombinaison doivent être explicites.
+Le moteur respecte la topologie appliquée, y compris pour ses traitements natifs ;
+il ne réordonne pas silencieusement les traitements. Aucune optimisation
+topologique automatique n'est décidée ici. Les règles des boucles de rétroaction,
+des délais et de compensation de latence restent à définir avant leur prise en charge.
+
+Un nœud gain explicite reste distinct du gain ou du mute déjà porté par un lien :
+aucun transfert ni doublement implicite de ces paramètres n'est autorisé.
+
+### Exemple : Mixette et SuperCollider
+
+Mixette illustre une application qui mobilise un ensemble d'adhérents, plutôt
+qu'un unique participant chargé de toutes les fonctions. Parmi eux,
+**SuperCollider est l'adhérent processus chargé des traitements sonores**.
+Ses nœuds exposent les ports par lesquels le moteur lui fournit et récupère
+le signal ; les autres processus ou périphériques participants conservent
+leurs propres identités et nœuds.
+
+Les effets internes de SuperCollider restent sous sa responsabilité. Ils ne
+deviennent pas automatiquement des nœuds visibles dans Timox : une exposition
+explicite par l'intégration serait nécessaire. Un égaliseur exécuté dans
+SuperCollider relève de cet adhérent ; un égaliseur natif exécuté par Timox
+appartient au moteur. Leurs positions dans le circuit doivent rester explicites.
+Cet exemple fixe le modèle cible, pas l'état déjà réalisé de l'intégration Mixette.
 
 ### Moteur
 
@@ -215,6 +258,17 @@ indépendantes des adhérents. Le lissage visuel reste une présentation GUI.
 Une animation déduite du niveau source et du gain est une estimation, pas une
 mesure du signal effectivement transmis sur le lien.
 
+La supervision doit rendre visibles les sommations : plusieurs sources actives
+vers un même port de destination, avec les liens, gains et mutes concernés.
+Une sommation volontaire n'est pas une erreur. Le doublage possible d'un même
+signal par un trajet direct et une copie retardée doit être signalé avec ses
+preuves et son périmètre : confirmé dans la topologie observée, ou suspect si
+une partie du mélange est externe au moteur. Une corrélation seule ne prouve
+ni un doublon ni sa cause. Ne pas assimiler des sorties physiques distinctes
+à un même point d'écoute sans correspondance connue ou information du mixeur.
+Les observations incomplètes restent explicites ; aucune suppression de route
+ou modification automatique de gain n'est décidée ici.
+
 Une observation doit identifier sa source, son périmètre (moteur, adhérent,
 nœud, port ou connexion), sa fenêtre de mesure, son unité, sa fraîcheur et sa
 disponibilité. Les compteurs doivent distinguer les totaux depuis le démarrage
@@ -280,6 +334,8 @@ changements de projet, de charge, de route ou de transport.
 | Copie WASAPI d'un processus | Adhérent processus représenté ; pont de capture porté par un nœud |
 | Client PWAR Windows | Adhérent processus ; nœud ASIO actuel et observations du transport réseau |
 | Audio natif | Accès porté par un nœud ; identité de l'entité correspondante à relier explicitement |
+| Traitement DSP natif du moteur | Nœud appartenant au moteur ; paramètres, ports et coût de traitement propres |
+| SuperCollider utilisé par Mixette | Adhérent processus de traitement ; seuls les ports et traitements explicitement exposés sont visibles du moteur |
 | Routes, gain, mute, associations stéréo | Graphe et configuration des connexions/ports |
 | Horloge physique ou logicielle, rythme effectif | Cadre moteur et capacités du fournisseur d'horloge |
 | Inventaire, diagnostics, performances | Observations reliées aux objets concernés |
@@ -298,9 +354,17 @@ correctement avant d'ajouter de nouvelles sondes.
 
 ## 8. Conséquences pour l'API et la configuration
 
-L'API cible doit exposer le moteur, ses adhérents, leurs nœuds et les relations
+L'API cible doit exposer le moteur, ses adhérents, les nœuds de chacun et les relations
 de ports/connexions, ainsi que leurs capacités, observations et décisions.
 Les noms de types sérialisés, endpoints et événements restent à définir.
+
+La propriété d'un nœud doit être explicite : moteur ou adhérent identifié.
+L'absence d'identité d'adhérent ne suffit pas à désigner le moteur, car elle
+peut signifier une identité encore inconnue. Le contrat doit décrire la fonction,
+les ports et paramètres des traitements exposés, ainsi que les connexions
+souhaitées et appliquées qui déterminent leur ordre. La persistance conserve
+ce circuit indépendamment des coordonnées GUI. Les observations identifient
+le point mesuré, notamment l'entrée ou la sortie d'un traitement.
 
 **Souhaité / appliqué / observé** reste une distinction fondamentale, mais
 décrit les objets et leurs relations au lieu de les remplacer. Une intention
@@ -346,6 +410,16 @@ ils ne décrivent pas des tests nouvellement implémentés.
    garantie de capacité du nouveau projet ; les observations courantes prévalent.
 8. Deux contrôleurs interrogent le moteur : ils obtiennent les mêmes identités
    et décisions, sans dépendre d'une table privée dans TimoxVSSC.
+9. Un égaliseur natif possède explicitement le moteur pour propriétaire, sans
+   adhérent fictif ; ses paramètres, ports et observations sont accessibles.
+10. Déplacer visuellement ce nœud ne change rien au circuit. Reconnecter
+    égaliseur puis compresseur en compresseur puis égaliseur change l'ordre
+    appliqué, qui reste identique après sauvegarde et rechargement.
+11. Une branche parallèle et son point de recombinaison sont explicitement
+    représentés ; aucun réordonnancement silencieux n'est effectué.
+12. Mixette mobilise plusieurs adhérents dont SuperCollider pour le traitement.
+    Un effet interne non exposé de SuperCollider n'est pas inventé comme nœud
+    natif du moteur ; une identité inconnue n'est pas assimilée au moteur.
 
 ## 10. Arbitrages nécessaires avant automatisation/API finale
 
