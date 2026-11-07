@@ -119,5 +119,5 @@
 - GUI, engine, and PWAR main histories are imported. Unique GUI/engine snapshots, the MIDI GUI branch, and both stashes are preserved as `archive/*` refs in TimoxVasio.
 - The unified branch was fast-forwarded to TimoxVasio `main` at `b90f9ec`. No `1.3.0` release tag or GitHub release was created; `v1.2.7` remains the stable tag.
 - The revision-pinned MIDI engine, PWAR client, and ASIO driver built together; the 1.3.0-alpha.1 x64 per-machine installer passed packaged artifact verification and was cleanly reinstalled. The existing profile and stable 1.2.7 installation remain.
-- Remaining gates: a fresh-checkout build, full GUI/MIDI/WASAPI runtime verification, review of the preserved MIDI performance-view branch, and source remote retirement after the user finishes archiving them. Hardware qualification remains out of scope until separately coordinated.
+- Remaining gates: a fresh-checkout build, full GUI/MIDI/WASAPI runtime verification, review of the preserved MIDI performance-view branch, and local source-clone cleanup after confirming no local-only work remains. Hardware qualification remains out of scope until separately coordinated.
 - `grrzzzz/asio` was removed in local commit `3538e28` only; it was not pushed because the local branch also contains unrelated unpublished commits. Other `grrzzzz` work remains untouched.

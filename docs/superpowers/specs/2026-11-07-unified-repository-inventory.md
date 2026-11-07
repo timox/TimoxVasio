@@ -13,7 +13,7 @@ Updated 2026-11-08 from the current local and remote Git state.
 - Imported source `main` revisions: TimoxVSSC `b314d6f`, TimoxVAudioEngine `8350d1d`, Timox-Pwar `f02f653`.
 - Unique source references preserved and pushed under `archive/`: GUI `pr-midi-gui-1`, GUI extraction snapshot, GUI stash, engine extraction snapshot, and engine stash. Engine and PWAR side branches have no commits beyond their imported `main`; the three source repositories have no tags to transfer.
 - GUI branch `pr-midi-gui-1` contains a distinct MIDI performance view. It is preserved for review and has not been merged into the preview GUI.
-- Source clones `TimoxVSSC`, `TimoxVAudioEngine`, and `Timox-Pwar` can now be archived after the destination audit. The user is archiving them before any deletion.
+- GitHub repositories `timox/TimoxVSSC`, `timox/TimoxVAudioEngine`, and `timox/Timox-Pwar` were verified deleted on 2026-11-08. `timox/TimoxVasio` remains active; all five `archive/*` refs remain present. Their local clones still exist on this workstation.
 
 ## Preview build and installation
 
@@ -33,4 +33,4 @@ Updated 2026-11-08 from the current local and remote Git state.
 1. Review the full migration diff and merge `migration/unified-repositories` into `TimoxVasio/main` without tagging or releasing `1.3.0`.
 2. Decide whether the preserved MIDI performance-view branch should be integrated into the preview.
 3. Reconcile the remaining duplicate root engine files with `engine/` before removing any source copies; do not bulk-overlay the differing files.
-4. Remove or archive the three source GitHub repositories only after verifying the merged destination and its reproducible build.
+4. Remove the now-unneeded local GUI/engine/PWAR clones after confirming there is no local-only work to retain; keep `grrzzzz` separate.
