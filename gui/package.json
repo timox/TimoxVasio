@@ -120,5 +120,8 @@
       "include": "assets/installer.nsh"
     },
     "beforePack": "./scripts/before-pack.cjs"
+  },
+  "allowScripts": {
+    "electron@28.3.3": true
   }
 }
