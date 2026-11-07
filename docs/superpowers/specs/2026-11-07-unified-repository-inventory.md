@@ -8,12 +8,12 @@ Updated 2026-11-08 from the current local and remote Git state.
 
 ## Migration state
 
-- Destination branch: `migration/unified-repositories`, HEAD `bad6107`; pushed to `origin/TimoxVasio`.
-- The branch contains the imported histories under `gui/`, `engine/`, and `pwar/`, plus the existing root ASIO driver project. It is not yet merged into `main`; destination `main` still points at the stable `1.2.7` baseline.
+- Destination branch: `migration/unified-repositories`, HEAD `b90f9ec`; pushed and fast-forwarded to `origin/main`. Local `main` is also at `b90f9ec`.
+- The unified histories are now on `main` under `gui/`, `engine/`, and `pwar/`, alongside the existing root ASIO driver project. Stable tag `v1.2.7` remains unchanged; there is no `1.3.0` tag or release.
 - Imported source `main` revisions: TimoxVSSC `b314d6f`, TimoxVAudioEngine `8350d1d`, Timox-Pwar `f02f653`.
 - Unique source references preserved and pushed under `archive/`: GUI `pr-midi-gui-1`, GUI extraction snapshot, GUI stash, engine extraction snapshot, and engine stash. Engine and PWAR side branches have no commits beyond their imported `main`; the three source repositories have no tags to transfer.
 - GUI branch `pr-midi-gui-1` contains a distinct MIDI performance view. It is preserved for review and has not been merged into the preview GUI.
-- Source clones `TimoxVSSC`, `TimoxVAudioEngine`, and `Timox-Pwar` are still present locally and on GitHub. They can be closed in an editor; do not delete the remote repositories before the migration branch is merged and audited.
+- Source clones `TimoxVSSC`, `TimoxVAudioEngine`, and `Timox-Pwar` can now be archived after the destination audit. The user is archiving them before any deletion.
 
 ## Preview build and installation
 
