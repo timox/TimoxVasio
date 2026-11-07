@@ -16,27 +16,27 @@
       "path": "artifacts/driver/TimoxVasio.dll",
       "repository": "timox/TimoxVasio",
       "component": "driver",
-      "revision": "98a10a9d96d067fe47460a13e0ed8aea6dcae41f",
-      "sha256": "ec717975fff98d4647f9d98f1a263afc6ea6afad4eaa4ec15ad5250ebd01e802",
-      "sourcePath": "build/unified-preview/driver/Release/TimoxVasio.dll",
+      "revision": "126a8b1f303770d28a1b7d50268b651348e39a55",
+      "sha256": "be4b60e6a7569532367800d1a64d0f4c07e4d0fb63fcfdbb79a1729dab845716",
+      "sourcePath": "build/unified-preview/126a8b1f303770d28a1b7d50268b651348e39a55/driver/Release/TimoxVasio.dll",
       "sizeBytes": 162816
     },
     {
       "path": "artifacts/backend/TimoxVirtualAsioEngine.exe",
       "repository": "timox/TimoxVasio",
       "component": "engine",
-      "revision": "98a10a9d96d067fe47460a13e0ed8aea6dcae41f",
-      "sha256": "ce735ba2211516721a1e6b77efb4013594faa4f0240abd7bdae3dc1c4ef9850a",
-      "sourcePath": "build/unified-preview/engine/Release/TimoxVirtualAsioEngine.exe",
+      "revision": "126a8b1f303770d28a1b7d50268b651348e39a55",
+      "sha256": "7068f065f29afa779ad04babb7db6a3512450db63c81ea8eb5b8741a691039dc",
+      "sourcePath": "build/unified-preview/126a8b1f303770d28a1b7d50268b651348e39a55/engine/Release/TimoxVirtualAsioEngine.exe",
       "sizeBytes": 1829376
     },
     {
       "path": "artifacts/backend/PwarAsioClient.exe",
       "repository": "timox/TimoxVasio",
       "component": "pwar",
-      "revision": "98a10a9d96d067fe47460a13e0ed8aea6dcae41f",
-      "sha256": "5f5f6203a2cd16e8dfbd000707c1ceee719175e6e19979d8168b432704921b66",
-      "sourcePath": "build/unified-preview/pwar/Release/PwarAsioClient.exe",
+      "revision": "126a8b1f303770d28a1b7d50268b651348e39a55",
+      "sha256": "a8038bf4b3a240359760f75a422847234842edb912c6ffd201087e0544f14873",
+      "sourcePath": "build/unified-preview/126a8b1f303770d28a1b7d50268b651348e39a55/pwar/Release/PwarAsioClient.exe",
       "sizeBytes": 152576
     },
     {
@@ -72,22 +72,22 @@
     "driver": {
       "repository": "timox/TimoxVasio",
       "version": "1.2.7-test",
-      "revision": "98a10a9d96d067fe47460a13e0ed8aea6dcae41f",
+      "revision": "126a8b1f303770d28a1b7d50268b651348e39a55",
       "bundled": true,
-      "sha256": "ec717975fff98d4647f9d98f1a263afc6ea6afad4eaa4ec15ad5250ebd01e802"
+      "sha256": "be4b60e6a7569532367800d1a64d0f4c07e4d0fb63fcfdbb79a1729dab845716"
     },
     "engine": {
       "repository": "timox/TimoxVasio",
       "component": "engine",
       "version": "1.3.0-alpha.2",
-      "revision": "98a10a9d96d067fe47460a13e0ed8aea6dcae41f",
+      "revision": "126a8b1f303770d28a1b7d50268b651348e39a55",
       "apiVersion": "1.1",
       "windowsMidiServices": true
     },
     "pwar": {
       "repository": "timox/TimoxVasio",
       "component": "pwar",
-      "revision": "98a10a9d96d067fe47460a13e0ed8aea6dcae41f",
+      "revision": "126a8b1f303770d28a1b7d50268b651348e39a55",
       "controlProtocolVersion": 1,
       "audioContinuityQualified": false,
       "version": "0.1.0-alpha.1"
