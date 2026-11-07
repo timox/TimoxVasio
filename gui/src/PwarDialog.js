@@ -21,9 +21,11 @@ export default function PwarDialog({ clients = [], activeRoutes = [], connected 
     };
     useEffect(() => {
         let disposed = false;
-        request('GET').then(value => { if (!disposed) setSettings(value); })
+        setClientStatus(null);
+        if (connected) request('GET').then(value => { if (!disposed) setSettings(value); })
             .catch(reason => { if (!disposed) setError(reason.message); });
         const refreshClient = async () => {
+            if (!connected) return;
             try {
                 const response = await window.vasio.httpRequest('GET', '/api/v1/pwar/client');
                 if (response.status < 200 || response.status >= 300)
@@ -37,7 +39,7 @@ export default function PwarDialog({ clients = [], activeRoutes = [], connected 
                     }));
                     setClientStatus(response.body.client || response.body);
                 }
-            } catch (reason) { if (!disposed) setError(reason.message); }
+            } catch (reason) { if (!disposed) { setClientStatus(null); setError(reason.message); } }
         };
         refreshClient();
         const poll = window.setInterval(refreshClient, 1500);
@@ -62,17 +64,18 @@ export default function PwarDialog({ clients = [], activeRoutes = [], connected 
         document.addEventListener('keydown', keydown);
         return () => { disposed = true; window.clearInterval(poll); document.removeEventListener('keydown', keydown);
             if (previous?.isConnected) previous.focus(); };
-    }, []);
+    }, [connected]);
     const perform = async action => {
         setBusy(true); setError(''); setMessage('');
         try { await action(); } catch (reason) { setError(reason.message); }
         finally { setBusy(false); }
     };
-    const pwarClients = connected ? clients.filter(client => /pwar/i.test(client.processName)) : [];
     const disabled = busy || locked || !connected;
     const change = value => { setSettings(value); setMessage(''); };
-    const clientState = clientStatus?.state || 'stopped';
-    const clientRunning = clientStatus?.available === true && !['stopped', 'error'].includes(clientState);
+    const clientState = !connected ? 'Connection lost' : clientStatus?.state || 'Status unavailable';
+    const clientRunning = connected && clientStatus?.available === true && ['starting', 'running', 'stopping'].includes(clientState);
+    const pwarClients = connected && clientRunning && Number.isInteger(clientStatus?.pid) && clientStatus.pid > 0
+        ? clients.filter(client => client.pid === clientStatus.pid) : [];
     const runClientCommand = async (command, payload) => perform(async () => {
         const result = await window.vasio.executeCommand({
             id: `pwar-client-${command}-${Date.now()}`, command,
@@ -98,7 +101,7 @@ export default function PwarDialog({ clients = [], activeRoutes = [], connected 
             <h3 id="pwar-client-heading">Windows ↔ Linux audio bridge</h3>
             <p>This supervised client joins the Timox audio graph through the existing ASIO driver. Its inputs send Timox audio to Linux; its outputs return Linux audio to Timox. The physical audio device stays selected in Audio setup.</p>
             <div className="pwar-client-state" role="status"><span className={`pwar-state-dot ${clientRunning ? 'running' : clientState === 'error' ? 'error' : ''}`} />
-                <strong>{clientState}</strong>{clientStatus?.pid && <span>PID {clientStatus.pid}</span>}
+                <strong>{clientState}</strong>{connected && clientStatus?.pid && <span>PID {clientStatus.pid}</span>}
                 {clientStatus?.error && <span role="alert">{clientStatus.error}</span>}
             </div>
             <label className="field">Linux peer IPv4 address<input inputMode="decimal" autoComplete="off"
@@ -122,12 +125,12 @@ export default function PwarDialog({ clients = [], activeRoutes = [], connected 
                 <button disabled={busy || !connected} onClick={() => window.vasio.httpRequest('GET', '/api/v1/pwar/client').then(response => {
                     if (response.status < 200 || response.status >= 300) throw new Error(response.body?.message || 'Unable to refresh PWAR client status');
                     setClientStatus(response.body.client || response.body);
-                }).catch(reason => setError(reason.message))}>Refresh status</button>
+                }).catch(reason => { setClientStatus(null); setError(reason.message); })}>Refresh status</button>
             </div>
-            {clientStatus?.status && <dl className="pwar-client-metrics">
+            {connected && clientStatus?.status && <dl className="pwar-client-metrics">
                 <div><dt>ASIO callbacks</dt><dd>{clientStatus.status.callbackCount ?? '—'}</dd></div>
                 <div><dt>Network packets</dt><dd>{[clientStatus.status.packetsSent, clientStatus.status.packetsReceived].some(Number.isFinite)
-                    ? `${clientStatus.status.packetsSent ?? 0} sent · ${clientStatus.status.packetsReceived ?? 0} received` : '—'}</dd></div>
+                    ? `${clientStatus.status.packetsSent ?? '—'} sent · ${clientStatus.status.packetsReceived ?? '—'} received` : '—'}</dd></div>
                 <div><dt>Last activity</dt><dd>{clientStatus.status.lastActivity ?? '—'}</dd></div>
                 <div><dt>Latency / drift</dt><dd>Not measured</dd></div>
             </dl>}
@@ -136,8 +139,8 @@ export default function PwarDialog({ clients = [], activeRoutes = [], connected 
         {tab === 'legacy' && <>
         <p>For the Timox integration, the PWAR Windows bridge must open <code>TimoxVasio.dll</code> as an ASIO client. When running in this mode, it appears as an ordinary App block in Routing; the physical ASIO device selected by Timox remains your local audio interface.</p>
         <p>Route a Timox source to the PWAR client’s <strong>Inputs</strong> to send Windows audio to Linux. Route the PWAR client’s <strong>Outputs</strong> to a destination to bring Linux audio into Windows. Only these explicit graph routes carry audio.</p>
-        <p role="status">{!connected ? 'Connection lost' : pwarClients.length ? `${pwarClients.length} ASIO client${pwarClients.length === 1 ? '' : 's'} with “PWAR” in the process name detected.` : 'No ASIO client with “PWAR” in the process name is detected.'}
-            {' '}This identification uses the process name; it is not a PWAR handshake. Detection confirms a driver connection only; route counts do not confirm signal or network traffic. Check the channel meters in Routing to confirm audio reaches Timox.</p>
+        <p role="status">{!connected ? 'Connection lost' : pwarClients.length ? 'ASIO client matching the current supervised PWAR PID detected.' : 'No ASIO client matches the current supervised PWAR PID.'}
+            {' '}The supervisor reports the current process; this is not a durable identity or a PWAR handshake. Route counts do not confirm signal or network traffic.</p>
         {!connected ? <p className="hint">Reconnect to Timox to refresh the ASIO client list.</p> : pwarClients.length > 0 ? <ul className="pwar-client-list">{pwarClients.map(client => {
             const prefix = `virtual:TimoxVasio:${client.pid}:`;
             const routedInputs = new Set(activeRoutes.filter(route => route.destinationEndpointId.startsWith(`${prefix}input:`))
@@ -148,7 +151,7 @@ export default function PwarDialog({ clients = [], activeRoutes = [], connected 
                 <strong>{client.processName}</strong><span>PID {client.pid} · {client.inputChannels?.length || 0} input channels · {client.outputChannels?.length || 0} output channels</span>
                 <span>Configured graph routes: {routedInputs} input channels · {routedOutputs} output channels</span>
             </li>;
-        })}</ul> : <p className="hint">If the Windows bridge is connected under a process name without “PWAR”, it will still appear as an ordinary ASIO App block in Routing but will not be listed here. The bridge must open TimoxVasio.dll as an ASIO client; the physical ASIO device remains selected independently.</p>}
+        })}</ul> : <p className="hint">Clients started outside the supervisor remain ordinary ASIO App blocks in Routing. Their process names do not establish a PWAR identity.</p>}
         {settings && <section className="pwar-direction" aria-labelledby="pwar-send-heading">
             <h3 id="pwar-send-heading">Windows → Linux · send audio</h3>
             <p>These fields set the Linux destination written to the Windows PWAR ASIO configuration.</p>

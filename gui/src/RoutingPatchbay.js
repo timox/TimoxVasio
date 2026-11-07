@@ -237,7 +237,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
     const linkedDestinations = new Set(focusedRoutes.map(route => route.destinationEndpointId));
     const allLinkedDestinations = new Set(routes.map(route => route.destinationEndpointId));
     const focusGroups = (groups, linked) => connectedOnly ? groups.map(group => ({ ...group,
-        endpoints: group.endpoints.filter(endpoint => linked.has(endpoint.id)) })) : groups;
+        endpoints: group.endpoints.filter(endpoint => group.alwaysVisible || linked.has(endpoint.id)) })) : groups;
     const sources = withSearch(focusGroups(sourceGroups, linkedSources), sourceSearch);
     const destinations = withSearch(focusGroups(destinationGroups, linkedDestinations), destinationSearch);
     const nodes = graphNodes(sources, destinations, sourceGroups, destinationGroups);
@@ -525,7 +525,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
         const selected = route.id === selectedRouteId;
         const sourceLevel = meterPeakDbfs(meters[route.sourceEndpointId]);
         const routeLevel = sourceLevel + (route.gainDb ?? 0);
-        const signalFlowing = state === 'active' && !route.mute && routeLevel > -90;
+        const signalFlowing = Number.isFinite(sourceLevel) && state === 'active' && !route.mute && routeLevel > -90;
         return { id: route.id, source, target, sourceHandle: route.sourceEndpointId,
             targetHandle: route.destinationEndpointId, type: 'default', interactionWidth: 28,
             reconnectable: !disabled, selected, animated: signalFlowing,
@@ -534,7 +534,7 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                 strokeWidth: selected ? 4 : state === 'active' ? 2.8 : 2.2,
                 strokeDasharray: route.mute ? '2 5' : state === 'pending' ? '7 4' : undefined },
             label: route.gainDb > 0 ? '▲' : undefined,
-            ariaLabel: `${describeRoute(route)}${signalFlowing ? ' · signal flowing' : ''}` };
+            ariaLabel: `${describeRoute(route)}${signalFlowing ? ' · estimated signal from source level and gain' : ''}` };
     }).filter(Boolean);
     // A collapsed block hides handles/cables, but remains connected for layout.
     const layoutEdges = routes.map(route => {
@@ -824,13 +824,16 @@ export default function RoutingPatchbay({ sourceGroups = [], destinationGroups =
                     <p>{matrixSource.label} → {matrixDestination.label}</p>
                 </div><button type="button" ref={matrixCloseRef} onClick={() => setMatrixOpen(false)} aria-label="Close channel matrix">Close</button></div>
                 <div className="connection-matrix-scroll"><table><thead><tr><th scope="col">Output / input</th>
-                    {matrixDestination.endpoints.filter(endpoint => matrixRoutes.some(route => route.destinationEndpointId === endpoint.id)).map(endpoint =>
+                    {matrixDestination.endpoints.map(endpoint =>
                         <th key={endpoint.id} scope="col" title={endpoint.name}>{endpoint.name}</th>)}</tr></thead><tbody>
-                    {matrixSource.endpoints.filter(endpoint => matrixRoutes.some(route => route.sourceEndpointId === endpoint.id)).map(source =>
+                    {matrixSource.endpoints.map(source =>
                         <tr key={source.id}><th scope="row" title={source.name}>{source.name}</th>
-                            {matrixDestination.endpoints.filter(endpoint => matrixRoutes.some(route => route.destinationEndpointId === endpoint.id)).map(destination => {
+                            {matrixDestination.endpoints.map(destination => {
                                 const linked = matrixRoutes.some(route => route.sourceEndpointId === source.id && route.destinationEndpointId === destination.id);
-                                return <td key={destination.id}>{linked ? '●' : '·'}</td>;
+                                return <td key={destination.id}><button type="button" className={`connection-matrix-cell${linked ? ' linked' : ''}`}
+                                    disabled={disabled} aria-pressed={linked}
+                                    aria-label={`${linked ? 'Remove' : 'Add'} ${source.name} to ${destination.name}`}
+                                    onClick={() => onToggleRoute(source.id, destination.id)}>{linked ? '●' : '·'}</button></td>;
                             })}</tr>)}</tbody></table></div>
             </div></div>, document.body)}
         {processDialogNode && createPortal(<div className="routing-dialog-backdrop" onMouseDown={event => {

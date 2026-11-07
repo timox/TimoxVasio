@@ -7,6 +7,7 @@ import './RoutingPalette.css';
 import AudioHelpDialog, { AudioHelpContent } from './AudioHelpDialog';
 import ContextHelp from './ContextHelp';
 import SectionTabs from './SectionTabs';
+import MidiWorkspace from './MidiWorkspace';
 import RoutingPatchbay from './RoutingPatchbay';
 import NativeAudioDialog from './NativeAudioDialog';
 import PwarDialog from './PwarDialog';
@@ -20,10 +21,11 @@ import AnalysisTimeline from './AnalysisTimeline';
 import { readHardwareTransfer, saveHardwareTransfer, transferRoutesToDriver } from './hardware-transfer';
 import { DEFAULT_ROUTE_COLOR, readRouteVisuals, routeVisualKey, saveRouteVisuals } from './route-visuals';
 import { transferProcessConnections } from './process-connection-transfer';
-const { configurationFromState } = require('./api-contract');
+import releaseInfo from './release-info';
+const { configurationFromState, deviceTopologyKey, mergeClientObservations } = require('./api-contract');
 const { mergeConfigurationDraft } = require('./configuration-merge');
 const openApiDocument = require('./openapi-spec.generated');
-const applicationProductName = process.env.REACT_APP_PRODUCT_NAME || 'Timox VASIO Control';
+const applicationProductName = process.env.REACT_APP_PRODUCT_NAME || 'TimoxVasio';
 const migrationLogKey = 'timoxvasio.connection-migrations.v1';
 const readMigrationLog = () => {
     try { return JSON.parse(window.localStorage.getItem(migrationLogKey)) || []; }
@@ -75,7 +77,16 @@ function App() {
     const [diagnosticsError, setDiagnosticsError] = useState('');
     const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
     const [engineAction, setEngineAction] = useState('');
-    const [meters, setMeters] = useState({});
+    const [rawMeters, setMeters] = useState({});
+    const meters = useMemo(() => {
+        const unavailable = (apiState?.virtualDrivers || []).flatMap(driver => (driver.clients || [])
+            .filter(client => client.activity?.available === false || client.activity?.successfulExchangeCount === 0 ||
+                ['initialized', 'buffers-ready', 'stopped', 'detached'].includes(client.activity?.state))
+            .map(client => `virtual:${driver.id}:${client.pid}:output:`));
+        return Object.fromEntries(Object.entries(rawMeters).map(([id, meter]) => [id,
+            unavailable.some(prefix => id.startsWith(prefix))
+                ? { ...meter, peakDbfs: null, shortTermLufs: null, displayPeakDbfs: null } : meter]));
+    }, [rawMeters, apiState?.virtualDrivers]);
     const [transportHistory, setTransportHistory] = useState([]);
     const [performanceHistory, setPerformanceHistory] = useState([]);
     const [selectedStereoPairId, setSelectedStereoPairId] = useState('');
@@ -94,8 +105,17 @@ function App() {
     const [consoleConfirmation, setConsoleConfirmation] = useState('');
     const confirmationDialog = useRef(null);
     const metersRef = useRef({});
+    const deviceTopologyRef = useRef(null);
     const lastConfirmedConfiguration = useRef(null);
     const draftBaseConfiguration = useRef(null);
+
+    useEffect(() => {
+        if (Object.keys(rawMeters).some(id => rawMeters[id].peakDbfs !== meters[id].peakDbfs ||
+            rawMeters[id].shortTermLufs !== meters[id].shortTermLufs || rawMeters[id].displayPeakDbfs !== meters[id].displayPeakDbfs)) {
+            metersRef.current = { ...meters };
+            setMeters(meters);
+        }
+    }, [rawMeters, meters]);
 
     useEffect(() => { saveRouteVisuals(routeVisuals); }, [routeVisuals]);
     useEffect(() => { saveHardwareTransfer(hardwareTransfer); }, [hardwareTransfer]);
@@ -185,10 +205,20 @@ function App() {
         }].slice(-1800));
     }, []);
 
+    const updateMeterTopology = useCallback(state => {
+        const key = deviceTopologyKey(state);
+        if (deviceTopologyRef.current !== key || (state.engine && state.engine.state !== 'running')) {
+            metersRef.current = {};
+            setMeters({});
+        }
+        deviceTopologyRef.current = key;
+    }, []);
+
     const refreshState = useCallback(async ({ resetDraft = false } = {}) => {
         const generation = connectionGeneration.current;
         const state = await window.vasio.getState();
         if (generation !== connectionGeneration.current) return;
+        updateMeterTopology(state);
         recordPerformanceState(state);
         const confirmedConfiguration = configurationFromState(state);
         const previousConfirmed = lastConfirmedConfiguration.current;
@@ -209,7 +239,7 @@ function App() {
         lastConfirmedConfiguration.current = confirmedConfiguration;
         setSelectedStereoPairId(current => state.stereoPairs?.some(pair => pair.id === current) ? current : '');
         return state;
-    }, [recordPerformanceState]);
+    }, [recordPerformanceState, updateMeterTopology]);
 
     const refreshApplicationProfiles = useCallback(async () => {
         setProfilesLoading(true);
@@ -236,17 +266,18 @@ function App() {
             return undefined;
         }
         const unsubscribeEvents = window.vasio.subscribeEvents(message => {
-            if (['engine.status', 'devices.changed', 'routes.changed', 'engine.error', 'audio.meter', 'audio.correlation', 'audio.stereoPairs.changed'].includes(message.event))
+            if (['engine.status', 'devices.changed', 'routes.changed', 'engine.error', 'audio.meter', 'audio.correlation', 'audio.stereoPairs.changed', 'supervision.observations'].includes(message.event))
                 setApiEvents(current => [...current, { time: new Date().toISOString(), event: message.event, payload: message.payload }].slice(-500));
             if (message.event === 'engine.status') {
                 setEngine(message.payload);
                 if (message.payload.state !== 'running') { metersRef.current = {}; setMeters({}); }
             }
             if (message.event === 'devices.changed') {
-                metersRef.current = {};
-                setMeters({});
+                updateMeterTopology(message.payload);
                 setApiState(current => current && ({ ...current, ...message.payload }));
             }
+            if (message.event === 'supervision.observations')
+                setApiState(current => mergeClientObservations(current, message.payload));
             if (message.event === 'routes.changed') {
                 refreshState().catch(error => setConnectionError(error.message));
                 metersRef.current = {};
@@ -262,7 +293,8 @@ function App() {
                 const heldPeak = previous?.displayPeakDbfs ?? previous?.peakDbfs ?? -120;
                 const releasedPeak = Math.max(-120, heldPeak - elapsedMs * 0.012);
                 const meter = { ...message.payload, receivedAt: now,
-                    displayPeakDbfs: Math.max(message.payload.peakDbfs ?? -120, releasedPeak) };
+                    displayPeakDbfs: Number.isFinite(message.payload.peakDbfs)
+                        ? Math.max(message.payload.peakDbfs, releasedPeak) : null };
                 metersRef.current[message.payload.endpointId] = meter;
                 setMeters(current => ({ ...current, [message.payload.endpointId]: meter }));
             }
@@ -281,7 +313,10 @@ function App() {
                 setConnectionError('');
                 disconnectListener = window.electronAPI.onEngineConnection(status => {
                     const generation = ++connectionGeneration.current;
-                    if (!status.connected) setConnectionError(status.error || 'The VASIO engine is stopped');
+                    if (!status.connected) {
+                        metersRef.current = {}; setMeters({}); deviceTopologyRef.current = null;
+                        setConnectionError(status.error || 'The VASIO engine is stopped');
+                    }
                     else refreshState().then(() => {
                         if (!disposed && generation === connectionGeneration.current) setConnectionError('');
                     }).catch(error => {
@@ -294,7 +329,10 @@ function App() {
                 });
                 const unsubscribeDisconnect = window.vasio.onDisconnect(() => {
                     ++connectionGeneration.current;
-                    if (!disposed) setConnectionError('API connection lost');
+                    if (!disposed) {
+                        metersRef.current = {}; setMeters({}); deviceTopologyRef.current = null;
+                        setConnectionError('API connection lost');
+                    }
                 });
                 disconnectListener = (() => {
                     const removeEngineListener = disconnectListener;
@@ -311,7 +349,7 @@ function App() {
             if (disconnectListener) disconnectListener();
             if (diagnosticListener) diagnosticListener();
         };
-    }, [refreshApplicationProfiles, refreshState]);
+    }, [refreshApplicationProfiles, refreshState, updateMeterTopology]);
 
     useEffect(() => {
         if (!window.vasio?.getState) return undefined;
@@ -319,6 +357,7 @@ function App() {
             const generation = connectionGeneration.current;
             window.vasio.getState().then(state => {
                 if (generation !== connectionGeneration.current) return;
+                updateMeterTopology(state);
                 recordPerformanceState(state);
                 setApiState(current => ({
                     ...state,
@@ -330,7 +369,7 @@ function App() {
             }).catch(error => { if (generation === connectionGeneration.current) setConnectionError(error.message); });
         }, 5000);
         return () => window.clearInterval(timer);
-    }, [recordPerformanceState]);
+    }, [recordPerformanceState, updateMeterTopology]);
 
     useEffect(() => {
         const timer = window.setInterval(() => {
@@ -373,14 +412,14 @@ function App() {
                 ...virtualInputs, ...virtualOutputs],
             profiled,
             sourceGroups: [
-                { id: 'physical-input', label: 'Physical inputs', endpoints: physicalInputs },
-                { id: 'physical-output', label: 'Physical outputs', endpoints: physicalOutputs },
+                { id: 'physical-input', label: 'Physical inputs', endpoints: physicalInputs, alwaysVisible: true },
+                { id: 'physical-output', label: 'Physical outputs', endpoints: physicalOutputs, alwaysVisible: true },
                 { id: 'virtual-input', label: 'Virtual inputs', endpoints: virtualInputs },
                 { id: 'virtual-output', label: 'Virtual outputs', endpoints: virtualOutputs }
             ],
             destinationGroups: [
-                { id: 'physical-input', label: 'Physical inputs', endpoints: physicalInputs },
-                { id: 'physical-output', label: 'Physical outputs', endpoints: physicalOutputs },
+                { id: 'physical-input', label: 'Physical inputs', endpoints: physicalInputs, alwaysVisible: true },
+                { id: 'physical-output', label: 'Physical outputs', endpoints: physicalOutputs, alwaysVisible: true },
                 { id: 'virtual-input', label: 'Virtual inputs', endpoints: virtualInputs },
                 { id: 'virtual-output', label: 'Virtual outputs', endpoints: virtualOutputs }
             ]
@@ -998,7 +1037,7 @@ function App() {
             </header>
             <nav className="view-tabs" aria-label="Application sections">
                 <div className="view-tabs-heading">Sections</div>
-                {[['configuration', 'Audio setup'], ['channels', 'Routing'], ['analysis', 'Analysis'], ['performance', 'Performance'], ['api', 'API and Swagger'], ['diagnostics', 'Logs']].map(([id, label]) =>
+                {[['configuration', 'Audio setup'], ['channels', 'Routing'], ['midi', 'MIDI'], ['analysis', 'Analysis'], ['performance', 'Performance'], ['api', 'API and Swagger'], ['diagnostics', 'Logs'], ['about', 'À propos']].map(([id, label]) =>
                     <button key={id} type="button" className={activeView === id ? 'selected' : ''} aria-current={activeView === id ? 'page' : undefined}
                         onClick={() => { setRoutingDialog(null); setProfileCatalogOpen(false); setActiveView(id); if (id === 'diagnostics') refreshDiagnostics(); }}>{label}</button>)}
                 {activeView === 'channels' && <div className="view-tabs-actions">
@@ -1010,7 +1049,22 @@ function App() {
                         disabled={configurationLocked || !!hardwareTransfer}>Discard pending edits</button>}
                 </div>}
             </nav>
-            {activeView === 'analysis' ? <main className="main-content api-console">
+            {activeView === 'about' ? <main className="main-content api-console about-content">
+                <div className="workspace-heading"><div><h2>À propos de {releaseInfo.product.name}</h2><p>Versions des composants de cette préversion.</p></div></div>
+                <section className="section about-panel" aria-labelledby="about-components-title">
+                    <div className="section-heading"><div><h3 id="about-components-title">Composants installés</h3><p className="hint">Ces versions correspondent à l’assemblage verrouillé de cette préversion.</p></div></div>
+                    <div className="about-component-list">
+                        {releaseInfo.components.map(component => <article className="about-component" key={component.id}>
+                            <div><h4>{component.label}</h4><p>{component.description}</p></div>
+                            <strong>{component.version}</strong>
+                            {component.revision && <code title={component.revision}>révision {component.revision.slice(0, 8)}</code>}
+                        </article>)}
+                    </div>
+                    <dl className="about-contracts"><div><dt>Version GUI</dt><dd>{releaseInfo.product.version}</dd></div><div><dt>API requise</dt><dd>{releaseInfo.apiVersion}</dd></div></dl>
+                </section>
+            </main> : activeView === 'midi' ? <main className="main-content midi-content">
+                <MidiWorkspace />
+            </main> : activeView === 'analysis' ? <main className="main-content api-console">
                 <div className="workspace-heading"><h2>Analysis</h2><ContextHelp topic={analysisTab === 'help' ? 'analysis' : 'analysis-' + analysisTab} onOpen={setHelpTopic} label="Help with this analysis" /></div>
                 <SectionTabs id="analysis" label="analysis topics" value={analysisTab} onChange={setAnalysisTab} tabs={[{"id":"timeline","label":"Timeline"},{"id":"transport","label":"Transport incidents"},{"id":"channels","label":"Channels"},{"id":"correlation","label":"Stereo correlation"},{"id":"help","label":"Help"}]} />
                 <div className="subtopic-panel" hidden={['correlation', 'help'].includes(analysisTab)}>
@@ -1528,7 +1582,7 @@ function BridgeStatus({ bridge, runtime, devices, compact = false, onHelp }) {
     const health = runtime?.health;
     return <div className={compact ? 'bridge-summary' : 'bridge-live-status'}>
         <p>{processLoopback ? `Process copy · ${processName || `PID ${bridge.processId}`} and child processes` : device?.name || bridge.endpointId || ('Windows default: ' + bridge.defaultRole)}</p>
-        <div className="bridge-state-line"><span>{bridge.enabled === false ? 'Audio disabled' : 'Audio enabled'}</span><span>Stream: {runtime?.state || 'not opened'}</span></div>
+        <div className="bridge-state-line"><span>Requested audio: {bridge.enabled === false ? 'disabled' : 'enabled'}</span><span>Stream: {runtime?.state || 'status unavailable'}</span></div>
         {device?.error && <p role="alert">{device.error}</p>}
         {!compact && <>
             <div className="section-heading"><h4>Live measurements</h4>{onHelp && <ContextHelp topic="wasapi-status" onOpen={onHelp} label="What do these stream counters mean?" />}</div>

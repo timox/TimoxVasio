@@ -129,6 +129,18 @@
 }
 
 .api-console { max-width: 1500px; width: 100%; margin: 0 auto; }
+.about-content { max-width: 1050px; }
+.about-panel { max-width: 920px; }
+.about-component-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.about-component { display: flex; min-height: 130px; flex-direction: column; justify-content: space-between; gap: 10px; padding: 16px; border: 1px solid #34465c; border-radius: 7px; background: rgba(7, 15, 26, .55); }
+.about-component h4 { margin: 0; color: #e3edf3; font-size: 16px; }
+.about-component p { margin: 5px 0 0; color: #aab5c3; font-size: 13px; line-height: 1.4; }
+.about-component strong { color: #00d4ff; font-size: 18px; }
+.about-component code { color: #cbd4df; font-size: 12px; }
+.about-contracts { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 18px 0 0; padding-top: 16px; border-top: 1px solid #34465c; }
+.about-contracts div { display: flex; gap: 8px; }
+.about-contracts dt { color: #aab5c3; }
+.about-contracts dd { margin: 0; color: #f4f7fa; font-weight: 600; }
 .section h3 { color: #c8e9f1; margin-bottom: 12px; }
 .field { display: flex; flex-direction: column; gap: 7px; min-width: 220px; color: #cbd4df; }
 .field select, .field input, .configured-routes input[type="number"] {

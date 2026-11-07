@@ -1,45 +1,16 @@
-# Timox VASIO Control
+# TimoxVasio
 
-**Français** | [English](README.en.md)
+Latest stable: **1.2.7**. The integrated work is an unreleased **1.3.0** preview
+(GUI **1.3.0-alpha.1**, engine **1.3.0-alpha.2**, API **1.1**, MIDI backend
+enabled). See [RELEASE.md](RELEASE.md) and `artifacts.lock.json` for component
+provenance and outstanding binary/runtime validation.
+The bundled PWAR candidate is independently versioned **0.1.0-alpha.1**;
+its control protocol remains **v1**.
 
-Interface Electron et React de configuration du moteur VASIO. L’interface consomme le contrat déclaré dans `../schemas/api-v1.json` : HTTP pour l’état et l’inventaire, WebSocket `vasio.api.v1` pour `configuration.apply` et les événements du moteur.
+Control preview extracted from TimoxVasio. The NSIS installer bundles the `1.2.7-test` ASIO driver and stops/removes only the GUI-owned engine, PWAR client and preview registration; installing the stable driver afterward remains supported.
 
-## Démarrage en développement
+With the versions in `package-lock.json` installed, run `npm run react-build`, `npm run contract-test`, and `npm run electron-test`. `npm start` launches the UI and may launch its pinned engine; do not use it just to verify a build.
 
-Depuis `gui/` :
+For packaging, place the separately built engine and PWAR client under `artifacts/backend/`, keep the pinned preview driver under `artifacts/driver/`, pin revisions and SHA-256 values in `artifacts.lock.json`, then run `npm run dist`. Missing or changed inputs fail packaging.
 
-```powershell
-npm install
-npm start
-```
-
-Le processus Electron s’attache à un moteur déjà actif sur le port local ou démarre `TimoxVirtualAsioEngine.exe`, puis consomme son API HTTP et sa WebSocket. Le serveur de développement React utilise le port 4000. **ASIO setup** présente la carte physique avant la liste des profils de capacité. **Routing** montre les connexions sauvegardées dans un patchbay où un processus regroupe ses entrées et sorties. Le menu gauche contient uniquement les sections et les commandes globales. Les détails contextuels sont exclusivement des modales ouvertes depuis le menu contextuel ; aucun inspecteur permanent ne borde le graphe. La carte se zoome et se déplace ; une matrice ciblée s'ouvre dans une fenêtre centrée depuis une connexion sélectionnée. Un clic droit sur le fond ouvre l'ajout mono/stéréo et le détail des canaux ; un clic droit sur un processus permet d'ajouter, modifier ou retirer un de ses liens ; un clic droit sur un câble agit sur ce seul lien. L’action Configure process du menu contextuel d’un processus permet de lui attribuer un profil ou de retirer sa configuration. Sur un bloc d'anciennes connexions, il propose aussi de transférer les liens vers un processus ouvert dans le brouillon. Les migrations appliquées sont consignées dans **Logs**, sans suffixe sur les ports. Les libellés, couleurs et positions personnalisés restent locaux à Control. Performance affiche le budget du callback physique et, sur demande, les durées par étape du trajet audio. Swagger UI et les schémas sont produits depuis `../api/openapi-v1.json` et `../api/schemas/api-v1.json`, puis embarqués avec leurs ressources locales par `scripts/embed-openapi.js`.
-
-En développement et lors de l’empaquetage, Electron utilise `../build_codex_110/Release/TimoxVirtualAsioEngine.exe`. `npm run dist` vérifie avant le packaging la présence des binaires et les SHA-256 du moteur, du pilote et du ZIP pilote. Après packaging, il compare le moteur embarqué avec le build source et écrit un manifeste dans `dist/release-validation-1.2.7/`. Le Setup embarque et enregistre la DLL ASIO avec élévation administrateur. L’exécutable portable ne l’installe pas.
-
-## Utilisation
-
-1. Dans Routing, faire un clic droit sur un processus présent puis choisir Configure process pour lui attribuer un profil de canaux. Les profils existants viennent de `GET /api/v1/application-profiles` et l'attribution utilise `PUT /api/v1/application-profiles`.
-2. Fermer puis relancer les applications signalées par l’API pour qu’elles annoncent les nouveaux comptes. Le profil initial de `mixxx.exe` est 255/255; les applications sans profil gardent 256/256.
-3. Choisir un pilote ASIO physique et appliquer. Le moteur ouvre alors le pilote choisi et publie ses endpoints dans l’inventaire.
-4. Sélectionner des endpoints de sortie et d’entrée pour construire les routes. Les points disponibles viennent exclusivement de l’API.
-5. Régler le gain et le mute, puis appliquer la configuration complète.
-
-Si la liste des profils indique une route HTTP 404, le moteur auquel l’application est connectée est antérieur à cette API. Reconstruire et relancer `TimoxVirtualAsioEngine.exe`, puis reconnecter l’interface.
-
-Chaque application remplace la configuration moteur et interrompt le flux audio le temps du changement. Le statut et les erreurs affichés viennent des événements de l’API.
-
-## Vérifications
-
-```powershell
-npm run contract-test
-npm run react-build
-```
-
-Les commandes vérifient le façonnage du contrat sans dépendance tierce et compilent l’interface React avec l’API intégrée hors ligne.
-
-## Diagnostic et arrêt
-
-La vue Journaux lit le moteur via `GET /api/v1/diagnostics` et change le niveau via `PUT /api/v1/diagnostics`. Elle permet aussi d’arrêter puis redémarrer le processus. L’arrêt documenté est protégé : le moteur répond `ENGINE_CLIENTS_CONNECTED` tant qu’une application ASIO est attachée. Fermer la fenêtre Electron ne termine pas un moteur encore utilisé. Les journaux persistants sont enregistrés sous `%LOCALAPPDATA%\TimoxVasio\logs\engine.log`; quatre archives de 5 Mio sont conservées au maximum.
-
-Le bouton global Expand all déplie uniquement les ports ayant une connexion configurée. Les ports libres ne sont jamais dessinés. Chaque bloc indique In utilisés/capacité et Out utilisés/capacité, indépendamment du filtrage. Plusieurs câbles sur un même port ne consomment qu’un port. Les ports libres restent accessibles dans la modale Ajouter une connexion du menu contextuel.
+The application deliberately retains `%APPDATA%/timox-vsounddealer` for preferences, browser storage and the existing single-instance lock. Existing `%APPDATA%/vasio-control` and preview-specific profiles are not merged or deleted. API authentication and engine discovery remain unchanged.

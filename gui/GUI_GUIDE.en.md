@@ -1,4 +1,6 @@
-# Timox VASIO Control user guide
+> Imported historical feature guide. For current standalone build and artifact paths, use README.md and MIGRATION.md.
+
+# TimoxVasio user guide
 
 [Français](GUI_GUIDE.md) | **English**
 
@@ -18,7 +20,7 @@ If the panel reports that the route is unavailable (HTTP 404), rebuild and resta
 
 ## Selection in an audio application
 
-In an ASIO host, choose the ASIO sound API and then the `TimoxVasio` device. After installing the driver, close and restart the host to refresh its list. Mixxx 2.6 beta x64 currently removes this driver from its list because it advertises 256 inputs and outputs; see the [Mixxx compatibility analysis](../docs/mixxx-256-channel-compatibility.en.md). `TimoxVasio` remains visible for discovery even if the engine is not ready. To open an audio stream, start Timox VASIO Control and apply a physical ASIO driver.
+In an ASIO host, choose the ASIO sound API and then the `TimoxVasio` device. After installing the driver, close and restart the host to refresh its list. Mixxx 2.6 beta x64 currently removes this driver from its list because it advertises 256 inputs and outputs; see the [Mixxx compatibility analysis](../docs/mixxx-256-channel-compatibility.en.md). `TimoxVasio` remains visible for discovery even if the engine is not ready. To open an audio stream, start TimoxVSSC and apply a physical ASIO driver.
 
 ## Routing
 
@@ -27,6 +29,18 @@ Routing is configured in a single matrix whose axes are selected with the area m
 The axes show only endpoints published by the API. To show physical ports, select and apply a physical ASIO driver. To show TimoxVasio channels, open the driver in an ASIO application and activate its channels. When an axis is empty, the interface indicates the required action.
 
 A configuration change interrupts the stream while the graph is rebuilt. Engine status and structured errors appear in the interface.
+
+## MIDI
+
+The **MIDI** section is separate from audio. It shows the engine's MIDI 1.0 patchbay: one block per application port and per MIDI 1.0 device. Each application has its own port: "<name> In" (the application sends to the patchbay, *from app*) and "<name> Out" (the patchbay sends to the application, *to app*). Each direction is turned on or off separately.
+
+- Drag a cable from an output to an input to create a MIDI connection. A cable's context menu opens its properties (channels, message types, output channel, transpose) in a dialog, or deletes it. A dashed cable is configured but inactive.
+- The background context menu adds an application port or a BPM display, or re-reads the port list.
+- A port's green light shows activity (notes, controllers…), never clock ticks. A port receiving clock shows its tempo (♩); struck through, it is probably the echo of clock sent by the patchbay.
+- **Reference clock**: the clock that paces the audio graph, either the ASIO card or the software clock without a card. All engine MIDI is placed on its samples, never on Windows timers. It is not a MIDI master/slave role. The tab header shows its source, measured real frequency and offset in ppm.
+- **Engine clock**: the "Engine clock" block generates MIDI clock by counting reference clock samples, so it never drifts from the audio. Its context menu starts, stops, continues it or sets its tempo in a dialog. Starting needs audio running; if the reference clock stops, the block shows "Waiting for the reference clock". Connect it with a cable like any source.
+- **Reclocking**: in a connection's properties, "Reclock on the reference clock" re-emits the received clock on a regular grid in reference clock samples: jitter disappears, the source tempo is kept. The cable is then thicker.
+- **BPM display**: a widget assigned to a port from its context menu or by dragging a cable from the port to the widget. It shows the tempo of the clock arriving on that port, its state and the last start/stop. The receiving port identifies the clock emitter. Widgets and block positions stay in the interface; they do not change the engine.
 
 ## Performance
 

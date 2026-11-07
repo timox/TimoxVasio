@@ -1,4 +1,6 @@
-# Guide d’utilisation de Timox VASIO Control
+> Imported historical feature guide. For current standalone build and artifact paths, use README.md and MIGRATION.md.
+
+# Guide d’utilisation de TimoxVasio
 
 **Français** | [English](GUI_GUIDE.en.md)
 
@@ -18,7 +20,7 @@ Si le panneau signale que la route n’est pas disponible (HTTP 404), le moteur 
 
 ## Sélection dans une application audio
 
-Dans un hôte ASIO, choisir l’API son ASIO puis le périphérique `TimoxVasio`. Après l’installation du pilote, fermer puis relancer l’hôte pour renouveler sa liste. Mixxx 2.6 beta x64 retire actuellement ce pilote de sa liste parce qu’il annonce 256 entrées et sorties; voir [l’analyse de compatibilité Mixxx](../docs/mixxx-256-channel-compatibility.md). `TimoxVasio` reste visible pour la découverte même si le moteur n’est pas prêt; pour ouvrir un flux audio, lancer Timox VASIO Control et appliquer un pilote ASIO physique.
+Dans un hôte ASIO, choisir l’API son ASIO puis le périphérique `TimoxVasio`. Après l’installation du pilote, fermer puis relancer l’hôte pour renouveler sa liste. Mixxx 2.6 beta x64 retire actuellement ce pilote de sa liste parce qu’il annonce 256 entrées et sorties; voir [l’analyse de compatibilité Mixxx](../docs/mixxx-256-channel-compatibility.md). `TimoxVasio` reste visible pour la découverte même si le moteur n’est pas prêt; pour ouvrir un flux audio, lancer TimoxVSSC et appliquer un pilote ASIO physique.
 
 ## Routage
 
@@ -27,6 +29,18 @@ Le routage se configure dans une matrice unique dont les axes sont choisis avec 
 Les axes montrent uniquement les endpoints publiés par l’API. Pour faire apparaître les ports physiques, choisir puis appliquer un pilote ASIO physique. Pour faire apparaître les canaux TimoxVasio, ouvrir le pilote dans une application ASIO et activer ses canaux. Lorsqu’un axe est vide, l’interface indique l’action nécessaire.
 
 Un changement de configuration interrompt le flux pendant la reconstruction du graphe. Le statut du moteur et les erreurs structurées sont affichés dans l’interface.
+
+## MIDI
+
+La section **MIDI** est séparée du son. Elle affiche le patch bay MIDI 1.0 du moteur : un bloc par port d'application et par appareil MIDI 1.0. Chaque application a son propre port : « <nom> In » (l'application envoie au patch bay, *from app*) et « <nom> Out » (le patch bay envoie à l'application, *to app*). Chaque sens s'active ou se désactive séparément.
+
+- Tirer un câble d'une sortie vers une entrée crée une connexion MIDI. Le menu contextuel d'un câble ouvre ses propriétés (canaux, types de messages, canal de sortie, transposition) dans une fenêtre, ou le supprime. Un câble en pointillés est configuré mais inactif.
+- Le menu contextuel du fond ajoute un port d'application ou un affichage BPM, ou relit la liste des ports.
+- Le voyant vert d'un port indique de l'activité (notes, contrôleurs…), jamais les ticks d'horloge. Un port qui reçoit une horloge affiche son tempo (♩) ; s'il est barré, c'est probablement l'écho de l'horloge envoyée par le patch bay.
+- **Horloge de référence** : l'horloge qui cadence le graphe audio, soit la carte ASIO, soit l'horloge logicielle sans carte. Tout le MIDI du moteur est placé sur ses échantillons, jamais sur les temporisateurs Windows. Ce n'est pas un rôle maître/esclave MIDI. L'en-tête de l'onglet indique sa source, sa fréquence réelle mesurée et son écart en ppm.
+- **Horloge du moteur** : le bloc « Engine clock » génère une horloge MIDI en comptant les échantillons de l'horloge de référence ; elle ne dérive donc jamais de l'audio. Son menu contextuel la démarre, l'arrête, la relance (continue) ou règle son tempo dans une fenêtre. Le démarrage demande un audio en marche ; si l'horloge de référence s'arrête, le bloc affiche « Waiting for the reference clock ». On la relie par un câble comme n'importe quelle source.
+- **Recalage** : dans les propriétés d'une connexion, « Reclock on the reference clock » réémet l'horloge reçue sur une grille régulière en échantillons de l'horloge de référence : la gigue disparaît, le tempo de la source est conservé. Le câble est alors plus épais.
+- **Affichage BPM** : un widget à affecter à un port, depuis son menu contextuel ou en tirant un câble du port vers le widget. Il affiche le tempo de l'horloge qui arrive sur ce port, son état et le dernier start/stop. Le port d'arrivée identifie l'émetteur de l'horloge. Les widgets et la position des blocs restent dans l'interface : ils ne modifient pas le moteur.
 
 ## Performance
 

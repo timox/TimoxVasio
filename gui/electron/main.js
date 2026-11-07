@@ -6,6 +6,7 @@ const { launchEngine, releaseEngine } = require('./engine-process');
 const { discoverEngine } = require('./engine-discovery');
 const WebSocket = require('ws');
 const { ApiClient } = require('./api-client');
+const artifactLock = require('../artifacts.lock.json');
 
 let mainWindow;
 let engineProcess;
@@ -14,6 +15,9 @@ let apiClient;
 let engineStopping = false;
 // Acquire before discovery: two launchers must not both observe a refused API
 // connection and start competing audio engines.
+// Keep the TVSD preview profile and its process lock across the product rename.
+app.setPath('userData', path.join(app.getPath('appData'), 'timox-vsounddealer'));
+app.setName('TimoxVSSC');
 const ownsGuiLock = app.requestSingleInstanceLock();
 if (!ownsGuiLock) app.quit();
 app.on('second-instance', () => {
@@ -41,7 +45,7 @@ function startEngine() {
     apiReady = createApiReadiness();
     const readiness = apiReady;
     const enginePath = isDev
-        ? path.resolve(__dirname, '../../build_codex_110/Release/TimoxVirtualAsioEngine.exe')
+        ? path.resolve(__dirname, '../artifacts/backend/TimoxVirtualAsioEngine.exe')
         : path.join(process.resourcesPath, 'backend/TimoxVirtualAsioEngine.exe');
     if (!fs.existsSync(enginePath)) {
         const error = new Error(`TimoxVirtualAsioEngine.exe is missing from the expected path: ${enginePath}`);
@@ -94,8 +98,12 @@ function startEngine() {
 }
 
 async function attachToExistingEngine() {
-    const requiredApiVersion = app.getVersion() === '0.1.0' ? '1.1' : null;
-    const port = await discoverEngine(fetch, { requiredApiVersion });
+    const requiredApiVersion = '1.1';
+    const port = await discoverEngine(fetch, {
+        requiredApiVersion,
+        requiredEngineVersion: artifactLock.release.engine.version,
+        requiredEngineRevision: artifactLock.release.engine.revision
+    });
     if (port === null) return false;
     apiPort = port;
     apiReady.resolve(port);
@@ -150,6 +158,11 @@ ipcMain.handle('system:get-network-addresses', () => Object.entries(os.networkIn
     .map(({ name, address }) => ({ name, address }))
     .filter((entry, index, addresses) => addresses.findIndex(candidate => candidate.name === entry.name && candidate.address === entry.address) === index));
 ipcMain.handle('api:get-application-profiles', async () => (await getApiClient()).getApplicationProfiles());
+ipcMain.handle('api:get-midi', async () => (await getApiClient()).getMidi());
+ipcMain.handle('api:replace-midi-configuration', async (_event, configuration) =>
+    (await getApiClient()).replaceMidiConfiguration(configuration));
+ipcMain.handle('api:set-midi-clock', async (_event, settings) => (await getApiClient()).setMidiClock(settings));
+ipcMain.handle('api:learn-midi-clock', async (_event, settings) => (await getApiClient()).learnMidiClock(settings));
 ipcMain.handle('api:replace-application-profiles', async (_event, profiles) =>
     (await getApiClient()).replaceApplicationProfiles(profiles));
 ipcMain.handle('api:get-diagnostics', async (_event, limit) => (await getApiClient()).getDiagnostics(limit));

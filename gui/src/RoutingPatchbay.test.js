@@ -106,12 +106,13 @@ test('channel matrix opens in a dialog and closes with Escape', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const route = { id: 'route-1', sourceEndpointId: sourceGroups[0].endpoints[0].id,
         destinationEndpointId: destinationGroups[0].endpoints[0].id };
+    const onToggleRoute = jest.fn();
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
     try {
         await act(async () => root.render(<RoutingPatchbay sourceGroups={sourceGroups}
-            destinationGroups={destinationGroups} routes={[route]} selectedRouteId={route.id} />));
+            destinationGroups={destinationGroups} routes={[route]} selectedRouteId={route.id} onToggleRoute={onToggleRoute} />));
         expect(document.querySelector('[role="dialog"]')).toBeNull();
         await chooseContextAction(container.querySelector('[data-node-key="process:app"]'), 'Modify a connection…');
         await act(async () => Simulate.click(document.querySelector('.process-dialog-routes button')));
@@ -120,6 +121,8 @@ test('channel matrix opens in a dialog and closes with Escape', async () => {
         expect(dialog.getAttribute('aria-modal')).toBe('true');
         expect(dialog.textContent).toContain('AudioApp.exe');
         expect(dialog.textContent).toContain('Interface output');
+        await act(async () => Simulate.click(dialog.querySelector('.connection-matrix-cell')));
+        expect(onToggleRoute).toHaveBeenCalledWith(route.sourceEndpointId, route.destinationEndpointId);
         await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
         expect(document.querySelector('.connection-matrix')).toBeNull();
         expect(document.activeElement).toBe(document.querySelector('.inspect-connection-matrix'));

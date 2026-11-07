@@ -365,6 +365,14 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .patchbay-cables path.connection-hit { stroke: transparent; stroke-width: 14; opacity: 1; pointer-events: stroke; cursor: pointer; }
 .patchbay-cables path.preview { stroke: var(--focus); stroke-width: 2; stroke-dasharray: 3 3; }
 .patchbay-empty { padding: 16px; color: var(--text-secondary); font-size: 13px; }
+/* Keep graph labels readable at normal zoom without changing its layout scale. */
+.patchbay-flow .patchbay-interface-title { font-size: 14px; }
+.patchbay-flow .patchbay-group-toggle strong { font-weight: 650; }
+.patchbay-flow .patchbay-group-toggle span:last-child { font-size: 13px; }
+.patchbay-flow .patchbay-port-heading { font-size: 12px; }
+.patchbay-flow .patchbay-node-ports:not(.single-sided) .patchbay-port { font-size: 13px; }
+.patchbay-flow .patchbay-port { font-weight: 450; }
+.patchbay-flow .patchbay-level, .patchbay-flow .patchbay-lufs { font-size: 11px; }
 .patchbay-inspector { min-width: 0; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 5px; background: #fff; }
 .patchbay-inspector-dialog { box-sizing: border-box; width: min(760px, 100%); max-height: min(85vh, 900px); overflow: auto; padding: 20px; box-shadow: 0 16px 48px #14263255; }
 .patchbay-inspector h3 { margin: 0 0 12px; color: var(--text-primary); font-size: 14px; }
@@ -419,6 +427,10 @@ button:disabled { opacity: 1; color: var(--text-muted); background: var(--surfac
 .connection-matrix tbody th { left: 0; text-align: left; }
 .connection-matrix thead th:first-child { left: 0; z-index: 2; }
 .connection-matrix td { color: var(--accent); font-weight: 700; }
+.connection-matrix-cell { width: 100%; min-height: 32px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.connection-matrix-cell:hover, .connection-matrix-cell:focus-visible { border-radius: 4px; background: var(--accent-surface); outline: 2px solid var(--accent); outline-offset: -2px; }
+.connection-matrix-cell.linked { color: var(--accent); }
+.connection-matrix-cell:disabled { cursor: not-allowed; opacity: .55; }
 .routing-add, .routing-process-detail { padding: 12px; border: 1px solid var(--border-subtle); border-radius: 5px; background: #fff; }
 .routing-add summary, .routing-process-detail summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .routing-add .quick-routing, .routing-process-detail > .hint { margin-top: 12px; }

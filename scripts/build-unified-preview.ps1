@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$gui = Join-Path $repo 'gui-next'
+$gui = Join-Path $repo 'gui'
 $build = if ([IO.Path]::IsPathRooted($BuildRoot)) { [IO.Path]::GetFullPath($BuildRoot) }
     else { [IO.Path]::GetFullPath((Join-Path $repo $BuildRoot)) }
 $lockPath = Join-Path $gui 'artifacts.lock.json'
@@ -100,4 +100,4 @@ foreach ($schema in $lock.schemas) {
     $schema.sha256 = (Get-FileHash -LiteralPath (Join-Path $gui $schema.path) -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 $lock | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $lockPath -Encoding utf8
-Write-Output "Preview components built from $revision. Artifacts and API schemas are staged in gui-next; commit them before packaging."
+Write-Output "Preview components built from $revision. Artifacts and API schemas are staged in gui; commit them before packaging."

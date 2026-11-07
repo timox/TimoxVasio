@@ -1,3 +1,5 @@
+> Imported historical feature guide. For current standalone build and artifact paths, use README.md and MIGRATION.md.
+
 # Integration contract
 
 [Français](INTEGRATION.md) | **English**

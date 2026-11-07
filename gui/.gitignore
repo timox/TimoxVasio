@@ -34,3 +34,11 @@ out/
 
 # Build artifacts
 .webpack/
+
+/node_modules/
+/build/
+/dist/
+/artifacts/backend/
+/verification/
+/src/openapi-spec.generated.js
+/public/swagger*

@@ -429,10 +429,10 @@ test('running software clock exposes reset and stop and excludes hardware from r
         expect(window.vasio.executeCommand).toHaveBeenCalledWith(expect.objectContaining({ command: 'engine.reset' }));
         await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[1]));
         expect(container.querySelector('[data-port-id="physical:interface-1:output:1"]')).toBeNull();
-        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[3]));
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[4]));
         expect(container.querySelector('.workspace-heading').textContent).toContain('Software');
         expect(container.querySelector('.buffer-health h2').textContent).toBe('Software clock callback');
-        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[5]));
+        await act(async () => Simulate.click(container.querySelectorAll('.view-tabs button')[6]));
         expect(container.querySelector('.engine-stop')).not.toBeNull();
         await act(async () => { Simulate.click(container.querySelector('.engine-stop')); await new Promise(resolve => setTimeout(resolve, 170)); });
         expect(window.vasio.stopAudio).toHaveBeenCalledTimes(1);

@@ -21,4 +21,23 @@ function endpointLabel(endpoint) {
     return `${endpoint.name} (${endpoint.id})`;
 }
 
-module.exports = { configurationFromState, applyCommand, endpointLabel };
+function deviceTopologyKey(state) {
+    return JSON.stringify({ physicalDrivers: state.physicalDrivers || [], stereoPairs: state.stereoPairs || [],
+        virtualDrivers: (state.virtualDrivers || []).map(driver => ({ ...driver,
+            clients: (driver.clients || []).map(({ activity, processCpuPercent, processCpuWindowMs, ...identity }) => identity)
+        })) });
+}
+
+function mergeClientObservations(state, payload) {
+    if (!state || payload?.owner !== 'engine' || !Array.isArray(payload.clients)) return state;
+    return { ...state, virtualDrivers: (state.virtualDrivers || []).map(driver => ({ ...driver,
+        clients: (driver.clients || []).map(client => {
+            const observation = payload.clients.find(item => item.driverId === driver.id && item.processId === client.pid &&
+                (item.processCreationTime ?? null) === (client.processCreationTime ?? null));
+            return observation ? { ...client, activity: observation.activity,
+                processCpuPercent: observation.processCpuPercent, processCpuWindowMs: observation.processCpuWindowMs } : client;
+        })
+    })) };
+}
+
+module.exports = { configurationFromState, applyCommand, endpointLabel, deviceTopologyKey, mergeClientObservations };
