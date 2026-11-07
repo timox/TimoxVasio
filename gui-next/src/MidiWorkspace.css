@@ -1,0 +1,85 @@
+/* MIDI tab: blocks, activity lights, BPM display. Shares dialog and menu styles with the audio patchbay. */
+.midi-workspace .workspace-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.midi-status { color: var(--text-secondary); font-size: 13px; text-align: right; }
+.midi-error { margin: 8px 0; }
+.midi-learn-state { padding: 10px; border: 1px dashed var(--border-strong); background: #f7f9fa; font-size: 13px; }
+.midi-flow { height: max(430px, calc(100vh - 260px)); }
+
+.midi-node { min-width: 200px; border: 1px solid var(--border-strong); border-radius: 6px; background: #fff; box-shadow: 0 2px 6px #14263218; }
+.midi-node.application { border-color: #6b5bd6; }
+.midi-node.loopback { border-color: #087f73; background: #f7fffd; }
+.midi-node.loopback .midi-node-heading { background: #e5f7f4; }
+.midi-node.loopback .midi-node-heading strong::before { content: '↔'; margin-right: 6px; color: #087f73; }
+.midi-node.offline { opacity: .55; border-style: dashed; }
+.midi-node-heading { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border-bottom: 1px solid var(--border-subtle); }
+.midi-node-heading small { color: var(--text-secondary); font-size: 11px; }
+.midi-node ul { margin: 0; padding: 4px 0; list-style: none; }
+.midi-port { position: relative; display: flex; align-items: center; gap: 7px; min-height: 26px; padding: 2px 14px; font-size: 13px; }
+.midi-port.destination { padding-left: 16px; }
+.midi-port.source { justify-content: flex-end; }
+.midi-port.absent { color: var(--text-secondary); font-style: italic; }
+.midi-port-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.midi-port-name small { margin-left: 6px; color: var(--text-secondary); font-size: 11px; }
+.midi-handle { width: 10px; height: 10px; background: #6b5bd6; border: 2px solid #fff; }
+
+.midi-led { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 50%; background: #c9d3da; box-shadow: inset 0 0 0 1px #0002; }
+.midi-led.on { background: #2fbf71; box-shadow: 0 0 6px #2fbf71; }
+.midi-led.clock.on { background: #f0a92e; box-shadow: 0 0 6px #f0a92e; }
+.midi-clock-badge { padding: 1px 6px; border-radius: 9px; background: #fff4de; color: #8a5a00; font-size: 11px; font-variant-numeric: tabular-nums; }
+.midi-clock-badge.echo { background: #eef1f4; color: var(--text-secondary); text-decoration: line-through; }
+
+.midi-bpm-widget { width: 170px; padding: 10px 12px; border: 1px solid #f0a92e; border-radius: 8px; background: #1d2730; color: #f4f6f8; text-align: center; }
+.midi-bpm-widget.echo { border-color: #8899a6; }
+.midi-bpm-heading { display: flex; align-items: center; justify-content: center; gap: 6px; color: #f0a92e; font-size: 11px; font-weight: 600; letter-spacing: .08em; }
+.midi-bpm-value { display: block; margin: 4px 0; font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.midi-bpm-widget:not(.running) .midi-bpm-value { color: #8899a6; }
+.midi-bpm-port, .midi-bpm-state { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.midi-bpm-port { color: #cfd8df; }
+.midi-bpm-state { color: #8899a6; }
+
+.react-flow__edge.midi-route-edge { --midi-route-color: #6b5bd6; }
+.react-flow__edge.midi-route-edge .react-flow__edge-path { stroke: var(--midi-route-color); stroke-width: 2; }
+.react-flow__edge.midi-route-edge .react-flow__edge-text { fill: var(--text-primary); font-size: 11px; font-weight: 600; }
+.react-flow__edge.midi-route-edge .react-flow__edge-textbg { fill: #fff; fill-opacity: .94; stroke: var(--border-subtle); stroke-width: 1; }
+.react-flow__edge.midi-route-edge.inactive .react-flow__edge-path { stroke: #9aa7b1; stroke-dasharray: 6 4; }
+.react-flow__edge.midi-route-edge.inactive .react-flow__edge-text { fill: var(--text-secondary); }
+.react-flow__edge.midi-monitor-edge .react-flow__edge-path { stroke: #f0a92e; stroke-width: 1.5; stroke-dasharray: 2 4; }
+
+.midi-dialog { width: min(560px, 100%); }
+.midi-dialog .field { margin: 10px 0; }
+.midi-dialog label.checkbox { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.midi-dialog fieldset { margin: 10px 0; border: 1px solid var(--border-subtle); border-radius: 5px; }
+.midi-channel-grid { display: grid; grid-template-columns: repeat(8, auto); gap: 6px 10px; }
+.midi-message-grid { display: grid; grid-template-columns: repeat(3, auto); gap: 6px 10px; }
+.midi-dialog fieldset label { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+.midi-dialog-error { color: var(--danger, #b42318); font-size: 13px; }
+.midi-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.midi-dialog .dialog-actions .danger { margin-right: auto; color: var(--danger, #b42318); }
+.midi-monitor { max-height: 360px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 5px; background: #f7f9fa; }
+.midi-monitor-message { display: flex; gap: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); font-size: 12px; }
+.midi-monitor-message time { flex: 0 0 90px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.midi-monitor-message code { color: #087f73; font-weight: 600; }
+
+.midi-reference-clock { margin-top: 2px; font-size: 12px; }
+.midi-node.engine-clock { border-color: #f0a92e; }
+.midi-node.engine-clock.running .midi-node-heading strong::after { content: ' ●'; color: #2fbf71; }
+.midi-engine-clock-body { display: flex; align-items: baseline; gap: 6px; padding: 6px 10px 0; color: var(--text-secondary); font-size: 12px; }
+.midi-engine-clock-bpm { color: var(--text-primary); font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.midi-engine-clock-state { margin-left: auto; }
+.react-flow__edge.midi-route-edge.reclock .react-flow__edge-path { stroke-width: 3.5; }
+.react-flow__edge.midi-route-edge.midi-channel-1 { --midi-route-color: #d9485f; }
+.react-flow__edge.midi-route-edge.midi-channel-2 { --midi-route-color: #e07a35; }
+.react-flow__edge.midi-route-edge.midi-channel-3 { --midi-route-color: #c99a2e; }
+.react-flow__edge.midi-route-edge.midi-channel-4 { --midi-route-color: #6cae3f; }
+.react-flow__edge.midi-route-edge.midi-channel-5 { --midi-route-color: #2f9e68; }
+.react-flow__edge.midi-route-edge.midi-channel-6 { --midi-route-color: #2a9d8f; }
+.react-flow__edge.midi-route-edge.midi-channel-7 { --midi-route-color: #2780a8; }
+.react-flow__edge.midi-route-edge.midi-channel-8 { --midi-route-color: #3969b1; }
+.react-flow__edge.midi-route-edge.midi-channel-9 { --midi-route-color: #6654b5; }
+.react-flow__edge.midi-route-edge.midi-channel-10 { --midi-route-color: #8a4f9e; }
+.react-flow__edge.midi-route-edge.midi-channel-11 { --midi-route-color: #b04a9b; }
+.react-flow__edge.midi-route-edge.midi-channel-12 { --midi-route-color: #c34f7c; }
+.react-flow__edge.midi-route-edge.midi-channel-13 { --midi-route-color: #9a6b4f; }
+.react-flow__edge.midi-route-edge.midi-channel-14 { --midi-route-color: #687078; }
+.react-flow__edge.midi-route-edge.midi-channel-15 { --midi-route-color: #454f59; }
+.react-flow__edge.midi-route-edge.midi-channel-16 { --midi-route-color: #202b35; }

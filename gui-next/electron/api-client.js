@@ -1,0 +1,198 @@
+const { EventEmitter } = require('node:events');
+const { randomUUID } = require('node:crypto');
+
+class ApiClient extends EventEmitter {
+    constructor({ baseUrl, webSocketUrl, WebSocket: WebSocketImpl }) {
+        super();
+        if (!baseUrl || !webSocketUrl || !WebSocketImpl) throw new TypeError('API URLs and WebSocket implementation are required');
+        this.baseUrl = baseUrl.replace(/\/$/, '');
+        this.webSocketUrl = webSocketUrl;
+        this.WebSocket = WebSocketImpl;
+        this.socket = null;
+        this.pending = new Map();
+    }
+
+    async getState() {
+        return this.getJson('/api/v1/state');
+    }
+
+    async getDrivers() {
+        return this.getJson('/api/v1/drivers');
+    }
+
+    async getWasapiDevices() {
+        return this.getJson('/api/v1/wasapi-devices');
+    }
+
+    async getWindowsAudioApplications() {
+        return this.getJson('/api/v1/windows-audio-applications');
+    }
+
+    async getApplicationProfiles() {
+        return this.getJson('/api/v1/application-profiles');
+    }
+
+    async getMidi() {
+        return this.getJson('/api/v1/midi');
+    }
+
+    async replaceMidiConfiguration(configuration) {
+        return this.requestJson('/api/v1/midi/configuration', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(configuration)
+        });
+    }
+
+    async setMidiClock(settings) {
+        return this.requestJson('/api/v1/midi/clock', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+    }
+
+    async learnMidiClock(settings) {
+        return this.requestJson('/api/v1/midi/clock/learn', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+    }
+
+    async getDiagnostics(limit = 200) {
+        return this.getJson(`/api/v1/diagnostics?limit=${encodeURIComponent(limit)}`);
+    }
+
+    async setDiagnosticLevel(level) {
+        return this.requestJson('/api/v1/diagnostics', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ level })
+        });
+    }
+
+    async replaceApplicationProfiles(profiles) {
+        return this.requestJson('/api/v1/application-profiles', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ profiles })
+        });
+    }
+
+    async getJson(path) {
+        return this.requestJson(path);
+    }
+
+    async requestJson(path, options) {
+        const response = await fetch(`${this.baseUrl}${path}`, options);
+        const body = await response.json();
+        if (!response.ok) {
+            const details = body.error || {};
+            const error = new Error(details.message || `VASIO API ${path}: HTTP ${response.status}`);
+            Object.assign(error, details, { status: response.status });
+            throw error;
+        }
+        return body;
+    }
+
+    connect() {
+        if (this.socket && this.socket.readyState === this.WebSocket.OPEN) return Promise.resolve();
+        if (this.connecting) return this.connecting;
+        this.socket = new this.WebSocket(this.webSocketUrl, 'vasio.api.v1');
+        this.connecting = new Promise((resolve, reject) => {
+            const socket = this.socket;
+            const onOpen = () => {
+                socket.off('error', onInitialError);
+                this.connecting = null;
+                resolve();
+            };
+            const onInitialError = error => {
+                socket.off('open', onOpen);
+                this.connecting = null;
+                reject(error);
+            };
+            socket.once('open', onOpen);
+            socket.once('error', onInitialError);
+            socket.on('message', data => this.handleMessage(data));
+            socket.on('close', () => {
+                this.socket = null;
+                this.connecting = null;
+                this.rejectPending(new Error('WebSocket disconnected'));
+                this.emit('disconnect');
+            });
+        });
+        return this.connecting;
+    }
+
+    applyConfiguration(configuration, id = randomUUID()) {
+        return this.sendCommand({ id, command: 'configuration.apply', payload: configuration });
+    }
+
+    stopEngine(id = randomUUID()) {
+        return this.sendCommand({ id, command: 'engine.stop' });
+    }
+
+    async httpRequest(method, path, body) {
+        const routes = ['/api/v1/state', '/api/v1/drivers', '/api/v1/wasapi-devices', '/api/v1/windows-audio-applications', '/api/v1/openapi.json',
+            '/api/v1/schemas/api-v1.json', '/api/v1/diagnostics', '/api/v1/application-profiles', '/api/v1/pwar', '/api/v1/pwar/client',
+            '/api/v1/midi', '/api/v1/midi/configuration', '/api/v1/midi/clock', '/api/v1/midi/clock/learn'];
+        const documented = routes.includes(path) ||
+            (typeof path === 'string' && /^\/api\/v1\/diagnostics\?limit=\d+$/.test(path));
+        if (!['GET', 'PUT'].includes(method) || !documented)
+            throw new TypeError('Request is outside the documented TimoxVasio HTTP routes');
+        const response = await fetch(`${this.baseUrl}${path}`, {
+            method,
+            headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+            body: body === undefined ? undefined : JSON.stringify(body)
+        });
+        return { status: response.status, body: await response.json() };
+    }
+
+    sendCommand(command) {
+        if (!this.socket || this.socket.readyState !== this.WebSocket.OPEN)
+            return Promise.reject(new Error('WebSocket disconnected'));
+        return new Promise((resolve, reject) => {
+            this.pending.set(command.id, { resolve, reject });
+            this.socket.send(JSON.stringify(command), error => {
+                if (!error) return;
+                this.pending.delete(command.id);
+                reject(error);
+            });
+        });
+    }
+
+    handleMessage(raw) {
+        let message;
+        try { message = JSON.parse(raw.toString()); }
+        catch (error) { this.emit('protocolError', error); return; }
+        if (message.event) {
+            this.emit('event', message);
+            return;
+        }
+        if (!message.id || !this.pending.has(message.id)) return;
+        const pending = this.pending.get(message.id);
+        this.pending.delete(message.id);
+        if (message.success) pending.resolve(message.result);
+        else {
+            const error = new Error(message.error?.message || 'VASIO API command failed');
+            Object.assign(error, message.error || {});
+            pending.reject(error);
+        }
+    }
+
+    rejectPending(error) {
+        for (const pending of this.pending.values()) pending.reject(error);
+        this.pending.clear();
+    }
+
+    close() {
+        if (!this.socket) return;
+        this.rejectPending(new Error('WebSocket closed'));
+        const socket = this.socket;
+        this.socket = null;
+        socket.close();
+    }
+}
+
+module.exports = { ApiClient };

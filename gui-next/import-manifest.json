@@ -1,0 +1,893 @@
+{
+  "sourceRepository": "TimoxVasio",
+  "sourceCommit": "3bcc05f5fed34ea8404e478ef34bb230a2efe39c",
+  "files": [
+    {
+      "source": "gui/.env.development",
+      "target": ".env.development",
+      "sourceSha256": "0c5a7b0473ab40a197f71ecfecc9ced5830aa8ce1b46139c70346f2259327103",
+      "sha256": "0c5a7b0473ab40a197f71ecfecc9ced5830aa8ce1b46139c70346f2259327103",
+      "targetSha256": "0c5a7b0473ab40a197f71ecfecc9ced5830aa8ce1b46139c70346f2259327103",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/.gitignore",
+      "target": ".gitignore",
+      "sourceSha256": "c3f2f4bd34e003203fe1d7e1fd758315b951868e2ef94517f2689f59ef8d39f4",
+      "sha256": "b90bdada42dd3a1006bcb4fbae6367cb08f4ef5a996f7ec1cfe72561abb7825d",
+      "targetSha256": "b90bdada42dd3a1006bcb4fbae6367cb08f4ef5a996f7ec1cfe72561abb7825d",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": null,
+      "target": "AGENTS.md",
+      "sourceSha256": null,
+      "sha256": "1071941030438e7d997967e5c35d2325dccc45bf312b3d19544f68ed29db497c",
+      "targetSha256": "1071941030438e7d997967e5c35d2325dccc45bf312b3d19544f68ed29db497c",
+      "transformation": "created for extraction"
+    },
+    {
+      "source": "api/openapi-v1.json",
+      "target": "api/openapi-v1.json",
+      "sourceSha256": "243d01272e07b00cfd52819812ba3f96ec083d57207b4498b3490805081ef392",
+      "sha256": "261a90ce3154ed879750489115e3538d7ac724e8e3c76b9434c20c60c92bc2f8",
+      "targetSha256": "261a90ce3154ed879750489115e3538d7ac724e8e3c76b9434c20c60c92bc2f8",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26; MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31; MIDI clock follows the graph master clock, 2026-10-31; Reference clock naming in the MIDI tab, 2026-10-31",
+      "status": "modified"
+    },
+    {
+      "source": "api/schemas/api-v1.json",
+      "target": "api/schemas/api-v1.json",
+      "sourceSha256": "113b1ea91f7635457cd40881cfe139e595cf6ab02e38533c99e03670e3140bf0",
+      "sha256": "1e854f94156c4d40580c12112111e02e089ca9fea25e9902762c5a566f544198",
+      "targetSha256": "1e854f94156c4d40580c12112111e02e089ca9fea25e9902762c5a566f544198",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26; MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31; MIDI clock follows the graph master clock, 2026-10-31; Reference clock naming in the MIDI tab, 2026-10-31",
+      "status": "modified"
+    },
+    {
+      "source": null,
+      "target": "artifacts.lock.json",
+      "sourceSha256": null,
+      "sha256": "953260b89b36e4c5c9439df56c9bd994a95b27618a292b6ccdd2bbd003786b9b",
+      "targetSha256": "b1a61771f96a39b101c5053430da6547617afe55a898303875cd78696c6be04f",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31; Pin Windows MIDI engine verified by CI run 41239505040, 2026-10-31; Versioned PWAR receipts and coordinated engine/client binary pins, 2026-10-31",
+      "status": "generated"
+    },
+    {
+      "source": "gui/assets/installer.nsh",
+      "target": "assets/installer.nsh",
+      "sourceSha256": "e18db331bdd2ec60c6d01a08fa312c69b4e6eccd78254a959deb8d7547b31eab",
+      "sha256": "e18db331bdd2ec60c6d01a08fa312c69b4e6eccd78254a959deb8d7547b31eab",
+      "targetSha256": "e18db331bdd2ec60c6d01a08fa312c69b4e6eccd78254a959deb8d7547b31eab",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/electron/api-client.js",
+      "target": "electron/api-client.js",
+      "sourceSha256": "a3abc866b7ae225111adb9326e9a684e2b75716a076b999192b1f3a22817a80a",
+      "sha256": "dfae04ff6a3c5a5cf6d09a810c35b5176d26fc3e7d54167d17d58a29eb9d074a",
+      "targetSha256": "dfae04ff6a3c5a5cf6d09a810c35b5176d26fc3e7d54167d17d58a29eb9d074a",
+      "transformation": "verbatim import; MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31"
+    },
+    {
+      "source": "gui/electron/api-client.test.js",
+      "target": "electron/api-client.test.js",
+      "sourceSha256": "84aebeb6662a80a638cf3c6e20ff94575413f79f6396e4e1d13997d3a1a47be3",
+      "sha256": "84aebeb6662a80a638cf3c6e20ff94575413f79f6396e4e1d13997d3a1a47be3",
+      "targetSha256": "84aebeb6662a80a638cf3c6e20ff94575413f79f6396e4e1d13997d3a1a47be3",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/electron/engine-discovery.js",
+      "target": "electron/engine-discovery.js",
+      "sourceSha256": "2b68ea86222615d5432782af59e35d99fd82c6a295a1864b9622853438c1379c",
+      "sha256": "755380280510d16e4be10d25c1c6a9eba203978d322af328b82389456922b8bb",
+      "targetSha256": "755380280510d16e4be10d25c1c6a9eba203978d322af328b82389456922b8bb",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/electron/engine-discovery.test.js",
+      "target": "electron/engine-discovery.test.js",
+      "sourceSha256": "d0a0b56218f236e047accb532d6f90b190474ca4e46a03749a972e5b8c6c518c",
+      "sha256": "7157416b0356ec877539af4d859e9ed944053434b255b805165b58d05108785d",
+      "targetSha256": "7157416b0356ec877539af4d859e9ed944053434b255b805165b58d05108785d",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/electron/engine-process.js",
+      "target": "electron/engine-process.js",
+      "sourceSha256": "a09a6a2aa48a011ba555a47ee1e1e28e1f424bb8192417f383221dec56a12394",
+      "sha256": "a09a6a2aa48a011ba555a47ee1e1e28e1f424bb8192417f383221dec56a12394",
+      "targetSha256": "a09a6a2aa48a011ba555a47ee1e1e28e1f424bb8192417f383221dec56a12394",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/electron/engine-process.test.js",
+      "target": "electron/engine-process.test.js",
+      "sourceSha256": "59e3231d2787cba8452f3718fa5b8fb5d601874547f52dc60c5c6ba414aca9bd",
+      "sha256": "59e3231d2787cba8452f3718fa5b8fb5d601874547f52dc60c5c6ba414aca9bd",
+      "targetSha256": "59e3231d2787cba8452f3718fa5b8fb5d601874547f52dc60c5c6ba414aca9bd",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/electron/main-startup.test.js",
+      "target": "electron/main-startup.test.js",
+      "sourceSha256": "4537aa3068ec97129d90398d87101349666ff36bbae439195b91d07c087f1605",
+      "sha256": "1d4148878a3be8811694661edbcaac281be14da42aa8357433d0cd97426cf007",
+      "targetSha256": "1d4148878a3be8811694661edbcaac281be14da42aa8357433d0cd97426cf007",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/electron/main.js",
+      "target": "electron/main.js",
+      "sourceSha256": "af594d82d70b8244ecee8533ae445eff11f723ac833e89bc5d48ce5450a76034",
+      "sha256": "f543998a7a0f2b56eeac9303300da48acab02deec9077d7a4ae39d38a21aca3d",
+      "targetSha256": "f543998a7a0f2b56eeac9303300da48acab02deec9077d7a4ae39d38a21aca3d",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md; MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31"
+    },
+    {
+      "source": "gui/electron/preload.js",
+      "target": "electron/preload.js",
+      "sourceSha256": "3dd2d2cd55055f5207f4934882f033c720994c7454f354ecc355437cb2d5e509",
+      "sha256": "6ce9a9741fdf9926347684500111cd87f7b7df10848fc2d4c7895f45df77e4eb",
+      "targetSha256": "6ce9a9741fdf9926347684500111cd87f7b7df10848fc2d4c7895f45df77e4eb",
+      "transformation": "verbatim import; MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31"
+    },
+    {
+      "source": "gui/electron-builder.tvsd.json",
+      "target": "electron-builder.tvsd.json",
+      "sourceSha256": "751f20a8b462d23f9cc02a473afde10b02e4287fd6948a8806ef2fab376cf392",
+      "sha256": "9ac694a952246681522c3101541aa87d84443b2b19c035241b31cc6222718ad5",
+      "targetSha256": "9ac694a952246681522c3101541aa87d84443b2b19c035241b31cc6222718ad5",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/GUI_GUIDE.en.md",
+      "target": "GUI_GUIDE.en.md",
+      "sourceSha256": "0baf1a05da97e690e48b32248fbeee5cf2b365d59322c42ab555100c10b2fe8d",
+      "sha256": "369e14912e6b14d159d4899135ea355f0b28788c5442f5f4c1db8c6069cb8901",
+      "targetSha256": "369e14912e6b14d159d4899135ea355f0b28788c5442f5f4c1db8c6069cb8901",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md; MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31; MIDI clock follows the graph master clock, 2026-10-31; Reference clock naming in the MIDI tab, 2026-10-31"
+    },
+    {
+      "source": "gui/GUI_GUIDE.md",
+      "target": "GUI_GUIDE.md",
+      "sourceSha256": "3642ab7548f3ba121aee8ed43a4a2b6dc0eddd15e85f6cf1fa001d0ad0e715ab",
+      "sha256": "45131579fb51dcda99bb8e9ace043e2d47f50c11ca943cae3f2de4ac1e23dafe",
+      "targetSha256": "45131579fb51dcda99bb8e9ace043e2d47f50c11ca943cae3f2de4ac1e23dafe",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md; MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31; MIDI clock follows the graph master clock, 2026-10-31; Reference clock naming in the MIDI tab, 2026-10-31"
+    },
+    {
+      "source": "gui/INTEGRATION.en.md",
+      "target": "INTEGRATION.en.md",
+      "sourceSha256": "e2893b52c872150be09e7cc209e3cd5b910e61259b8d48e60e1e58337484caa6",
+      "sha256": "4a974b701128c144a08c8840253e72e4f49c2bf65784778399cf82b3c8f39305",
+      "targetSha256": "4a974b701128c144a08c8840253e72e4f49c2bf65784778399cf82b3c8f39305",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/INTEGRATION.md",
+      "target": "INTEGRATION.md",
+      "sourceSha256": "2414ba74459792590acc20641a71d9c1290f1e2c54be8a8a7fa15c29cb396b61",
+      "sha256": "8c7edbb0262b9f9128c2aac220778f2ca4383fcdd33b13472cddf4144e87c06c",
+      "targetSha256": "8c7edbb0262b9f9128c2aac220778f2ca4383fcdd33b13472cddf4144e87c06c",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "asiosdk/LICENSE.txt",
+      "target": "legal/ASIO-SDK-LICENSE.txt",
+      "sourceSha256": "61e56814f24b32216884b2db0b4dcc317111a5ab354d54d19dd9fc13d71b1c7a",
+      "sha256": "61e56814f24b32216884b2db0b4dcc317111a5ab354d54d19dd9fc13d71b1c7a",
+      "targetSha256": "61e56814f24b32216884b2db0b4dcc317111a5ab354d54d19dd9fc13d71b1c7a",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "docs/LICENSING.md",
+      "target": "legal/LICENSING.md",
+      "sourceSha256": "897eb4f877d8908f5cd198032a0c55e54837f27abb2465bad5c6a7d31b3bbf4b",
+      "sha256": "897eb4f877d8908f5cd198032a0c55e54837f27abb2465bad5c6a7d31b3bbf4b",
+      "targetSha256": "897eb4f877d8908f5cd198032a0c55e54837f27abb2465bad5c6a7d31b3bbf4b",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "LICENSE",
+      "target": "LICENSE",
+      "sourceSha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "targetSha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": null,
+      "target": "MIGRATION.md",
+      "sourceSha256": null,
+      "sha256": "2035faf46697c2f3665c6aacbd1de493da7cb1a541837b3aeac0740d4d48b6d9",
+      "targetSha256": "2035faf46697c2f3665c6aacbd1de493da7cb1a541837b3aeac0740d4d48b6d9",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26",
+      "status": "generated"
+    },
+    {
+      "source": "gui/package-lock.json",
+      "target": "package-lock.json",
+      "sourceSha256": "c796bd9703520a09d870b901e6666139a6564417bbbfa85aa52bff36e5d0fe91",
+      "sha256": "e8e28cd38c98dc9dac3376c685a5a915d6fb65cb0d33f2551a40bba38456ee56",
+      "targetSha256": "4e68ef906b7fa4b0ef21c7eacbeb875d5c6afc8ef9eb98c006ef427af78df621",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31"
+    },
+    {
+      "source": "gui/package.json",
+      "target": "package.json",
+      "sourceSha256": "eda10c6039a143519612f4e35a143fd2db5f451da710ba6d75638d64719e46b6",
+      "sha256": "257e3b19f12bc74083b679a153ef81a58e8df427eda69fde3b052673ae7a2141",
+      "targetSha256": "ab9c67b257274a52f3feff98c650f79af2cfba9ce0df33f2a441864960f1ec56",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31; Versioned PWAR receipts and coordinated engine/client binary pins, 2026-10-31"
+    },
+    {
+      "source": "gui/public/index.html",
+      "target": "public/index.html",
+      "sourceSha256": "52856b9bd96e9857583e1be67aa5fbea286b410ab7c33cb89e8d722097c19635",
+      "sha256": "ef6c6d9cd3da5b60fadff78f2c206af2aea281e1b4d17c05a84761ac5d2ef863",
+      "targetSha256": "ef6c6d9cd3da5b60fadff78f2c206af2aea281e1b4d17c05a84761ac5d2ef863",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/README.en.md",
+      "target": "README.en.md",
+      "sourceSha256": "50768c763a9f0ad0b05280b0d50679d7897cf668e02e73e9827f0aa402caca4d",
+      "sha256": "dbd847319c79afdb59101536abc64986d218965f3d7adc7a4a20154a76367094",
+      "targetSha256": "dbd847319c79afdb59101536abc64986d218965f3d7adc7a4a20154a76367094",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/README.md",
+      "target": "README.md",
+      "sourceSha256": "a19410281ddec4fd317d8c6a9b9d20c19f0425d250dea3357b0a19a861881b58",
+      "sha256": "dbd847319c79afdb59101536abc64986d218965f3d7adc7a4a20154a76367094",
+      "targetSha256": "3ce5262302f11e33c8cdf548657807abc49739c3d2fc48133eec18b783675840",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31; Versioned PWAR receipts and coordinated engine/client binary pins, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "scripts/before-pack.cjs",
+      "sourceSha256": null,
+      "sha256": "a05f7a943ad4bbe11d75bc81758350a175b808566d1023bbf71f84249b1ce4b5",
+      "targetSha256": "6ae95c79273cb25c3147b0f170c153798b74e43edc34485cc34ca4131a6238bb",
+      "transformation": "created for extraction; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31"
+    },
+    {
+      "source": "gui/scripts/build-driver-archive.ps1",
+      "target": "scripts/build-driver-archive.ps1",
+      "sourceSha256": "9d4aa00db9439530573b6fb0f2e26e75fb6e5d1cd5c0d6489917f1dfa7331803",
+      "sha256": "5e736817a84a054589c348aba8dc0d3c461a32452d58b17bd3bd61498bf612a9",
+      "targetSha256": "5e736817a84a054589c348aba8dc0d3c461a32452d58b17bd3bd61498bf612a9",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/scripts/build-ui.js",
+      "target": "scripts/build-ui.js",
+      "sourceSha256": "8a12b78d67a33f848ae58d38b6ccbadaa59bfbd31fc4ead76a74e2d0ddd4bd47",
+      "sha256": "31c78a7a0f4eb285c4ceeb6fd7305c8810575b99cbe8e93b454df6fb3f0a3ce0",
+      "targetSha256": "31c78a7a0f4eb285c4ceeb6fd7305c8810575b99cbe8e93b454df6fb3f0a3ce0",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/scripts/embed-openapi.js",
+      "target": "scripts/embed-openapi.js",
+      "sourceSha256": "12fd47c0d57f4d0708f1ea6392151fb156d85bcdfa39b90ec08df38f407fd718",
+      "sha256": "b6a8fd3ace38f38e0c65bfe385fd8ccf77373715075b139a8f979cdbccd2dbc4",
+      "targetSha256": "b6a8fd3ace38f38e0c65bfe385fd8ccf77373715075b139a8f979cdbccd2dbc4",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26",
+      "status": "modified"
+    },
+    {
+      "source": "gui/scripts/embed-openapi.test.cjs",
+      "target": "scripts/embed-openapi.test.cjs",
+      "sourceSha256": "6c877c9992974453ceaa4080e6acc2c58cd3657f74b6b9bbb10cb13e1e8b1203",
+      "sha256": "357ce77f140d8f4d979205e00b0bec7245b2b3001f4060f0fedd21e73bc1bd5c",
+      "targetSha256": "357ce77f140d8f4d979205e00b0bec7245b2b3001f4060f0fedd21e73bc1bd5c",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26",
+      "status": "modified"
+    },
+    {
+      "source": null,
+      "target": "scripts/verify-artifacts.cjs",
+      "sourceSha256": null,
+      "sha256": "c3ef1623cba231fa8ba7ea432840ecf76f69e11cd17d8cfeeecc93ebfa6683db",
+      "targetSha256": "a5804ebb6d411cb52babf80778e55e1db42dd6554f314283a9fb5b65c31fdfa1",
+      "transformation": "created for extraction; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31; Versioned PWAR receipts and coordinated engine/client binary pins, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "scripts/verify-artifacts.test.cjs",
+      "sourceSha256": null,
+      "sha256": "982d1b403bf2143e7384d9a3cdd39677722de363eec119d05d15dfdcc548ea5c",
+      "targetSha256": "d1e4aab9f2dce49fd8b4216b69c35c3cf2b3101f714f31b30526bc6607c23fa1",
+      "transformation": "created for extraction; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31"
+    },
+    {
+      "source": "gui/scripts/verify-release-artifacts.ps1",
+      "target": "scripts/verify-release-artifacts.ps1",
+      "sourceSha256": "7f131551344fbb882fc36df9de6363aa764eded0058500b4eb744ccd20abc55e",
+      "sha256": "5e736817a84a054589c348aba8dc0d3c461a32452d58b17bd3bd61498bf612a9",
+      "targetSha256": "5e736817a84a054589c348aba8dc0d3c461a32452d58b17bd3bd61498bf612a9",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/scripts/verify-tvsd-build.ps1",
+      "target": "scripts/verify-tvsd-build.ps1",
+      "sourceSha256": "22cc51283eaeae4dce459d21b96b5b35f0e8920dabc77b7400d8cf366638b632",
+      "sha256": "5e736817a84a054589c348aba8dc0d3c461a32452d58b17bd3bd61498bf612a9",
+      "targetSha256": "5e736817a84a054589c348aba8dc0d3c461a32452d58b17bd3bd61498bf612a9",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": "gui/src/AnalysisTimeline.js",
+      "target": "src/AnalysisTimeline.js",
+      "sourceSha256": "1ceb02794d29dd67c5f40eddecae683457ce131d6b3b2ac634aed915380c69bc",
+      "sha256": "1ceb02794d29dd67c5f40eddecae683457ce131d6b3b2ac634aed915380c69bc",
+      "targetSha256": "1ceb02794d29dd67c5f40eddecae683457ce131d6b3b2ac634aed915380c69bc",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/AnalysisTimeline.test.js",
+      "target": "src/AnalysisTimeline.test.js",
+      "sourceSha256": "ce1a19ef0300a9837ee7431b186a1beea2617fa01e16e574a23b4148cad4d0e7",
+      "sha256": "ce1a19ef0300a9837ee7431b186a1beea2617fa01e16e574a23b4148cad4d0e7",
+      "targetSha256": "ce1a19ef0300a9837ee7431b186a1beea2617fa01e16e574a23b4148cad4d0e7",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/api-contract.js",
+      "target": "src/api-contract.js",
+      "sourceSha256": "d4b1013d22cc035e735aadba7bc98438b0c73c513a80660716eec2fb473d6c95",
+      "sha256": "6f5d6a67f444af55b50ede6db3ff2082affb3bfc60498e27d566d4a35a977821",
+      "targetSha256": "6f5d6a67f444af55b50ede6db3ff2082affb3bfc60498e27d566d4a35a977821",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26",
+      "status": "modified"
+    },
+    {
+      "source": "gui/src/api-contract.test.cjs",
+      "target": "src/api-contract.test.cjs",
+      "sourceSha256": "db4cb3032e78178357c2972e38feead2fccae65cdf7baeb35161dc6087c37ea1",
+      "sha256": "db4cb3032e78178357c2972e38feead2fccae65cdf7baeb35161dc6087c37ea1",
+      "targetSha256": "db4cb3032e78178357c2972e38feead2fccae65cdf7baeb35161dc6087c37ea1",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/App.css",
+      "target": "src/App.css",
+      "sourceSha256": "25dcfe44ae408ad1a83cb9c2d475500d5279e7e31c96c7e022e0e19ac0d5e39b",
+      "sha256": "25dcfe44ae408ad1a83cb9c2d475500d5279e7e31c96c7e022e0e19ac0d5e39b",
+      "targetSha256": "25dcfe44ae408ad1a83cb9c2d475500d5279e7e31c96c7e022e0e19ac0d5e39b",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/App.js",
+      "target": "src/App.js",
+      "sourceSha256": "b06bb398673ee0bdc625fe5c0206941e2c2d63fed654ab58cb8b0dfeefbfcc22",
+      "sha256": "e6da21e76c706ca2af10bde58f6d22521e9c855c974f0922f03cc01ff8baa9fa",
+      "targetSha256": "e6da21e76c706ca2af10bde58f6d22521e9c855c974f0922f03cc01ff8baa9fa",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26; MIDI tab and BPM display, 2026-10-31",
+      "status": "modified"
+    },
+    {
+      "source": "gui/src/App.test.js",
+      "target": "src/App.test.js",
+      "sourceSha256": "14817ed5469d0a4d3e044a8fedcb6744e10f69cf18188f40bf0a8663f66dd483",
+      "sha256": "353b6d2fa612fe813d67835b004d32b4ab072211e14b5e76db8e1b737fe6dadc",
+      "targetSha256": "353b6d2fa612fe813d67835b004d32b4ab072211e14b5e76db8e1b737fe6dadc",
+      "transformation": "verbatim import; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31"
+    },
+    {
+      "source": "gui/src/AudioFlowIcon.js",
+      "target": "src/AudioFlowIcon.js",
+      "sourceSha256": "a0cf5d257551b96eca2a747a3a94f888301d3a9534fd6b53a59426bae7c8185a",
+      "sha256": "a0cf5d257551b96eca2a747a3a94f888301d3a9534fd6b53a59426bae7c8185a",
+      "targetSha256": "a0cf5d257551b96eca2a747a3a94f888301d3a9534fd6b53a59426bae7c8185a",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/AudioHelpDialog.css",
+      "target": "src/AudioHelpDialog.css",
+      "sourceSha256": "a68b658f4681f2f9935f57497f7d894a81c40300e8b0e3784d6716a11f9aac15",
+      "sha256": "a68b658f4681f2f9935f57497f7d894a81c40300e8b0e3784d6716a11f9aac15",
+      "targetSha256": "a68b658f4681f2f9935f57497f7d894a81c40300e8b0e3784d6716a11f9aac15",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/AudioHelpDialog.js",
+      "target": "src/AudioHelpDialog.js",
+      "sourceSha256": "16bd247e3a26ffa7bcdef45f298b3eee55887465daaf641cea3cbdacadee6d5d",
+      "sha256": "16bd247e3a26ffa7bcdef45f298b3eee55887465daaf641cea3cbdacadee6d5d",
+      "targetSha256": "16bd247e3a26ffa7bcdef45f298b3eee55887465daaf641cea3cbdacadee6d5d",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/AudioHelpDialog.test.js",
+      "target": "src/AudioHelpDialog.test.js",
+      "sourceSha256": "3ea2d2820a5a4d2c4d6e74297e1ee95e3fcc1c52541eca7aa6b39523b8d99c46",
+      "sha256": "3ea2d2820a5a4d2c4d6e74297e1ee95e3fcc1c52541eca7aa6b39523b8d99c46",
+      "targetSha256": "3ea2d2820a5a4d2c4d6e74297e1ee95e3fcc1c52541eca7aa6b39523b8d99c46",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/BufferTimingDiagram.js",
+      "target": "src/BufferTimingDiagram.js",
+      "sourceSha256": "f26ad9759047d5a799a4c64ecb7b004ba96178321332273a0deaf9c38cfd9989",
+      "sha256": "f26ad9759047d5a799a4c64ecb7b004ba96178321332273a0deaf9c38cfd9989",
+      "targetSha256": "f26ad9759047d5a799a4c64ecb7b004ba96178321332273a0deaf9c38cfd9989",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/configuration-merge.js",
+      "target": "src/configuration-merge.js",
+      "sourceSha256": "9621d1d2b0065f694abbccb95ce26f8ef91201e484bb47f7f3cbd02c40eac8d3",
+      "sha256": "9621d1d2b0065f694abbccb95ce26f8ef91201e484bb47f7f3cbd02c40eac8d3",
+      "targetSha256": "9621d1d2b0065f694abbccb95ce26f8ef91201e484bb47f7f3cbd02c40eac8d3",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/configuration-merge.test.js",
+      "target": "src/configuration-merge.test.js",
+      "sourceSha256": "71b1728159336e6dbe29acd61b7595898ac13176e4acf00dc452f57acafaa8eb",
+      "sha256": "71b1728159336e6dbe29acd61b7595898ac13176e4acf00dc452f57acafaa8eb",
+      "targetSha256": "71b1728159336e6dbe29acd61b7595898ac13176e4acf00dc452f57acafaa8eb",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/ContextHelp.css",
+      "target": "src/ContextHelp.css",
+      "sourceSha256": "a13f2ca7bd2b23dff63694176705c773b369ce1af12799640b8fd78965cc0d7d",
+      "sha256": "a13f2ca7bd2b23dff63694176705c773b369ce1af12799640b8fd78965cc0d7d",
+      "targetSha256": "a13f2ca7bd2b23dff63694176705c773b369ce1af12799640b8fd78965cc0d7d",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/ContextHelp.js",
+      "target": "src/ContextHelp.js",
+      "sourceSha256": "712983a17ab44f508d91436e3f20460ee690ee6592824ce7a62dc70758df7ff7",
+      "sha256": "712983a17ab44f508d91436e3f20460ee690ee6592824ce7a62dc70758df7ff7",
+      "targetSha256": "712983a17ab44f508d91436e3f20460ee690ee6592824ce7a62dc70758df7ff7",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/ContextHelp.test.js",
+      "target": "src/ContextHelp.test.js",
+      "sourceSha256": "fc25bffc56b5b4ad7a0fc74c49f687d0742e80f6d8de6ad6ad7c4d7d483c4923",
+      "sha256": "fc25bffc56b5b4ad7a0fc74c49f687d0742e80f6d8de6ad6ad7c4d7d483c4923",
+      "targetSha256": "fc25bffc56b5b4ad7a0fc74c49f687d0742e80f6d8de6ad6ad7c4d7d483c4923",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/EndpointStatus.js",
+      "target": "src/EndpointStatus.js",
+      "sourceSha256": "b3dcfa472122c71002c278875aec9411d3b04e165b7df372b52f574e001226d6",
+      "sha256": "b3dcfa472122c71002c278875aec9411d3b04e165b7df372b52f574e001226d6",
+      "targetSha256": "b3dcfa472122c71002c278875aec9411d3b04e165b7df372b52f574e001226d6",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/hardware-transfer.js",
+      "target": "src/hardware-transfer.js",
+      "sourceSha256": "7562e9c362d858af92fd8d47130609abc5f80ab725487b2e71f0e87cff54a008",
+      "sha256": "7562e9c362d858af92fd8d47130609abc5f80ab725487b2e71f0e87cff54a008",
+      "targetSha256": "7562e9c362d858af92fd8d47130609abc5f80ab725487b2e71f0e87cff54a008",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/hardware-transfer.test.js",
+      "target": "src/hardware-transfer.test.js",
+      "sourceSha256": "42fc70c20db5c4a10e85a337b5d0391bb63d81b5643079ce0f2b1de5867d1ffc",
+      "sha256": "42fc70c20db5c4a10e85a337b5d0391bb63d81b5643079ce0f2b1de5867d1ffc",
+      "targetSha256": "42fc70c20db5c4a10e85a337b5d0391bb63d81b5643079ce0f2b1de5867d1ffc",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/index.css",
+      "target": "src/index.css",
+      "sourceSha256": "0a5bb62f6970c24e6deaa14193ec0b9d2254f2470284ab99df8119b370421b37",
+      "sha256": "0a5bb62f6970c24e6deaa14193ec0b9d2254f2470284ab99df8119b370421b37",
+      "targetSha256": "0a5bb62f6970c24e6deaa14193ec0b9d2254f2470284ab99df8119b370421b37",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/index.js",
+      "target": "src/index.js",
+      "sourceSha256": "813655e2c2c2845320de4672415db1a0181ab8872b0150193f0da059d524d1fc",
+      "sha256": "813655e2c2c2845320de4672415db1a0181ab8872b0150193f0da059d524d1fc",
+      "targetSha256": "813655e2c2c2845320de4672415db1a0181ab8872b0150193f0da059d524d1fc",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/NativeAudioDialog.js",
+      "target": "src/NativeAudioDialog.js",
+      "sourceSha256": "dcb80c4aa2b2a1a8d4677996ae53b043f59ee46d6c7ae379eb95cf6abec08738",
+      "sha256": "dcb80c4aa2b2a1a8d4677996ae53b043f59ee46d6c7ae379eb95cf6abec08738",
+      "targetSha256": "dcb80c4aa2b2a1a8d4677996ae53b043f59ee46d6c7ae379eb95cf6abec08738",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/NativeAudioDialog.test.js",
+      "target": "src/NativeAudioDialog.test.js",
+      "sourceSha256": "119fc6f4dd0fdb8964a58dd60ec4db790ab74869dd673c640b34ed7b1445a44c",
+      "sha256": "119fc6f4dd0fdb8964a58dd60ec4db790ab74869dd673c640b34ed7b1445a44c",
+      "targetSha256": "119fc6f4dd0fdb8964a58dd60ec4db790ab74869dd673c640b34ed7b1445a44c",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/patchbay-layout.js",
+      "target": "src/patchbay-layout.js",
+      "sourceSha256": "0b5480f97ba9173cf2c2fe54ec7ac27f2519010a9cf57903469a6998f9ee97c9",
+      "sha256": "0b5480f97ba9173cf2c2fe54ec7ac27f2519010a9cf57903469a6998f9ee97c9",
+      "targetSha256": "0b5480f97ba9173cf2c2fe54ec7ac27f2519010a9cf57903469a6998f9ee97c9",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/patchbay-layout.test.js",
+      "target": "src/patchbay-layout.test.js",
+      "sourceSha256": "304905c04e15626178a6993ba30d9e3e78c62fab1796633dd4fc290f24a9365d",
+      "sha256": "304905c04e15626178a6993ba30d9e3e78c62fab1796633dd4fc290f24a9365d",
+      "targetSha256": "304905c04e15626178a6993ba30d9e3e78c62fab1796633dd4fc290f24a9365d",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/process-connection-transfer.js",
+      "target": "src/process-connection-transfer.js",
+      "sourceSha256": "d24350f123ef7ede79eb11cb95a92ca5be43c76e8b47de338338c81481ccd92e",
+      "sha256": "d24350f123ef7ede79eb11cb95a92ca5be43c76e8b47de338338c81481ccd92e",
+      "targetSha256": "d24350f123ef7ede79eb11cb95a92ca5be43c76e8b47de338338c81481ccd92e",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/process-connection-transfer.test.js",
+      "target": "src/process-connection-transfer.test.js",
+      "sourceSha256": "ce72bcdfc02631da81037b13c694920fd83a3aba5e6506910e9851cee8eb49fe",
+      "sha256": "ce72bcdfc02631da81037b13c694920fd83a3aba5e6506910e9851cee8eb49fe",
+      "targetSha256": "ce72bcdfc02631da81037b13c694920fd83a3aba5e6506910e9851cee8eb49fe",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/ProfessionalTheme.css",
+      "target": "src/ProfessionalTheme.css",
+      "sourceSha256": "d9380b9ec6daaf806dfd30863853c3bf803f1133b619923061d4b351813ab57f",
+      "sha256": "d9380b9ec6daaf806dfd30863853c3bf803f1133b619923061d4b351813ab57f",
+      "targetSha256": "d9380b9ec6daaf806dfd30863853c3bf803f1133b619923061d4b351813ab57f",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/PwarDialog.js",
+      "target": "src/PwarDialog.js",
+      "sourceSha256": "3e8b4a55f8826795daf4506e9a568a27bd2a26fa244d0ce8b920f647af754acd",
+      "sha256": "1c70383315006f0a325e6ecc2ca74727372b369c19cb6055b59c151748b7797e",
+      "targetSha256": "1c70383315006f0a325e6ecc2ca74727372b369c19cb6055b59c151748b7797e",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26",
+      "status": "modified"
+    },
+    {
+      "source": "gui/src/PwarDialog.test.js",
+      "target": "src/PwarDialog.test.js",
+      "sourceSha256": "8769b1e462c14824d16eac15a7c810f59fe1f8f0d40ae2103ab4be75a1520883",
+      "sha256": "8769b1e462c14824d16eac15a7c810f59fe1f8f0d40ae2103ab4be75a1520883",
+      "targetSha256": "8769b1e462c14824d16eac15a7c810f59fe1f8f0d40ae2103ab4be75a1520883",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/QuickRouting.js",
+      "target": "src/QuickRouting.js",
+      "sourceSha256": "4f0e3903e0904de4e487a35eb92487c868a17983fd0db08f254245f4ef7e109c",
+      "sha256": "4f0e3903e0904de4e487a35eb92487c868a17983fd0db08f254245f4ef7e109c",
+      "targetSha256": "4f0e3903e0904de4e487a35eb92487c868a17983fd0db08f254245f4ef7e109c",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/QuickRouting.test.js",
+      "target": "src/QuickRouting.test.js",
+      "sourceSha256": "11e63edfb6d8efaf8c26eccb3223ea997cea14c182344bc6d601bfedecf916fc",
+      "sha256": "11e63edfb6d8efaf8c26eccb3223ea997cea14c182344bc6d601bfedecf916fc",
+      "targetSha256": "11e63edfb6d8efaf8c26eccb3223ea997cea14c182344bc6d601bfedecf916fc",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/route-groups.js",
+      "target": "src/route-groups.js",
+      "sourceSha256": "dca076eeae1a56c4f0f5075262ec1410caf65aa2f7a5bbbc9cd4111b552876cc",
+      "sha256": "dca076eeae1a56c4f0f5075262ec1410caf65aa2f7a5bbbc9cd4111b552876cc",
+      "targetSha256": "dca076eeae1a56c4f0f5075262ec1410caf65aa2f7a5bbbc9cd4111b552876cc",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/route-groups.test.js",
+      "target": "src/route-groups.test.js",
+      "sourceSha256": "91423b62dc4bb75f60e681a48793ec8940a6574f8711c984d5e44fb5ffba0a40",
+      "sha256": "91423b62dc4bb75f60e681a48793ec8940a6574f8711c984d5e44fb5ffba0a40",
+      "targetSha256": "91423b62dc4bb75f60e681a48793ec8940a6574f8711c984d5e44fb5ffba0a40",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/route-visuals.js",
+      "target": "src/route-visuals.js",
+      "sourceSha256": "e7fdce7ddbb15113f45d73452fc10736c0061e517191e5628771cc5213544d42",
+      "sha256": "e7fdce7ddbb15113f45d73452fc10736c0061e517191e5628771cc5213544d42",
+      "targetSha256": "e7fdce7ddbb15113f45d73452fc10736c0061e517191e5628771cc5213544d42",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/RoutingHelp.js",
+      "target": "src/RoutingHelp.js",
+      "sourceSha256": "ce4225517f43b281eaa77ae0177a8b4fe5cad928248b54e7a6a712ba01fbe3e7",
+      "sha256": "ce4225517f43b281eaa77ae0177a8b4fe5cad928248b54e7a6a712ba01fbe3e7",
+      "targetSha256": "ce4225517f43b281eaa77ae0177a8b4fe5cad928248b54e7a6a712ba01fbe3e7",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/RoutingOverview.js",
+      "target": "src/RoutingOverview.js",
+      "sourceSha256": "47bfa6d3110cc07509311d455207527c5a5063c98a691fcdf3ac5cfe4b02f50c",
+      "sha256": "47bfa6d3110cc07509311d455207527c5a5063c98a691fcdf3ac5cfe4b02f50c",
+      "targetSha256": "47bfa6d3110cc07509311d455207527c5a5063c98a691fcdf3ac5cfe4b02f50c",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/RoutingOverview.test.js",
+      "target": "src/RoutingOverview.test.js",
+      "sourceSha256": "e2004616f752c95f14895c210ceadff7fbf5843f09e185e10e69f180d827f918",
+      "sha256": "e2004616f752c95f14895c210ceadff7fbf5843f09e185e10e69f180d827f918",
+      "targetSha256": "e2004616f752c95f14895c210ceadff7fbf5843f09e185e10e69f180d827f918",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/RoutingPalette.css",
+      "target": "src/RoutingPalette.css",
+      "sourceSha256": "31e265c5b839d61cbc4c4aa5e67ea93202ea45b66ad7ca2d0a2f7639216c1650",
+      "sha256": "31e265c5b839d61cbc4c4aa5e67ea93202ea45b66ad7ca2d0a2f7639216c1650",
+      "targetSha256": "31e265c5b839d61cbc4c4aa5e67ea93202ea45b66ad7ca2d0a2f7639216c1650",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/RoutingPatchbay.js",
+      "target": "src/RoutingPatchbay.js",
+      "sourceSha256": "80377430bb9c203844fc13221a0c8a253e227904746153426b08fec9f7c39482",
+      "sha256": "daa3764ef84532cc7859cb60dd3218c0f53fb08d6db7e32929506480aa0d9b69",
+      "targetSha256": "daa3764ef84532cc7859cb60dd3218c0f53fb08d6db7e32929506480aa0d9b69",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26",
+      "status": "modified"
+    },
+    {
+      "source": "gui/src/RoutingPatchbay.test.js",
+      "target": "src/RoutingPatchbay.test.js",
+      "sourceSha256": "c3826aae305da6f7d96d8d6f5b526563453f96b494e9e9dd5c6ba0bde109da44",
+      "sha256": "c3826aae305da6f7d96d8d6f5b526563453f96b494e9e9dd5c6ba0bde109da44",
+      "targetSha256": "c3826aae305da6f7d96d8d6f5b526563453f96b494e9e9dd5c6ba0bde109da44",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/SavedRouteMatrices.js",
+      "target": "src/SavedRouteMatrices.js",
+      "sourceSha256": "fcbcbe8f0480535d52df0a00979969375db19bea84f1c783ac8d6f3d523653f0",
+      "sha256": "fcbcbe8f0480535d52df0a00979969375db19bea84f1c783ac8d6f3d523653f0",
+      "targetSha256": "fcbcbe8f0480535d52df0a00979969375db19bea84f1c783ac8d6f3d523653f0",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/SectionTabs.css",
+      "target": "src/SectionTabs.css",
+      "sourceSha256": "e7553c1322389d77a9e972e5b065e737069b6d4aa6d8fe35e94af1b3774c5a99",
+      "sha256": "e7553c1322389d77a9e972e5b065e737069b6d4aa6d8fe35e94af1b3774c5a99",
+      "targetSha256": "e7553c1322389d77a9e972e5b065e737069b6d4aa6d8fe35e94af1b3774c5a99",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/SectionTabs.js",
+      "target": "src/SectionTabs.js",
+      "sourceSha256": "f0f3872f66103e9e4bfd49b7c07c361a1c247515589ddc8e41e1bd58ef7324fb",
+      "sha256": "f0f3872f66103e9e4bfd49b7c07c361a1c247515589ddc8e41e1bd58ef7324fb",
+      "targetSha256": "f0f3872f66103e9e4bfd49b7c07c361a1c247515589ddc8e41e1bd58ef7324fb",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/SectionTabs.test.js",
+      "target": "src/SectionTabs.test.js",
+      "sourceSha256": "bd1890ab26334492dc966744be4280d37816db4acf2c5215c3cba87797ae9553",
+      "sha256": "bd1890ab26334492dc966744be4280d37816db4acf2c5215c3cba87797ae9553",
+      "targetSha256": "bd1890ab26334492dc966744be4280d37816db4acf2c5215c3cba87797ae9553",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/setupTests.js",
+      "target": "src/setupTests.js",
+      "sourceSha256": "d026884b8521dfab6590d60d9ad88840aed007be6ab3591fae05c9e770c0b91e",
+      "sha256": "d026884b8521dfab6590d60d9ad88840aed007be6ab3591fae05c9e770c0b91e",
+      "targetSha256": "d026884b8521dfab6590d60d9ad88840aed007be6ab3591fae05c9e770c0b91e",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/WasapiDeviceTree.js",
+      "target": "src/WasapiDeviceTree.js",
+      "sourceSha256": "b0088fda76be0803b8b424d8b71109d098f79237a17360592e30c43d305f9257",
+      "sha256": "b0088fda76be0803b8b424d8b71109d098f79237a17360592e30c43d305f9257",
+      "targetSha256": "b0088fda76be0803b8b424d8b71109d098f79237a17360592e30c43d305f9257",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/WasapiDeviceTree.test.js",
+      "target": "src/WasapiDeviceTree.test.js",
+      "sourceSha256": "04351adb3358a12286edc6b066bac0a9fc73b3a5f0116162a899eb40e67030a2",
+      "sha256": "04351adb3358a12286edc6b066bac0a9fc73b3a5f0116162a899eb40e67030a2",
+      "targetSha256": "04351adb3358a12286edc6b066bac0a9fc73b3a5f0116162a899eb40e67030a2",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/WasapiEndpointPicker.js",
+      "target": "src/WasapiEndpointPicker.js",
+      "sourceSha256": "76aa784c5d7e1e7cac2460af2495e768c92eaf1d7fbdf425b23f1aa015e41a2d",
+      "sha256": "76aa784c5d7e1e7cac2460af2495e768c92eaf1d7fbdf425b23f1aa015e41a2d",
+      "targetSha256": "76aa784c5d7e1e7cac2460af2495e768c92eaf1d7fbdf425b23f1aa015e41a2d",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/WasapiProcessList.js",
+      "target": "src/WasapiProcessList.js",
+      "sourceSha256": "d514d41846c49552eba520d3b40a1da6d39dbf7e80cc960acaf297d5d5e05bfb",
+      "sha256": "d514d41846c49552eba520d3b40a1da6d39dbf7e80cc960acaf297d5d5e05bfb",
+      "targetSha256": "d514d41846c49552eba520d3b40a1da6d39dbf7e80cc960acaf297d5d5e05bfb",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/src/Workspace.css",
+      "target": "src/Workspace.css",
+      "sourceSha256": "ab5912888dd3001254d0cbf50765c53155f7420e0199694e6ecea799193a9765",
+      "sha256": "ab5912888dd3001254d0cbf50765c53155f7420e0199694e6ecea799193a9765",
+      "targetSha256": "ab5912888dd3001254d0cbf50765c53155f7420e0199694e6ecea799193a9765",
+      "transformation": "verbatim import"
+    },
+    {
+      "source": "gui/TVSD.md",
+      "target": "TVSD.md",
+      "sourceSha256": "ac815e7cd7c6955ffe25feb0e47a6b4752f58a7f22be6ac7e7e25d343598c8fd",
+      "sha256": "bdca6dc86a1cb8232badf093dce0b389fd248a596cce5b9acc3c6c29fd3dea4a",
+      "targetSha256": "bdca6dc86a1cb8232badf093dce0b389fd248a596cce5b9acc3c6c29fd3dea4a",
+      "transformation": "adapted for standalone TimoxVSSC; see MIGRATION.md"
+    },
+    {
+      "source": null,
+      "target": "import-manifest.json",
+      "sourceSha256": null,
+      "sha256": null,
+      "targetSha256": null,
+      "transformation": "manifest self-entry; hash intentionally omitted"
+    },
+    {
+      "source": null,
+      "target": ".gitattributes",
+      "sourceSha256": null,
+      "sha256": "e86ec9460f33310aaa782f0e9a84dea1277765bd857560165c520ffdf27e47f0",
+      "targetSha256": "e86ec9460f33310aaa782f0e9a84dea1277765bd857560165c520ffdf27e47f0",
+      "status": "generated"
+    },
+    {
+      "source": null,
+      "target": "src/App.meter-topology.test.js",
+      "sourceSha256": null,
+      "sha256": "34536a0df274c82cc2953cd66f9f92736c96121b9ea147c53d439927363d9ae4",
+      "targetSha256": "34536a0df274c82cc2953cd66f9f92736c96121b9ea147c53d439927363d9ae4",
+      "status": "generated",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+    },
+    {
+      "source": null,
+      "target": "src/RoutingPatchbay.meters.test.js",
+      "sourceSha256": null,
+      "sha256": "759e4ac5f7357998217d02eea3b9cff8c109e5256bc3a7a629da9e8f74598039",
+      "targetSha256": "759e4ac5f7357998217d02eea3b9cff8c109e5256bc3a7a629da9e8f74598039",
+      "status": "generated",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+    },
+    {
+      "source": null,
+      "target": "src/PwarDialog.supervision.test.js",
+      "sourceSha256": null,
+      "sha256": "0bbc839a8901a90630e77b4ac148e451aab37f309c4fa9cc6b68f1f7a0b744c4",
+      "targetSha256": "0bbc839a8901a90630e77b4ac148e451aab37f309c4fa9cc6b68f1f7a0b744c4",
+      "status": "generated",
+      "transformation": "Supervision API and GUI corrections after extraction, 2026-10-26"
+    },
+    {
+      "source": null,
+      "target": "src/MidiWorkspace.css",
+      "sourceSha256": null,
+      "sha256": "e956b08f2aa921edc83482fe0020127373583cc4868f0be603677a5ee358138e",
+      "targetSha256": "e956b08f2aa921edc83482fe0020127373583cc4868f0be603677a5ee358138e",
+      "status": "generated",
+      "transformation": "MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31; Reference clock naming in the MIDI tab, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "src/MidiWorkspace.js",
+      "sourceSha256": null,
+      "sha256": "f636eeb51a66e45aa2e96ff2bd7973dd1cda8885fef769859b8a7d57d58ada35",
+      "targetSha256": "f636eeb51a66e45aa2e96ff2bd7973dd1cda8885fef769859b8a7d57d58ada35",
+      "status": "generated",
+      "transformation": "MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31; MIDI clock follows the graph master clock, 2026-10-31; Reference clock naming in the MIDI tab, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "src/MidiWorkspace.test.js",
+      "sourceSha256": null,
+      "sha256": "128732848e56e0acca90b44f5e13f1fa353fd2b90d734d4b1a10d546ed41e385",
+      "targetSha256": "128732848e56e0acca90b44f5e13f1fa353fd2b90d734d4b1a10d546ed41e385",
+      "status": "generated",
+      "transformation": "MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31; MIDI clock follows the graph master clock, 2026-10-31; Reference clock naming in the MIDI tab, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "src/midi-model.js",
+      "sourceSha256": null,
+      "sha256": "f0ffbb02da00faf65c0accb0a50b2d9c7b0a869726082218c99470e2e66dc7b1",
+      "targetSha256": "5717098396c70c6b8cbe93aeda4ad2973c4e445f1f790c81408708152efcac6f",
+      "status": "generated",
+      "transformation": "MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31; MIDI clock follows the graph master clock, 2026-10-31; Reference clock naming in the MIDI tab, 2026-10-31; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "src/midi-model.test.js",
+      "sourceSha256": null,
+      "sha256": "f695dc76e6116cb4cb528743a44369390f699130d3f60554617b0584554ed13a",
+      "targetSha256": "37a84f12e888f0b4c1933dc05a5b1ba404d5b661f482768713a46a8d34b26396",
+      "status": "generated",
+      "transformation": "MIDI tab and BPM display, 2026-10-31; MIDI clock locked to the sound card in the MIDI tab, 2026-10-31; MIDI clock follows the graph master clock, 2026-10-31; Reference clock naming in the MIDI tab, 2026-10-31; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "RELEASE.md",
+      "sourceSha256": null,
+      "sha256": null,
+      "status": "generated",
+      "targetSha256": "f89833d56c6e02a19332f4d091dfb70c0b85fe89efea2e895ff51c1a8151396a",
+      "transformation": "; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31; Pin Windows MIDI engine verified by CI run 41239505040, 2026-10-31; Versioned PWAR receipts and coordinated engine/client binary pins, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "scripts/pin-engine.cjs",
+      "sourceSha256": null,
+      "sha256": null,
+      "status": "generated",
+      "targetSha256": "33a3dfb2cf14b289452711a340769e0c8af3a983ccc28ea25e7900095bc11eca",
+      "transformation": "; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "scripts/release-metadata.cjs",
+      "sourceSha256": null,
+      "sha256": null,
+      "status": "generated",
+      "targetSha256": "d29bbdb0c8fdac53c76f7a615c3724a6c6058f1470c4bbf4c439caa6becb2442",
+      "transformation": "; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31; Versioned PWAR receipts and coordinated engine/client binary pins, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "scripts/release-metadata.test.cjs",
+      "sourceSha256": null,
+      "sha256": null,
+      "status": "generated",
+      "targetSha256": "93ba63d9ba242f54a6701256487fab2ad548510d95089cde103649689889741d",
+      "transformation": "; Independent component versions, release assembly provenance and MIDI tempo preservation, 2026-10-31; Release assembly provenance and MIDI tempo preservation, 2026-10-31; Versioned PWAR receipts and coordinated engine/client binary pins, 2026-10-31"
+    },
+    {
+      "source": null,
+      "target": "scripts/pin-pwar.cjs",
+      "sourceSha256": null,
+      "sha256": null,
+      "transformation": "generated; Versioned PWAR receipts and coordinated engine/client binary pins, 2026-10-31",
+      "targetSha256": "806bf6f4adc479b81741fef643018828a31baa6a12c43af4c65f5f99969fe573"
+    }
+  ],
+  "excluded": [
+    "node_modules/",
+    "build/",
+    "dist/",
+    "verification/",
+    "artifacts/backend/",
+    "generated OpenAPI and Swagger UI",
+    "secrets and local runtime data"
+  ]
+}

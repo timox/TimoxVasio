@@ -1,0 +1,44 @@
+{
+  "appId": "com.timox.vssc",
+  "productName": "TimoxVSSC",
+  "extraMetadata": {
+    "main": "electron/main.js"
+  },
+  "files": [
+    "build/**/*",
+    "electron/**/*",
+    "node_modules/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "artifacts/backend",
+      "to": "backend"
+    },
+    {
+      "from": "api/openapi-v1.json",
+      "to": "backend/openapi-v1.json"
+    },
+    {
+      "from": "api/schemas",
+      "to": "backend/schemas"
+    },
+    {
+      "from": "LICENSE",
+      "to": "legal/LICENSE.txt"
+    },
+    {
+      "from": "legal",
+      "to": "legal"
+    }
+  ],
+  "directories": {
+    "buildResources": "assets"
+  },
+  "win": {
+    "target": [
+      "nsis"
+    ],
+    "artifactName": "TimoxVSSC-${version}-preview.${ext}"
+  },
+  "beforePack": "./scripts/before-pack.cjs"
+}

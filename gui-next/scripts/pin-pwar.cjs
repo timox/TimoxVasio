@@ -1,0 +1,15 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { checkPwar } = require('./release-metadata.cjs');
+const root = path.resolve(__dirname, '..');
+const file = path.join(root, 'artifacts.lock.json');
+const lock = JSON.parse(fs.readFileSync(file));
+const receipt = JSON.parse(fs.readFileSync(path.join(root, 'artifacts/backend/pwar-build.json')));
+const pwar = lock.artifacts.find(item => item.repository === 'Timox-Pwar');
+pwar.revision = receipt.revision;
+pwar.sha256 = receipt.binarySha256;
+pwar.sizeBytes = fs.statSync(path.join(root, pwar.path)).size;
+delete pwar.sourceLastWriteTimeUtc;
+checkPwar(root, lock);
+fs.writeFileSync(file, JSON.stringify(lock, null, 2) + '\n');
+console.log('Verified PWAR version, source receipt and client binary pinned. Rebuild the engine with the same client hash.');

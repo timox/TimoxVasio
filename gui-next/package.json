@@ -1,0 +1,123 @@
+{
+  "name": "timox-vssc",
+  "version": "0.2.0-alpha.5",
+  "description": "TimoxVSSC control preview",
+  "main": "electron/main.js",
+  "homepage": "./",
+  "scripts": {
+    "react-start": "node scripts/embed-openapi.js && react-scripts start",
+    "react-build": "node scripts/embed-openapi.js && react-scripts build",
+    "react-test": "node scripts/embed-openapi.js && react-scripts test",
+    "contract-test": "node --test src/api-contract.test.cjs",
+    "electron-test": "node --test electron/*.test.js scripts/*.test.cjs",
+    "electron-start": "electron .",
+    "start": "concurrently \"npm run react-start\" \"wait-on http://localhost:4000 && npm run electron-start\"",
+    "build": "npm run electron-build",
+    "release-preflight": "node scripts/verify-artifacts.cjs",
+    "release-postflight": "node scripts/verify-artifacts.cjs --packaged",
+    "electron-build": "npm run react-build && npm run release-preflight && electron-builder && npm run release-postflight",
+    "pack": "npm run release-preflight && electron-builder --dir && npm run release-postflight",
+    "dist": "npm run electron-build",
+    "release-metadata": "node scripts/release-metadata.cjs",
+    "pin-engine": "node scripts/pin-engine.cjs",
+    "pin-pwar": "node scripts/pin-pwar.cjs"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.12.0",
+    "axios": "^1.4.0",
+    "electron-is-dev": "^3.0.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0",
+    "electron": "^28.3.3",
+    "electron-builder": "^24.6.4",
+    "react-scripts": "5.0.1",
+    "swagger-ui-dist": "^5.33.1",
+    "wait-on": "^7.0.1"
+  },
+  "eslintConfig": {
+    "extends": "react-app"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "build": {
+    "appId": "com.timox.vssc",
+    "productName": "TimoxVSSC",
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "files": [
+      "build/**/*",
+      "electron/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "artifacts/backend",
+        "to": "backend",
+        "filter": [
+          "TimoxVirtualAsioEngine.exe",
+          "PwarAsioClient.exe",
+          "engine-build.json",
+          "pwar-build.json",
+          "Windows.Devices.Midi2.dll",
+          "Windows.Devices.Midi2.pri"
+        ]
+      },
+      {
+        "from": "api/openapi-v1.json",
+        "to": "backend/openapi-v1.json"
+      },
+      {
+        "from": "api/schemas",
+        "to": "backend/schemas"
+      },
+      {
+        "from": "LICENSE",
+        "to": "legal/LICENSE.txt"
+      },
+      {
+        "from": "legal",
+        "to": "legal"
+      },
+      {
+        "from": "assets/stop-preview-processes.ps1",
+        "to": "installer/stop-preview-processes.ps1"
+      },
+      {
+        "from": "build/release-manifest.json",
+        "to": "release-manifest.json"
+      }
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "TimoxVSSC-${version}-preview.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": true,
+      "runAfterFinish": false,
+      "include": "assets/installer.nsh"
+    },
+    "beforePack": "./scripts/before-pack.cjs"
+  }
+}
