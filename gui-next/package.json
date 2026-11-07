@@ -9,7 +9,7 @@
     "react-build": "node scripts/embed-openapi.js && react-scripts build",
     "react-test": "node scripts/embed-openapi.js && react-scripts test",
     "contract-test": "node --test src/api-contract.test.cjs",
-    "electron-test": "node --test electron/*.test.js scripts/*.test.cjs",
+    "electron-test": "node scripts/embed-openapi.js && node --test electron/*.test.js scripts/*.test.cjs",
     "electron-start": "electron .",
     "start": "concurrently \"npm run react-start\" \"wait-on http://localhost:4000 && npm run electron-start\"",
     "build": "npm run electron-build",

@@ -2532,6 +2532,8 @@
       "type": "object",
       "required": ["state", "physicalDriverId", "sampleRate", "bufferFrames", "lastError"],
       "properties": {
+        "version": { "type": "string", "description": "Exact engine component version embedded at build time." },
+        "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$", "description": "Exact source revision embedded at build time." },
         "state": { "enum": ["stopped", "running", "reconfiguring", "error"] },
         "clockSource": { "$ref": "#/definitions/clockSource" },
         "clockCapabilities": { "oneOf": [{ "$ref": "#/definitions/clockCapabilities" }, { "type": "null" }] },
