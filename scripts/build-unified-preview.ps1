@@ -38,7 +38,7 @@ Invoke-Checked 'cmake' (@('-S', (Join-Path $repo 'pwar'), '-B', $pwarBuild) + $t
     '-DPWAR_BUILD_LINUX=OFF', '-DPWAR_BUILD_WINDOWS_CLIENT=ON', '-DPWAR_BUILD_LEGACY_DRIVER=OFF')
 )
 Invoke-Checked 'cmake' @('--build', $pwarBuild, '--config', 'Release', '--target', 'PwarAsioClient', 'PwarBuildInfo')
-Invoke-Checked 'cmake' (@('-S', (Join-Path $repo 'engine-next'), '-B', $engineBuild) + $toolchain + @(
+Invoke-Checked 'cmake' (@('-S', (Join-Path $repo 'engine'), '-B', $engineBuild) + $toolchain + @(
     '-DTIMOX_ENABLE_WINDOWS_MIDI_SERVICES=ON', "-DTIMOX_MIDI2_WINMD=$winmd",
     "-DTIMOX_CPPWINRT=$cppwinrt", "-DTIMOX_CPPWINRT_HEADERS=$cppwinrtHeaders",
     "-DTIMOX_PWAR_CLIENT_REVISION=$revision", "-DTIMOX_PWAR_CLIENT_SHA256=$((Get-FileHash (Join-Path $pwarBuild 'Release\PwarAsioClient.exe') -Algorithm SHA256).Hash)"))
@@ -61,7 +61,7 @@ foreach ($output in $outputs) {
     Copy-Item -LiteralPath $output.Source -Destination $output.Target -Force
 }
 foreach ($name in @('openapi-v1.json', 'schemas\api-v1.json')) {
-    Copy-Item -LiteralPath (Join-Path $repo "engine-next\api\$name") -Destination (Join-Path $gui "api\$name") -Force
+    Copy-Item -LiteralPath (Join-Path $repo "engine\api\$name") -Destination (Join-Path $gui "api\$name") -Force
 }
 foreach ($name in @('Windows.Devices.Midi2.dll', 'Windows.Devices.Midi2.pri')) {
     $input = $lock.artifacts | Where-Object path -eq "artifacts/backend/$name" | Select-Object -First 1

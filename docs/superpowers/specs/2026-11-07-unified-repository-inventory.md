@@ -10,7 +10,7 @@ TimoxVasio `1.2.7` remains the latest stable release. The unified work is the un
 
 | Repository | HEAD | Working tree | Build/release entry points |
 |---|---|---|---|
-| TimoxVasio (target) | `98190ec` on `migration/unified-repositories`; `main` remains at the 1.2.7 baseline | GUI files copied into canonical `gui/`; generated preview lock updated; engine source conflicts remain under review | Root `CMakeLists.txt`; `gui/package.json`, `gui/package-lock.json`; `scripts/build-unified-preview.ps1` |
+| TimoxVasio (target) | `ee22f2f` on `migration/unified-repositories`; `main` remains at the 1.2.7 baseline | GUI source consolidated under `gui/`; imported engine moving to canonical `engine/`; root engine/driver conflicts remain under review | Root `CMakeLists.txt`; `gui/package.json`, `gui/package-lock.json`; `scripts/build-unified-preview.ps1` |
 | TimoxVSSC | `b314d6f` | Clean | Electron package/lock; `artifacts.lock.json`; packaging scripts and workflows |
 | TimoxVAudioEngine | `8350d1d` | Clean | Root `CMakeLists.txt`; `.github/workflows/windows-engine.yml` |
 | Timox-Pwar | `f02f653` | Clean | Root `CMakeLists.txt`; `.github/workflows/pwar-build.yml` |
@@ -21,7 +21,7 @@ TimoxVasio `1.2.7` remains the latest stable release. The unified work is the un
 - Branch `migration/unified-repositories` isolates migration work from `main`.
 - `pwar/` contains Timox-Pwar `main` and its imported history (subtree commit `7213185`).
 - TimoxVSSC `main` and its imported history (subtree commit `82e629c`) have been copied into canonical `gui/`; all 117 tracked imported files match by SHA-256. The legacy `gui/dist/` remains open in a running process and was not overwritten.
-- `engine-next/` contains TimoxVAudioEngine `main` and its imported history (subtree commit `7631e7b`); it is temporary until build and driver integration are reconciled.
+- TimoxVAudioEngine `main` and its imported history (subtree commit `7631e7b`) have been moved to canonical `engine/`; the 34 path conflicts with older root engine/driver sources still need reconciliation before those older source copies are removed.
 - TimoxVAudioEngine's import manifest has 184 entries. Comparing those paths with the preexisting TimoxVasio root found 114 byte-identical files, 34 differing files, and 36 paths missing at root. Missing files include the full MIDI patchbay/backend/tests, engine provenance/build metadata, and the pinned transport vendor snapshot. Differences include `CMakeLists.txt`, API schemas, API server/controller code, WASAPI and PWAR supervisor code, plus engine documentation. Do not bulk-overlay these differences; preserve the current driver's root build and merge deliberately.
 - The engine extraction manifest says it originated at TimoxVasio commit `3bcc05f5fed34ea8404e478ef34bb230a2efe39c` plus local uncommitted changes. Its file-level hashes are the stronger provenance record for imported working-tree changes.
 
@@ -56,7 +56,7 @@ Keep the root CMake project as ASIO driver build owner and use the imported engi
 
 ## Follow-up state (2026-11-07)
 
-- The preview engine API exposes its compiled version and exact monorepo revision. GUI discovery requires API 1.1 plus both values from the artifact lock; mismatched or unidentified engines are rejected without starting a competing engine.
+- The preview engine API exposes its compiled version and exact monorepo revision. GUI discovery requires API 1.1 plus both values from the artifact lock; mismatched, foreign, or unidentified engines are rejected without starting a competing engine.
 - Windows preview build completed from `1ea6c76`; artifact/schema verification passed. API contract tests passed 7/7 and Electron/release tests passed 31/31.
 - `gui/` now contains the imported GUI source and preview artifacts; the duplicate source path `gui-next/` has been removed after a 125-file SHA-256 comparison. `gui/dist/` and `gui/node_modules/` are legacy generated data, with `dist/` still locked by the running engine.
-- `engine-next/` remains a separate imported tree while its 34 differing paths with root engine/driver sources are reconciled. `pwar/` is imported with history.
+- `engine/` is the canonical 1.3 preview engine source. The old root `src/` and `include/` engine files remain while the 34 differing paths are reconciled; `pwar/` is imported with history.
