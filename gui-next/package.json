@@ -1,7 +1,7 @@
 {
-  "name": "timox-vssc",
+  "name": "timox-vasio",
   "version": "1.3.0-alpha.1",
-  "description": "TimoxVSSC control preview",
+  "description": "TimoxVasio audio control preview",
   "main": "electron/main.js",
   "homepage": "./",
   "scripts": {
@@ -55,7 +55,7 @@
   },
   "build": {
     "appId": "com.timox.vssc",
-    "productName": "TimoxVSSC",
+    "productName": "TimoxVasio",
     "extraMetadata": {
       "main": "electron/main.js"
     },
@@ -109,7 +109,7 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "TimoxVSSC-${version}-preview.${ext}"
+      "artifactName": "TimoxVasio-${version}-preview.${ext}"
     },
     "nsis": {
       "oneClick": false,

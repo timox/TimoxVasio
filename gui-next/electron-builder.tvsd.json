@@ -1,6 +1,6 @@
 {
   "appId": "com.timox.vssc",
-  "productName": "TimoxVSSC",
+  "productName": "TimoxVasio",
   "extraMetadata": {
     "main": "electron/main.js"
   },
@@ -38,7 +38,7 @@
     "target": [
       "nsis"
     ],
-    "artifactName": "TimoxVSSC-${version}-preview.${ext}"
+    "artifactName": "TimoxVasio-${version}-preview.${ext}"
   },
   "beforePack": "./scripts/before-pack.cjs"
 }

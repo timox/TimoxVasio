@@ -1,6 +1,6 @@
 > Imported historical feature guide. For current standalone build and artifact paths, use README.md and MIGRATION.md.
 
-# TimoxVSSC user guide
+# TimoxVasio user guide
 
 [Français](GUI_GUIDE.md) | **English**
 

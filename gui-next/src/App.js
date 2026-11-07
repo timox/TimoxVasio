@@ -25,7 +25,7 @@ import releaseInfo from './release-info';
 const { configurationFromState, deviceTopologyKey, mergeClientObservations } = require('./api-contract');
 const { mergeConfigurationDraft } = require('./configuration-merge');
 const openApiDocument = require('./openapi-spec.generated');
-const applicationProductName = process.env.REACT_APP_PRODUCT_NAME || 'TimoxVSSC';
+const applicationProductName = process.env.REACT_APP_PRODUCT_NAME || 'TimoxVasio';
 const migrationLogKey = 'timoxvasio.connection-migrations.v1';
 const readMigrationLog = () => {
     try { return JSON.parse(window.localStorage.getItem(migrationLogKey)) || []; }

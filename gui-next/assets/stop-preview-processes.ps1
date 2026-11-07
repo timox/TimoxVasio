@@ -14,6 +14,6 @@ Get-Process |
             }
         } catch { }
     }
-Get-CimInstance Win32_Process -Filter "Name = 'TimoxVSSC.exe' OR Name = 'Timox VASIO Control.exe' OR Name = 'TimoxVirtualAsioEngine.exe' OR Name = 'PwarAsioClient.exe'" |
+Get-CimInstance Win32_Process -Filter "Name = 'TimoxVasio.exe' OR Name = 'TimoxVSSC.exe' OR Name = 'Timox VASIO Control.exe' OR Name = 'TimoxVirtualAsioEngine.exe' OR Name = 'PwarAsioClient.exe'" |
     Where-Object { $StopAllTimox -or ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
