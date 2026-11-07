@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$MidiWinmdPath,
     [Parameter(Mandatory = $true)][string]$CppWinrtPath,
+    [Parameter(Mandatory = $true)][string]$CppWinrtHeadersPath,
     [string]$BuildRoot = 'build/unified-preview'
 )
 
@@ -18,6 +19,7 @@ if ($winmdHash -ne $expectedWinmdHash) { throw "Windows MIDI metadata hash misma
 $cppwinrt = (Resolve-Path -LiteralPath $CppWinrtPath).Path
 $cppwinrtHash = (Get-FileHash -LiteralPath $cppwinrt -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($cppwinrtHash -ne $lock.buildInputs.cppwinrt.sha256) { throw "cppwinrt.exe hash mismatch: $cppwinrtHash" }
+$cppwinrtHeaders = (Resolve-Path -LiteralPath $CppWinrtHeadersPath).Path
 
 $revision = (& git -C $repo rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the monorepo revision.' }
@@ -38,7 +40,7 @@ Invoke-Checked 'cmake' (@('-S', (Join-Path $repo 'pwar'), '-B', $pwarBuild) + $t
 Invoke-Checked 'cmake' @('--build', $pwarBuild, '--config', 'Release', '--target', 'PwarAsioClient', 'PwarBuildInfo')
 Invoke-Checked 'cmake' (@('-S', (Join-Path $repo 'engine-next'), '-B', $engineBuild) + $toolchain + @(
     '-DTIMOX_ENABLE_WINDOWS_MIDI_SERVICES=ON', "-DTIMOX_MIDI2_WINMD=$winmd",
-    "-DTIMOX_CPPWINRT=$cppwinrt",
+    "-DTIMOX_CPPWINRT=$cppwinrt", "-DTIMOX_CPPWINRT_HEADERS=$cppwinrtHeaders",
     "-DTIMOX_PWAR_CLIENT_REVISION=$revision", "-DTIMOX_PWAR_CLIENT_SHA256=$((Get-FileHash (Join-Path $pwarBuild 'Release\PwarAsioClient.exe') -Algorithm SHA256).Hash)"))
 Invoke-Checked 'cmake' @('--build', $engineBuild, '--config', 'Release', '--target', 'TimoxVirtualAsioEngine', 'EngineBuildInfo')
 Invoke-Checked 'cmake' (@('-S', $repo, '-B', $driverBuild) + $toolchain + @('-DVASIO_BUILD_DRIVERS=ON'))
