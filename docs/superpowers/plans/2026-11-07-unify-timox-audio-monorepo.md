@@ -102,3 +102,14 @@
 3. Keep the original repositories and their refs unchanged throughout migration; do not archive them until Task 5 passes.
 4. Do not install, launch, stop, or qualify audio/driver processes as part of automated migration.
 5. `grrzzzz/asio/` currently has extensive tracked modifications and untracked files; never delete it wholesale or before its unique content is accounted for.
+
+### Task 7: Replace the installed preview on this workstation
+
+**Files/systems:**
+- Installed per-machine TimoxVSSC preview and its registered ASIO driver.
+- `%APPDATA%/timox-vsounddealer` user data and single-instance lock.
+
+- [ ] Verify the built installer is the unreleased TimoxVasio `1.3.0` preview and passes artifact/hash preflight.
+- [ ] Uninstall the currently installed preview with its registered uninstaller; preserve the existing `%APPDATA%/timox-vsounddealer` profile.
+- [ ] Install the monorepo-built per-machine preview and its pinned driver; do not auto-launch the app from the installer.
+- [ ] Verify installed component versions, registration, and retained user data before manually launching or qualifying audio.

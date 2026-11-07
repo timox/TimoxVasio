@@ -1,9 +1,9 @@
-# TimoxVSSC
+# TimoxVasio
 
-Next development candidate: **0.2.0-alpha.5**, paired with engine
-**1.3.0-alpha.1** (API **1.1**, MIDI backend enabled). The external ASIO driver
-remains **1.2.7**. See [RELEASE.md](RELEASE.md) and `artifacts.lock.json` for the
-assembly, source revisions and outstanding binary/runtime validation.
+Latest stable: **1.2.7**. The integrated work is an unreleased **1.3.0** preview
+(GUI **1.3.0-alpha.1**, engine **1.3.0-alpha.2**, API **1.1**, MIDI backend
+enabled). See [RELEASE.md](RELEASE.md) and `artifacts.lock.json` for component
+provenance and outstanding binary/runtime validation.
 The bundled PWAR candidate is independently versioned **0.1.0-alpha.1**;
 its control protocol remains **v1**.
 

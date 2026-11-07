@@ -20,18 +20,18 @@ test('release packaging rejects incompatible engine/PWAR versions, pins, receipt
         fs.copyFileSync(path.join(__dirname, '..', item.path), path.join(root, item.path));
     }
     fs.writeFileSync(path.join(backend, 'TimoxVirtualAsioEngine.exe'), 'fixture engine');
-    const engine = lock.artifacts.find(item => item.repository === 'TimoxVAudioEngine');
+    const engine = lock.artifacts.find(item => item.component === 'engine');
     engine.sha256 = crypto.createHash('sha256').update('fixture engine').digest('hex');
-    const pwar = lock.artifacts.find(item => item.repository === 'Timox-Pwar');
+    const pwar = lock.artifacts.find(item => item.component === 'pwar');
     fs.writeFileSync(path.join(backend, 'PwarAsioClient.exe'), 'fixture pwar');
     pwar.revision = lock.release.pwar.revision;
     pwar.sha256 = crypto.createHash('sha256').update('fixture pwar').digest('hex');
-    const pwarReceipt = { formatVersion: 1, repository: 'timox/Timox-Pwar', version: lock.release.pwar.version,
+    const pwarReceipt = { formatVersion: 1, repository: 'timox/TimoxVasio', component: 'pwar', version: lock.release.pwar.version,
         controlProtocolVersion: 1, revision: pwar.revision, dirty: false, platform: 'windows-x64',
         binaryName: 'PwarAsioClient.exe', binarySha256: pwar.sha256 };
     const writePwar = () => fs.writeFileSync(path.join(backend, 'pwar-build.json'), JSON.stringify(pwarReceipt));
     writePwar();
-    const receipt = { formatVersion: 1, repository: 'timox/TimoxVAudioEngine',
+    const receipt = { formatVersion: 1, repository: 'timox/TimoxVasio', component: 'engine',
         version: lock.release.engine.version, apiVersion: '1.1', revision: engine.revision,
         pwarClientVersion: lock.release.pwar.version, pwarClientRevision: pwar.revision, pwarClientSha256: pwar.sha256,
         dirty: false, windowsMidiServices: true, binarySha256: engine.sha256 };

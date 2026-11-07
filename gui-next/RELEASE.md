@@ -1,8 +1,10 @@
 # Version and assembly tracking
 
-This repository's next candidate is **TimoxVSSC 0.2.0-alpha.1**, not the old
-combined TimoxVasio 1.2.7 package. It requires engine **1.3.0-alpha.1**, API **1.1**,
-and a Windows MIDI Services enabled build for its MIDI workspace. The preview
+The latest stable TimoxVasio release is **1.2.7**. The unified code is the
+unreleased **TimoxVasio 1.3.0 preview**; no stable 1.3.0 release is published
+or created by this migration. The GUI package version is **1.3.0-alpha.1**.
+It requires engine **1.3.0-alpha.2**, API **1.1**, and a Windows MIDI Services
+enabled build for its MIDI workspace. The preview
 bundles ASIO driver **1.2.7-test** in its NSIS installer. Its uninstaller removes
 the GUI-owned engine, PWAR client and ASIO clients loading that preview DLL,
 then removes the preview registration when it is still active, so the stable

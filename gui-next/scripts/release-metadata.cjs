@@ -6,7 +6,8 @@ const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).d
 function checkSource(root, lock) {
     const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).version;
     const release = lock.release;
-    if (!release || release.channel !== 'alpha' || release.guiVersion !== version)
+    if (!release || release.channel !== 'alpha' || release.productVersion !== '1.3.0' ||
+        release.status !== '1.3.0-preview-not-released' || release.guiVersion !== version)
         throw new Error('Release metadata must match the GUI candidate version/channel');
     if (lock.requiredApiVersion !== '1.1' || release.engine.apiVersion !== lock.requiredApiVersion)
         throw new Error('Release API version mismatch');
@@ -27,10 +28,10 @@ function checkSource(root, lock) {
 }
 function checkEngine(root, lock) {
     const release = checkSource(root, lock);
-    const item = lock.artifacts.find(entry => entry.repository === 'TimoxVAudioEngine');
+    const item = lock.artifacts.find(entry => entry.component === 'engine');
     const receipt = JSON.parse(fs.readFileSync(path.join(root, 'artifacts/backend/engine-build.json')));
-    const pwar = lock.artifacts.find(entry => entry.repository === 'Timox-Pwar');
-    if (receipt.formatVersion !== 1 || receipt.repository !== 'timox/TimoxVAudioEngine' ||
+    const pwar = lock.artifacts.find(entry => entry.component === 'pwar');
+    if (receipt.formatVersion !== 1 || receipt.repository !== 'timox/TimoxVasio' || receipt.component !== 'engine' ||
         receipt.version !== release.engine.version || receipt.apiVersion !== release.engine.apiVersion ||
         receipt.revision !== release.engine.revision || receipt.dirty !== false ||
         receipt.windowsMidiServices !== true || item.revision !== receipt.revision ||
@@ -42,9 +43,9 @@ function checkEngine(root, lock) {
 }
 function checkPwar(root, lock) {
     const release = checkSource(root, lock);
-    const item = lock.artifacts.find(entry => entry.repository === 'Timox-Pwar');
+    const item = lock.artifacts.find(entry => entry.component === 'pwar');
     const receipt = JSON.parse(fs.readFileSync(path.join(root, 'artifacts/backend/pwar-build.json')));
-    if (receipt.formatVersion !== 1 || receipt.repository !== 'timox/Timox-Pwar' ||
+    if (receipt.formatVersion !== 1 || receipt.repository !== 'timox/TimoxVasio' || receipt.component !== 'pwar' ||
         receipt.version !== release.pwar.version || receipt.controlProtocolVersion !== 1 ||
         receipt.revision !== release.pwar.revision || receipt.dirty !== false ||
         receipt.platform !== 'windows-x64' || receipt.binaryName !== 'PwarAsioClient.exe' ||
@@ -59,7 +60,7 @@ function writeManifest(root, lock) {
     const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
     if (git('status', '--porcelain', '--untracked-files=normal')) throw new Error('Commit GUI changes before packaging');
     const manifest = { formatVersion: 1, ...lock.release,
-        gui: { repository: 'timox/TimoxVSSC', version: lock.release.guiVersion, revision: git('rev-parse', 'HEAD') },
+        gui: { repository: 'timox/TimoxVasio', version: lock.release.guiVersion, revision: git('rev-parse', 'HEAD') },
         artifacts: lock.artifacts, schemas: lock.schemas,
         engineBuild: JSON.parse(fs.readFileSync(path.join(root, 'artifacts/backend/engine-build.json'))),
         pwarBuild: JSON.parse(fs.readFileSync(path.join(root, 'artifacts/backend/pwar-build.json'))) };

@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, '..');
 const file = path.join(root, 'artifacts.lock.json');
 const lock = JSON.parse(fs.readFileSync(file));
 const receipt = JSON.parse(fs.readFileSync(path.join(root, 'artifacts/backend/engine-build.json')));
-const engine = lock.artifacts.find(entry => entry.repository === 'TimoxVAudioEngine');
+const engine = lock.artifacts.find(entry => entry.component === 'engine');
 engine.revision = receipt.revision;
 engine.sha256 = receipt.binarySha256;
 engine.sizeBytes = fs.statSync(path.join(root, engine.path)).size;

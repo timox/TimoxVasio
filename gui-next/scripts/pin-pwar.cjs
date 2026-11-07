@@ -5,7 +5,7 @@ const root = path.resolve(__dirname, '..');
 const file = path.join(root, 'artifacts.lock.json');
 const lock = JSON.parse(fs.readFileSync(file));
 const receipt = JSON.parse(fs.readFileSync(path.join(root, 'artifacts/backend/pwar-build.json')));
-const pwar = lock.artifacts.find(item => item.repository === 'Timox-Pwar');
+const pwar = lock.artifacts.find(item => item.component === 'pwar');
 pwar.revision = receipt.revision;
 pwar.sha256 = receipt.binarySha256;
 pwar.sizeBytes = fs.statSync(path.join(root, pwar.path)).size;
