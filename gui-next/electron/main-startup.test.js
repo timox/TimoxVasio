@@ -28,7 +28,12 @@ async function launch(ownsLock) {
             if (name === 'electron') return { app, BrowserWindow: Window,
                 ipcMain: { handle() {} }, Menu: { buildFromTemplate: x => x, setApplicationMenu() {} } };
             if (name === './engine-process') return { launchEngine() { calls.spawn++; throw new Error('Unexpected spawn'); } };
-            if (name === './engine-discovery') return { discoverEngine: async (_fetch, options) => { calls.fetch++; assert.equal(options.requiredApiVersion, '1.1'); return 52525; } };
+            if (name === 'ws') return class WebSocket {};
+            if (name === './api-client') return { ApiClient: class ApiClient {} };
+            if (name === './engine-discovery') return { discoverEngine: async (_fetch, options) => { calls.fetch++;
+                assert.equal(options.requiredApiVersion, '1.1');
+                assert.equal(options.requiredEngineVersion, '1.3.0-alpha.2');
+                assert.match(options.requiredEngineRevision, /^[a-f0-9]{40}$/); return 52525; } };
             return require(name);
         },
         __dirname, process, fetch: () => {}, console: { log() {}, error() {} }

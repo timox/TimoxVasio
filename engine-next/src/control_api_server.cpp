@@ -11,6 +11,7 @@
 #include "engine_diagnostics.h"
 #include "pwar_configuration_store.h"
 #include "pwar_client_supervisor.h"
+#include "engine_version.h"
 #include "midi_patchbay.h"
 
 #include <windows.h>
@@ -692,7 +693,8 @@ struct ControlApiServer::Impl {
             configuredRoutes.push_back(routeJson(route));
         Json result{{"apiVersion", "1.1"}, {"configurationRevision", state.configurationRevision},
             {"capabilities", {{"wasapiProcessLoopback", supportsWasapiProcessLoopback()}}},
-            {"engine", {{"state", state.state}, {"clockSource", clockSourceJson(state)},
+            {"engine", {{"version", TIMOX_ENGINE_VERSION}, {"revision", TIMOX_ENGINE_REVISION},
+                         {"state", state.state}, {"clockSource", clockSourceJson(state)},
                          {"clockCapabilities", clockCapabilitiesJson(state)}, {"physicalDriverId", std::move(physicalId)},
                          {"sampleRate", std::move(sampleRate)}, {"bufferFrames", std::move(bufferFrames)},
                          {"lastError", std::move(lastError)}}},

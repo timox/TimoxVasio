@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
 project(TimoxVAudioEngine)
 include(cmake/EngineVersion.cmake)
+find_package(Git REQUIRED)
+execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_SOURCE_DIR}" rev-parse HEAD
+    OUTPUT_VARIABLE TIMOX_ENGINE_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE TIMOX_ENGINE_GIT_RESULT)
+string(LENGTH "${TIMOX_ENGINE_REVISION}" TIMOX_ENGINE_REVISION_LENGTH)
+if(NOT TIMOX_ENGINE_GIT_RESULT EQUAL 0 OR NOT TIMOX_ENGINE_REVISION_LENGTH EQUAL 40)
+    message(FATAL_ERROR "Cannot identify the exact Git revision for the engine build")
+endif()
 configure_file(cmake/engine_version.h.in generated/engine_version.h @ONLY)
 
 if(WIN32)

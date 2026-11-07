@@ -62,6 +62,7 @@
     "files": [
       "build/**/*",
       "electron/**/*",
+      "artifacts.lock.json",
       "node_modules/**/*"
     ],
     "extraResources": [

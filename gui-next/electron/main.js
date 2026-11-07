@@ -6,6 +6,7 @@ const { launchEngine, releaseEngine } = require('./engine-process');
 const { discoverEngine } = require('./engine-discovery');
 const WebSocket = require('ws');
 const { ApiClient } = require('./api-client');
+const artifactLock = require('../artifacts.lock.json');
 
 let mainWindow;
 let engineProcess;
@@ -98,7 +99,11 @@ function startEngine() {
 
 async function attachToExistingEngine() {
     const requiredApiVersion = '1.1';
-    const port = await discoverEngine(fetch, { requiredApiVersion });
+    const port = await discoverEngine(fetch, {
+        requiredApiVersion,
+        requiredEngineVersion: artifactLock.release.engine.version,
+        requiredEngineRevision: artifactLock.release.engine.revision
+    });
     if (port === null) return false;
     apiPort = port;
     apiReady.resolve(port);
