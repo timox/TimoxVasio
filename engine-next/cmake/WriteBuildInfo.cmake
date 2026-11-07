@@ -24,4 +24,4 @@ endif()
 file(SHA256 "${ENGINE_BINARY}" binary_hash)
 get_filename_component(output_dir "${ENGINE_BINARY}" DIRECTORY)
 file(WRITE "${output_dir}/engine-build.json"
-    "{\n  \"formatVersion\": 1,\n  \"repository\": \"timox/TimoxVAudioEngine\",\n  \"version\": \"${TIMOX_ENGINE_VERSION}\",\n  \"apiVersion\": \"${TIMOX_ENGINE_API_VERSION}\",\n  \"revision\": \"${revision}\",\n  \"dirty\": ${dirty},\n  \"windowsMidiServices\": ${midi},\n  \"pwarClientVersion\": \"${TIMOX_PWAR_CLIENT_VERSION}\",\n  \"pwarClientRevision\": \"${TIMOX_PWAR_CLIENT_REVISION}\",\n  \"pwarClientSha256\": \"${pwar_hash}\",\n  \"binarySha256\": \"${binary_hash}\"\n}\n")
+    "{\n  \"formatVersion\": 1,\n  \"repository\": \"timox/TimoxVasio\",\n  \"component\": \"engine\",\n  \"version\": \"${TIMOX_ENGINE_VERSION}\",\n  \"apiVersion\": \"${TIMOX_ENGINE_API_VERSION}\",\n  \"revision\": \"${revision}\",\n  \"dirty\": ${dirty},\n  \"windowsMidiServices\": ${midi},\n  \"pwarClientVersion\": \"${TIMOX_PWAR_CLIENT_VERSION}\",\n  \"pwarClientRevision\": \"${TIMOX_PWAR_CLIENT_REVISION}\",\n  \"pwarClientSha256\": \"${pwar_hash}\",\n  \"binarySha256\": \"${binary_hash}\"\n}\n")

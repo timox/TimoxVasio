@@ -16,6 +16,8 @@
 - Preserve `%APPDATA%/timox-vsounddealer`, its single-instance lock, and user data; do not migrate secrets or preferences from other profiles.
 - Keep loopback discovery safety and the per-machine NSIS driver install/registration behavior.
 - Do not ship an artifact unless its source revision, build inputs, and SHA-256 are verified.
+- Keep TimoxVasio `1.2.7` as the latest stable release. Treat the integrated changes as unreleased `1.3.0` preview work; migration must not tag, publish, or describe a stable `1.3.0` release.
+- Preserve component version metadata (GUI, engine, driver, PWAR) as component provenance; the monorepo product version does not silently rewrite their internal version resources.
 - Do not start GUI/audio processes or run hardware qualification without a coordinated explicit request.
 - Preserve component boundaries and licenses; do not copy generated build trees or machine-local output into source history.
 
@@ -67,6 +69,7 @@
 - Modify: unified artifact lock and release metadata.
 
 - [ ] Generate GUI and engine release identity from one tagged revision and expose engine revision/build identity in the API.
+- [ ] Keep product metadata at unreleased `1.3.0` preview status while preserving `1.2.7` as the last stable version; do not create a release tag or publish artifacts.
 - [ ] Require GUI attachment to match API 1.1 and the expected release identity; report incompatible or unidentified engines clearly.
 - [ ] Test same-release attachment, stale engine rejection, foreign engine rejection, and an occupied port without starting real audio.
 

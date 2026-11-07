@@ -18,4 +18,4 @@ endif()
 file(SHA256 "${BINARY_FILE}" binary_hash)
 get_filename_component(binary_name "${BINARY_FILE}" NAME)
 file(WRITE "${OUTPUT_FILE}"
-    "{\n  \"formatVersion\": 1,\n  \"repository\": \"timox/Timox-Pwar\",\n  \"version\": \"${PWAR_VERSION}\",\n  \"controlProtocolVersion\": ${PWAR_CONTROL_PROTOCOL_VERSION},\n  \"revision\": \"${revision}\",\n  \"dirty\": ${dirty},\n  \"platform\": \"${BINARY_PLATFORM}\",\n  \"binaryName\": \"${binary_name}\",\n  \"binarySha256\": \"${binary_hash}\"\n}\n")
+    "{\n  \"formatVersion\": 1,\n  \"repository\": \"timox/TimoxVasio\",\n  \"component\": \"pwar\",\n  \"version\": \"${PWAR_VERSION}\",\n  \"controlProtocolVersion\": ${PWAR_CONTROL_PROTOCOL_VERSION},\n  \"revision\": \"${revision}\",\n  \"dirty\": ${dirty},\n  \"platform\": \"${BINARY_PLATFORM}\",\n  \"binaryName\": \"${binary_name}\",\n  \"binarySha256\": \"${binary_hash}\"\n}\n")

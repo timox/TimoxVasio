@@ -4,6 +4,10 @@ Read-only inventory for the migration plan. No source files or Git history have 
 
 ## Repository state
 
+## Version policy
+
+TimoxVasio `1.2.7` remains the latest stable release. The unified work is the unreleased `1.3.0` preview line. Do not create a stable `1.3.0` tag or publish a release as part of this migration. Keep GUI/engine/driver/PWAR version resources intact as component provenance while giving the monorepo one source revision and build identity.
+
 | Repository | HEAD | Working tree | Build/release entry points |
 |---|---|---|---|
 | TimoxVasio (target) | `275283b` base; migration branch contains subtree imports | Migration plan/spec untracked; imported components committed on migration branch | Root `CMakeLists.txt`; `gui/package.json`, `gui/package-lock.json`; existing component/build outputs |
