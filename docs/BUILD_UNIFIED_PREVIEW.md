@@ -1,6 +1,6 @@
 # Build the unified Windows preview
 
-The preview is built from this repository only. A clean Git worktree is required; native outputs and the refreshed artifact lock are generated under `build/unified-preview/` and `gui/`.
+The preview is built from this repository only. A clean Git worktree is required; native outputs use a revision-specific directory under `build/unified-preview/`, and the refreshed artifact lock is generated in `gui/`.
 
 From the repository root, run:
 

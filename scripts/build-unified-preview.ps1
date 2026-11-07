@@ -2,15 +2,13 @@ param(
     [Parameter(Mandatory = $true)][string]$MidiWinmdPath,
     [Parameter(Mandatory = $true)][string]$CppWinrtPath,
     [Parameter(Mandatory = $true)][string]$CppWinrtHeadersPath,
-    [string]$BuildRoot = 'build/unified-preview',
+    [string]$BuildRoot,
     [switch]$Package
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $gui = Join-Path $repo 'gui'
-$build = if ([IO.Path]::IsPathRooted($BuildRoot)) { [IO.Path]::GetFullPath($BuildRoot) }
-    else { [IO.Path]::GetFullPath((Join-Path $repo $BuildRoot)) }
 $lockPath = Join-Path $gui 'artifacts.lock.json'
 $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
 $winmd = (Resolve-Path -LiteralPath $MidiWinmdPath).Path
@@ -25,6 +23,12 @@ $cppwinrtHeaders = (Resolve-Path -LiteralPath $CppWinrtHeadersPath).Path
 $revision = (& git -C $repo rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the monorepo revision.' }
 if (& git -C $repo status --porcelain --untracked-files=normal) { throw 'Commit source changes before building the preview.' }
+$defaultBuildRoot = Join-Path 'build/unified-preview' $revision
+$buildRootValue = if ([string]::IsNullOrWhiteSpace($BuildRoot)) { $defaultBuildRoot } else { $BuildRoot }
+$build = if ([IO.Path]::IsPathRooted($buildRootValue)) { [IO.Path]::GetFullPath($buildRootValue) }
+    else { [IO.Path]::GetFullPath((Join-Path $repo $buildRootValue)) }
+$relativeBuildRoot = [IO.Path]::GetRelativePath($repo, $build).Replace('\', '/')
+if ($relativeBuildRoot -eq '..' -or $relativeBuildRoot.StartsWith('../')) { throw 'BuildRoot must stay inside the repository.' }
 
 function Invoke-Checked([string]$Exe, [string[]]$Arguments) {
     & $Exe @Arguments
@@ -34,7 +38,7 @@ function Invoke-Checked([string]$Exe, [string[]]$Arguments) {
 $pwarBuild = Join-Path $build 'pwar'
 $engineBuild = Join-Path $build 'engine'
 $driverBuild = Join-Path $build 'driver'
- $toolchain = @('-G', 'Visual Studio 18 2026', '-A', 'x64', '-DCMAKE_SYSTEM_VERSION=10.0.26100.0')
+$toolchain = @('-G', 'Visual Studio 18 2026', '-A', 'x64', '-DCMAKE_SYSTEM_VERSION=10.0.26100.0')
 Invoke-Checked 'cmake' (@('-S', (Join-Path $repo 'pwar'), '-B', $pwarBuild) + $toolchain + @(
     '-DPWAR_BUILD_LINUX=OFF', '-DPWAR_BUILD_WINDOWS_CLIENT=ON', '-DPWAR_BUILD_LEGACY_DRIVER=OFF')
 )
@@ -85,9 +89,9 @@ foreach ($file in $files) {
     $item.sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
     $item.sizeBytes = (Get-Item -LiteralPath $path).Length
     $item.sourcePath = switch ($file.Component) {
-        'driver' { 'build/unified-preview/driver/Release/TimoxVasio.dll' }
-        'engine' { 'build/unified-preview/engine/Release/TimoxVirtualAsioEngine.exe' }
-        'pwar' { 'build/unified-preview/pwar/Release/PwarAsioClient.exe' }
+        'driver' { "$relativeBuildRoot/driver/Release/TimoxVasio.dll" }
+        'engine' { "$relativeBuildRoot/engine/Release/TimoxVirtualAsioEngine.exe" }
+        'pwar' { "$relativeBuildRoot/pwar/Release/PwarAsioClient.exe" }
     }
 }
 $lock.release.driver.repository = 'timox/TimoxVasio'
