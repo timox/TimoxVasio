@@ -1,7 +1,7 @@
 !macro customInstall
   ; NSIS itself is 32-bit. Write the native ASIO and COM keys explicitly.
   File /oname=$PLUGINSDIR\stop-preview-processes.ps1 "${PROJECT_DIR}\assets\stop-preview-processes.ps1"
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop-preview-processes.ps1" -InstallRoot "$INSTDIR" -DriverPath "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test\TimoxVasio.dll" -StopAllTimox'
+  nsExec::ExecToLog '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop-preview-processes.ps1" -InstallRoot "$INSTDIR" -DriverPath "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test\TimoxVasio.dll" -StopAllTimox'
   SetRegView 64
   CreateDirectory "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test"
   SetOutPath "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test"
@@ -45,7 +45,7 @@
   ; Upgrades must retain the driver until customInstall writes the new version.
   ${IfNot} ${isUpdated}
     ; The GUI intentionally detaches the engine, so stop only processes owned by this install.
-    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\installer\stop-preview-processes.ps1" -InstallRoot "$INSTDIR" -DriverPath "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test\TimoxVasio.dll" -StopAllTimox'
+    nsExec::ExecToLog '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\installer\stop-preview-processes.ps1" -InstallRoot "$INSTDIR" -DriverPath "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test\TimoxVasio.dll" -StopAllTimox'
     SetRegView 64
     ReadRegStr $R0 HKLM "SOFTWARE\Classes\CLSID\{A4D39126-78CB-4D89-9E0A-54494D4F5856}\InprocServer32" ""
     ${If} $R0 == "$PROGRAMFILES64\Steinberg\VirtualASIO\1.2.7-test\TimoxVasio.dll"
