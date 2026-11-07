@@ -41,9 +41,12 @@ test('release packaging rejects incompatible engine/PWAR versions, pins, receipt
     checkPwar(root, lock);
     const git = (...args) => execFileSync('git', ['-C', root, ...args], {encoding:'utf8'}).trim();
     fs.writeFileSync(path.join(root, '.gitignore'), '/build/\n');
+    fs.writeFileSync(path.join(root, 'artifacts.lock.json'), JSON.stringify(lock));
     git('init', '-q'); git('add', '.');
     git('-c', 'user.name=Release test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture');
     assert.equal(writeManifest(root, lock).gui.revision, git('rev-parse', 'HEAD'));
+    fs.writeFileSync(path.join(root, 'artifacts.lock.json'), `${JSON.stringify(lock)}\n`);
+    assert.doesNotThrow(() => writeManifest(root, lock));
     fs.writeFileSync(path.join(root, 'uncommitted.txt'), 'dirty');
     assert.throws(() => writeManifest(root, lock), /Commit GUI changes/);
     fs.unlinkSync(path.join(root, 'uncommitted.txt'));

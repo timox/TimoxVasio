@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][string]$MidiWinmdPath,
     [Parameter(Mandatory = $true)][string]$CppWinrtPath,
     [Parameter(Mandatory = $true)][string]$CppWinrtHeadersPath,
-    [string]$BuildRoot = 'build/unified-preview'
+    [string]$BuildRoot = 'build/unified-preview',
+    [switch]$Package
 )
 
 $ErrorActionPreference = 'Stop'
@@ -100,4 +101,16 @@ foreach ($schema in $lock.schemas) {
     $schema.sha256 = (Get-FileHash -LiteralPath (Join-Path $gui $schema.path) -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 $lock | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $lockPath -Encoding utf8
-Write-Output "Preview components built from $revision. Artifacts and API schemas are staged in gui; commit them before packaging."
+if ($Package) {
+    Write-Output "Preview components built from $revision; packaging the verified installer."
+    Push-Location $gui
+    try {
+        Invoke-Checked 'npm' @('ci')
+        Invoke-Checked 'npm' @('run', 'dist')
+    } finally {
+        Pop-Location
+    }
+    Write-Output "Verified preview installer: $(Join-Path $gui 'dist\TimoxVasio-1.3.0-alpha.1-preview.exe')"
+} else {
+    Write-Output "Preview components built from $revision. Artifacts and API schemas are staged in gui; commit them before packaging."
+}

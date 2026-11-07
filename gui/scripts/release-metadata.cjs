@@ -54,11 +54,22 @@ function checkPwar(root, lock) {
         throw new Error('PWAR build does not match the clean, versioned release candidate');
     return receipt;
 }
+function assertPackageSourcesCommitted(root) {
+    const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
+    const repository = git('rev-parse', '--show-toplevel');
+    const prefix = path.relative(repository, root).split(path.sep).filter(Boolean).join('/');
+    const generated = ['artifacts.lock.json', 'api/openapi-v1.json', 'api/schemas/api-v1.json']
+        .map(file => [prefix, file].filter(Boolean).join('/'));
+    const changed = [...git('diff', '--name-only', 'HEAD').split(/\r?\n/),
+        ...git('ls-files', '--others', '--exclude-standard').split(/\r?\n/)].filter(Boolean);
+    const pending = [...new Set(changed)].filter(file => !generated.includes(file));
+    if (pending.length) throw new Error(`Commit GUI changes before packaging: ${pending.join(', ')}`);
+}
 function writeManifest(root, lock) {
     checkEngine(root, lock);
     checkPwar(root, lock);
     const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
-    if (git('status', '--porcelain', '--untracked-files=normal')) throw new Error('Commit GUI changes before packaging');
+    assertPackageSourcesCommitted(root);
     const manifest = { formatVersion: 1, ...lock.release,
         gui: { repository: 'timox/TimoxVasio', version: lock.release.guiVersion, revision: git('rev-parse', 'HEAD') },
         artifacts: lock.artifacts, schemas: lock.schemas,

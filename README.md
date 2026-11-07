@@ -120,6 +120,7 @@ utilise le pilote pour traiter le son.
 ## Documentation
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) : vue d'ensemble technique
+- [BUILD_UNIFIED_PREVIEW.md](docs/BUILD_UNIFIED_PREVIEW.md) : construire l'installeur de préversion depuis le dépôt unifié
 - [BUILD_DRIVERS.md](docs/BUILD_DRIVERS.md) : compiler et tester les composants
 - [ASIO_CONFORMITE.md](docs/ASIO_CONFORMITE.md) : conformité au SDK ASIO
 - [docs/ROADMAP.md](docs/ROADMAP.md) : travaux prévus
