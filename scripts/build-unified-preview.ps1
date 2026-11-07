@@ -104,7 +104,8 @@ $lock.release.pwar.revision = $revision
 foreach ($schema in $lock.schemas) {
     $schema.sha256 = (Get-FileHash -LiteralPath (Join-Path $gui $schema.path) -Algorithm SHA256).Hash.ToLowerInvariant()
 }
-$lock | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $lockPath -Encoding utf8
+$lockJson = $lock | ConvertTo-Json -Depth 20
+[IO.File]::WriteAllText($lockPath, $lockJson + "`n", [Text.UTF8Encoding]::new($false))
 if ($Package) {
     Write-Output "Preview components built from $revision; packaging the verified installer."
     Push-Location $gui

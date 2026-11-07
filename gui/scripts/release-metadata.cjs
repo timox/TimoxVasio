@@ -58,8 +58,16 @@ function assertPackageSourcesCommitted(root) {
     const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
     const repository = git('rev-parse', '--show-toplevel');
     const prefix = path.relative(repository, root).split(path.sep).filter(Boolean).join('/');
-    const generated = ['artifacts.lock.json', 'api/openapi-v1.json', 'api/schemas/api-v1.json']
-        .map(file => [prefix, file].filter(Boolean).join('/'));
+    const generated = [
+        'artifacts.lock.json',
+        'api/openapi-v1.json',
+        'api/schemas/api-v1.json',
+        'artifacts/driver/TimoxVasio.dll',
+        'artifacts/backend/TimoxVirtualAsioEngine.exe',
+        'artifacts/backend/PwarAsioClient.exe',
+        'artifacts/backend/engine-build.json',
+        'artifacts/backend/pwar-build.json'
+    ].map(file => [prefix, file].filter(Boolean).join('/'));
     const changed = [...git('diff', '--name-only', 'HEAD').split(/\r?\n/),
         ...git('ls-files', '--others', '--exclude-standard').split(/\r?\n/)].filter(Boolean);
     const pending = [...new Set(changed)].filter(file => !generated.includes(file));

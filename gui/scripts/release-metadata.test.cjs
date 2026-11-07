@@ -50,6 +50,22 @@ test('release packaging rejects incompatible engine/PWAR versions, pins, receipt
     fs.writeFileSync(path.join(root, 'uncommitted.txt'), 'dirty');
     assert.throws(() => writeManifest(root, lock), /Commit GUI changes/);
     fs.unlinkSync(path.join(root, 'uncommitted.txt'));
+    const refreshArtifact = (component, relativePath, content, receipt) => {
+        const file = path.join(root, relativePath);
+        fs.writeFileSync(file, content);
+        const item = lock.artifacts.find(entry => entry.component === component);
+        item.sha256 = crypto.createHash('sha256').update(content).digest('hex');
+        receipt.binarySha256 = item.sha256;
+        if (component === 'driver') lock.release.driver.sha256 = item.sha256;
+        else fs.writeFileSync(path.join(backend, `${component}-build.json`), JSON.stringify(receipt));
+    };
+    refreshArtifact('driver', 'artifacts/driver/TimoxVasio.dll', 'regenerated driver', {});
+    refreshArtifact('pwar', 'artifacts/backend/PwarAsioClient.exe', 'regenerated pwar', pwarReceipt);
+    refreshArtifact('engine', 'artifacts/backend/TimoxVirtualAsioEngine.exe', 'regenerated engine', receipt);
+    receipt.pwarClientSha256 = lock.artifacts.find(item => item.component === 'pwar').sha256;
+    fs.writeFileSync(path.join(backend, 'engine-build.json'), JSON.stringify(receipt));
+    fs.writeFileSync(path.join(root, 'artifacts.lock.json'), `${JSON.stringify(lock)}\n`);
+    assert.doesNotThrow(() => writeManifest(root, lock));
     for (const [key, wrong] of Object.entries({version:'1.2.7', revision:'0'.repeat(40), dirty:true,
         windowsMidiServices:false, binarySha256:'f'.repeat(64), apiVersion:'1.0', pwarClientSha256:'0'.repeat(64)})) {
         const previous = receipt[key]; receipt[key] = wrong; write();
